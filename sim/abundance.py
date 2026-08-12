@@ -128,6 +128,33 @@ def build_count_matrix(
     return df
 
 
+def build_count_matrix_baseline(
+    gene_id: str,
+    transcripts_by_gene: Dict[str, List[str]],
+    config: AbundanceConfig,
+    rng: np.random.Generator,
+) -> pd.DataFrame:
+    """Plain NN negative: no forced event, both conditions draw from the same
+    Dirichlet baseline proportions (natural replicate/condition noise only)."""
+    transcripts = transcripts_by_gene[gene_id]
+    baseline = sample_baseline_weights(transcripts, rng, config.dirichlet_alpha)
+
+    columns = {}
+    for cond in (1, 2):
+        for rep in range(1, config.n_replicates + 1):
+            total = sample_nb(config.gene_mean_depth, config.gene_depth_dispersion, rng)
+            colname = f"cond{cond}_rep{rep}"
+            columns[colname] = {
+                t: sample_nb(total * baseline[t], config.transcript_dispersion, rng)
+                for t in transcripts
+            }
+
+    df = pd.DataFrame(columns)
+    df = df.reindex(transcripts).fillna(0).astype(int)
+    df.index.name = "transcript_id"
+    return df
+
+
 def empirical_psi(counts_df: pd.DataFrame, event: Event, columns: List[str]) -> float:
     """Count-based PSI proxy over the given columns, for verification only."""
     incl = [t for t in event.inclusion_transcripts if t in counts_df.index]
