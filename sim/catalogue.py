@@ -35,7 +35,7 @@ EVENT_TYPE_LABEL = {
     "RI": "RI",
 }
 
-_INT_RE = re.compile(r"-?\d+")
+_INT_RE = re.compile(r"\d+")
 
 
 @dataclass(frozen=True)
