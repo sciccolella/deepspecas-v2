@@ -45,6 +45,46 @@ def _load_design(path: str):
         return list(reader)
 
 
+def _load_neighbors(path: str):
+    """neighbor_gene_id -> list of design_gene_id it overlaps (sim/gene_neighbors.py
+    output), deduplicated: each neighbor gene is simulated once regardless of
+    how many design windows it overlaps."""
+    by_neighbor: dict[str, list[str]] = {}
+    with open(path) as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            by_neighbor.setdefault(row["neighbor_gene_id"], []).append(row["design_gene_id"])
+    return by_neighbor
+
+
+def build_neighbor_matrix(
+    gene_id: str,
+    transcripts_by_gene,
+    rng,
+    depth_low: float,
+    depth_high: float,
+    premrna_frac_low: float,
+    premrna_frac_high: float,
+    transcript_dispersion: float,
+    gene_depth_dispersion: float,
+):
+    """Background count matrix for one neighbouring/antisense gene (noise
+    layer 3): plain baseline expression (no forced event, since the gene
+    isn't the labelled locus) at its own log-uniform depth -- independent of
+    and generally lower than a design gene's fixed depth, matching real
+    between-gene expression heterogeneity -- plus its own pre-mRNA
+    background row (real neighbouring genes transcribe pre-mRNA too)."""
+    depth = float(np.exp(rng.uniform(np.log(depth_low), np.log(depth_high))))
+    config = AbundanceConfig(
+        gene_mean_depth=depth,
+        gene_depth_dispersion=gene_depth_dispersion,
+        transcript_dispersion=transcript_dispersion,
+    )
+    df = build_count_matrix_baseline(gene_id, transcripts_by_gene, config, rng)
+    df = add_premrna_row(df, gene_id, config, rng, premrna_frac_low, premrna_frac_high)
+    return df
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--design", required=True)
@@ -62,6 +102,15 @@ def main(argv=None) -> None:
     )
     ap.add_argument("--premrna-frac-low", type=float, default=0.01)
     ap.add_argument("--premrna-frac-high", type=float, default=0.10)
+    ap.add_argument(
+        "--neighbors",
+        default=None,
+        help="sim/gene_neighbors.py output; when given, adds noise layer 3 "
+        "(neighbouring/antisense gene background transcription + their own "
+        "pre-mRNA rows).",
+    )
+    ap.add_argument("--neighbor-depth-low", type=float, default=100.0)
+    ap.add_argument("--neighbor-depth-high", type=float, default=3000.0)
     args = ap.parse_args(argv)
 
     rng = np.random.default_rng(args.seed)
@@ -117,6 +166,28 @@ def main(argv=None) -> None:
             )
         )
 
+    n_neighbor_genes = 0
+    if args.neighbors:
+        design_genes = {row["gene_id"] for row in design_rows}
+        neighbors_by_gene = _load_neighbors(args.neighbors)
+        for neighbor_gene in neighbors_by_gene:
+            if neighbor_gene not in transcripts_by_gene or neighbor_gene in design_genes:
+                continue
+            matrices.append(
+                build_neighbor_matrix(
+                    neighbor_gene,
+                    transcripts_by_gene,
+                    rng,
+                    args.neighbor_depth_low,
+                    args.neighbor_depth_high,
+                    args.premrna_frac_low,
+                    args.premrna_frac_high,
+                    config.transcript_dispersion,
+                    config.gene_depth_dispersion,
+                )
+            )
+            n_neighbor_genes += 1
+
     full = pd.concat(matrices).astype(int)
     assert full.index.is_unique, "duplicate transcript_id across selected genes"
 
@@ -143,6 +214,8 @@ def main(argv=None) -> None:
         writer.writerows(psi_check_rows)
 
     print(f"genes: {len(design_rows) - n_missing_gene}/{len(design_rows)} (missing_gene={n_missing_gene})", file=sys.stderr)
+    if args.neighbors:
+        print(f"neighbor genes added (layer 3): {n_neighbor_genes}", file=sys.stderr)
     print(f"transcripts: {full.shape[0]}, samples: {full.shape[1]}", file=sys.stderr)
     print(f"total simulated fragments: {full.to_numpy().sum():,}", file=sys.stderr)
     print(f"wrote {out_matrix}, {args.out_transcripts}, {args.out_psi_check}", file=sys.stderr)

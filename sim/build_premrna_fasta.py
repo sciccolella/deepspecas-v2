@@ -7,10 +7,15 @@ every other transcript in the experiment, this is not extracted via gffread
 from the GTF (it isn't an annotated transcript) -- it's a direct genomic
 slice over the gene's full span, reverse-complemented on the minus strand.
 
+With --neighbors (noise layer 3, plans/signal-native-v2-noise-layer3.md),
+also emits a PREMRNA_<gene_id> entry for every neighbouring/antisense gene
+found by sim/gene_neighbors.py, since those genes transcribe pre-mRNA too.
+
 Usage:
     python -m sim.build_premrna_fasta \
         --design sim/design.tsv --gene-spans sim/gene_spans.tsv \
         --reference ref/Homo_sapiens.GRCh38.dna.primary_assembly.fa \
+        --neighbors sim/gene_neighbors.tsv \
         --out sim/experiment/premrna.fa
 """
 
@@ -56,15 +61,33 @@ def load_design_genes(path: str):
     return genes
 
 
+def load_neighbor_genes(path: str):
+    genes = set()
+    with open(path) as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            genes.add(row["neighbor_gene_id"])
+    return genes
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--design", required=True)
     ap.add_argument("--gene-spans", required=True)
     ap.add_argument("--reference", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument(
+        "--neighbors",
+        default=None,
+        help="sim/gene_neighbors.py output; when given, also emits "
+        "PREMRNA_<gene_id> for every neighbouring/antisense gene (noise "
+        "layer 3), not just design genes.",
+    )
     args = ap.parse_args(argv)
 
     genes = load_design_genes(args.design)
+    if args.neighbors:
+        genes |= load_neighbor_genes(args.neighbors)
     spans = load_gene_spans(args.gene_spans)
 
     fasta = pysam.FastaFile(args.reference)
