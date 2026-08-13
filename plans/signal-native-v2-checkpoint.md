@@ -165,12 +165,65 @@ irrelevant once extracted.
    build the real signal-native model rather than these placeholder
    features.
 
+## Update (2026-08-13, later session) — noise layer 2 done (pre-mRNA background)
+
+Plan: `plans/signal-native-v2-noise-layer2.md`. Implemented in-session per
+explicit user instruction ("Save and this time implement as well"),
+deviating from the repo's default plan-then-separate-session convention for
+this one item.
+
+1. `sim/build_premrna_fasta.py` — for each of the 360 pilot design genes,
+   extracts the full genomic span (1-based inclusive `sim/gene_spans.tsv`
+   coords -> 0-based half-open `pysam.FastaFile.fetch`, reverse-complemented
+   on minus strand) as a `PREMRNA_<gene_id>` FASTA entry. Not gffread-based
+   (unlike every other transcript here) since it's not an annotated
+   transcript. Verified: 360/360 genes matched, every sequence length
+   exactly equals its `gene_spans.tsv` span length.
+2. `sim/abundance.add_premrna_row` — appends a `PREMRNA_<gene_id>` count row
+   to a per-gene count matrix at a log-uniform 1-10%-of-gene-depth fraction
+   (drawn once per gene), NB noise per replicate matching every other
+   transcript's noise model. `sim/build_experiment.py` wires this in by
+   default for every design row regardless of kind (`--no-premrna` to fall
+   back to layer-1-only). Verified: drawn `premrna_frac` mean 3.8% (range
+   0.7-12%, consistent with the log-uniform target plus NB noise) across
+   360 genes.
+3. Re-ran the full layer-1 pipeline on pasteur with the pre-mRNA rows
+   included (same 360-event design, seed 0, same fraglen=250/fragsd=25/
+   readlen=100 as layer 1 -- the fraglen/fragsd values weren't logged from
+   the original layer-1 run, so they were re-derived from layer-1's own
+   simulated-read mate-pair coordinates: measured mean 250.0, sd 24.9 from
+   20k reads). STAR stats: 97.9-98.4% uniquely mapped, GT/AG-dominant
+   splicing -- same profile as layer 1. Layer-1 outputs preserved on pasteur
+   at `sim/experiment_layer1/` before being overwritten in place.
+4. Re-ran `dsignal.extract` (360/360 events) and `sim/baseline_model.py`
+   (same RF/5-fold-CV setup) on the new BAMs; pulled `.npz` + labels back
+   locally, committed as `sim/experiment/npz_layer2/` +
+   `sim/experiment/labels_layer2.tsv`, plus `sim/psi_recovery_layer2.tsv`.
+   Apples-to-apples vs layer 1 (RF, per-class F1): RI 0.842->0.818, NN
+   0.679->0.642, CSE 0.476->0.420, A3 0.240->0.231 (flat), A5 0.184->0.191
+   (flat); overall acc 0.553->0.519, macro-F1 0.484->0.461. Junction-level
+   PSI-recovery mean-abs-error moved the same direction, RI worst-hit
+   (0.177->0.213). Matches the plan's prediction: RI degrades most (its
+   defining signal is intronic coverage, which pre-mRNA background
+   directly dilutes), CSE/NN degrade moderately (uniform intronic noise
+   hurts coverage-shape-dependent classes generally), A3/A5 near-flat
+   (junction-identity-based, less sensitive to background coverage).
+   Confirms noise layer 2 is adding real, signal-relevant noise rather than
+   inert padding -- clears it to keep going with layer 3.
+
+Local GPU-side env note (not previously recorded): this machine's own
+DSpoly2 conda env lives at `/datasets/deepSpecas-v2/envs/DSpoly2` (mambaforge
+at `/home/ciccolella/mambaforge`), separate from pasteur's `DSpoly2v2`/
+`DSsim` envs -- used here to run `sim/baseline_model.py` locally against the
+pulled-back `.npz` files.
+
 ## Immediate next steps (not started)
 
-1. Continue noise layers 2-5 (pre-mRNA background, neighbouring/
-   antisense genes, novel unlabelled junctions, PCR-dup/adapter via the
-   ASimulatoR fork), window randomization, hard-negative refinement, and
-   split-by-gene — each layer benchmark-scored incrementally per the plan.
+1. Continue noise layers 3-5 (neighbouring/antisense genes, novel
+   unlabelled junctions, PCR-dup/adapter via the ASimulatoR fork), window
+   randomization, hard-negative refinement, and split-by-gene -- each layer
+   benchmark-scored incrementally per the plan, same pattern as layer 2
+   above.
 2. Scale the pilot design up once noise layers are trusted (pilot was
    deliberately small — 360 events — per explicit user choice to validate
    cheaply before committing to a full-scale run).
