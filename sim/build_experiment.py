@@ -29,10 +29,12 @@ import pandas as pd
 
 from sim.abundance import (
     AbundanceConfig,
+    add_premrna_row,
     build_count_matrix,
     build_count_matrix_baseline,
     empirical_psi,
     load_transcript_lengths,
+    premrna_id,
 )
 from sim.catalogue import build_catalogue
 
@@ -53,6 +55,13 @@ def main(argv=None) -> None:
     ap.add_argument("--out-psi-check", required=True)
     ap.add_argument("--gene-mean-depth", type=float, default=2000.0)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--no-premrna",
+        action="store_true",
+        help="Skip noise layer 2 (pre-mRNA background row per gene); layer-1-only mode.",
+    )
+    ap.add_argument("--premrna-frac-low", type=float, default=0.01)
+    ap.add_argument("--premrna-frac-high", type=float, default=0.10)
     args = ap.parse_args(argv)
 
     rng = np.random.default_rng(args.seed)
@@ -83,6 +92,17 @@ def main(argv=None) -> None:
             obs1 = empirical_psi(df, event, c1_cols)
             obs2 = empirical_psi(df, event, c2_cols)
 
+        premrna_frac = float("nan")
+        if not args.no_premrna:
+            depth_before = df.sum(axis=0)
+            df = add_premrna_row(
+                df, gene_id, config, rng, args.premrna_frac_low, args.premrna_frac_high
+            )
+            # recover the drawn fraction from the row actually added, for QC
+            premrna_frac = float(
+                (df.loc[premrna_id(gene_id)] / depth_before).mean()
+            )
+
         matrices.append(df)
         psi_check_rows.append(
             dict(
@@ -93,10 +113,11 @@ def main(argv=None) -> None:
                 target_psi2=row["psi2"],
                 observed_psi1=obs1,
                 observed_psi2=obs2,
+                premrna_frac=premrna_frac,
             )
         )
 
-    full = pd.concat(matrices)
+    full = pd.concat(matrices).astype(int)
     assert full.index.is_unique, "duplicate transcript_id across selected genes"
 
     out_matrix = Path(args.out_matrix)
@@ -107,7 +128,16 @@ def main(argv=None) -> None:
         f.write("\n".join(full.index) + "\n")
 
     with open(args.out_psi_check, "w", newline="") as f:
-        fields = ["event_id", "gene_id", "kind", "target_psi1", "target_psi2", "observed_psi1", "observed_psi2"]
+        fields = [
+            "event_id",
+            "gene_id",
+            "kind",
+            "target_psi1",
+            "target_psi2",
+            "observed_psi1",
+            "observed_psi2",
+            "premrna_frac",
+        ]
         writer = csv.DictWriter(f, fieldnames=fields, delimiter="\t")
         writer.writeheader()
         writer.writerows(psi_check_rows)
