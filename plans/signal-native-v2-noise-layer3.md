@@ -101,4 +101,8 @@ lands.
 
 ## Status
 
-Not yet approved — pending user review of this plan.
+Approved by user 2026-08-14 (implement now); implemented in the same
+session per explicit user instruction (user was catching a flight and
+asked to keep working autonomously and report back when done) — same
+deviation from the repo's default plan-then-separate-session convention as
+layer 2. See `plans/signal-native-v2-checkpoint.md` for the result.

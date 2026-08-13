@@ -1,4 +1,4 @@
-# signal-native-v2 — checkpoint (2026-08-13)
+# signal-native-v2 — checkpoint (2026-08-14)
 
 Status snapshot for resuming work on `plans/signal-native-v2.md` in a new
 session. Branch: `signal-native-v2` (created from `master`, not `ensemble-perf`).
@@ -217,13 +217,69 @@ at `/home/ciccolella/mambaforge`), separate from pasteur's `DSpoly2v2`/
 `DSsim` envs -- used here to run `sim/baseline_model.py` locally against the
 pulled-back `.npz` files.
 
+## Update (2026-08-14, later session) — noise layer 3 done (neighbouring/antisense genes)
+
+Plan: `plans/signal-native-v2-noise-layer3.md`. Implemented in-session per
+explicit user instruction ("keep on working without my input or permission
+... write me a report" — user was catching a flight), same deviation from
+the plan-then-separate-session convention as layer 2.
+
+1. `sim/gene_neighbors.py` — for each of the 360 pilot design rows, finds
+   every other gene (from `sim/gene_spans.tsv`, all 60,676 genes) on the
+   same chromosome whose span overlaps `[region_start - flank, region_end +
+   flank]` (flank fixed at 10kb placeholder — window randomization/layer 5
+   isn't built yet), tagged `same`-strand vs `antisense`, excluding genes
+   already used as another row's own design gene. Pilot result: 265/360
+   design genes have >=1 neighbour, 627 distinct neighbour genes (280
+   same-strand pairs, 348 antisense pairs). Output: `sim/gene_neighbors.tsv`
+   (committed).
+2. `sim/build_experiment.build_neighbor_matrix` + `--neighbors` flag on
+   `sim/build_experiment.py` — one background count-matrix row set per
+   deduped neighbour gene: plain baseline expression (`build_count_matrix_
+   baseline`) at its own log-uniform depth (100-3000, vs design genes'
+   fixed 2000 — modelling real between-gene expression heterogeneity) plus
+   its own pre-mRNA background row (`add_premrna_row`, same as layer 2).
+   Reused existing abundance functions rather than adding new ones.
+3. `sim/build_premrna_fasta.py --neighbors` — extends pre-mRNA FASTA
+   extraction from design genes to design+neighbour genes (987 pre-mRNA
+   sequences total: 360 design + 627 neighbour, 0 missing spans).
+4. Re-ran the full pipeline on pasteur: spliced-transcript FASTA via
+   gffread on a GTF filtered to the 9360 spliced transcript IDs (design +
+   neighbour genes' transcripts) + the 987 pre-mRNA sequences = 10347
+   transcripts total, matching `transcript_ids.txt` exactly. Same
+   fraglen=250/fragsd=25/readlen=100 as layers 1-2, seed 0. STAR stats:
+   97.8-98.2% uniquely mapped, GT/AG-dominant splicing (~97% of splices) —
+   same realistic profile as prior layers. ~7.9M total simulated fragments
+   (up from ~4.4M, expected given ~1.7x more transcripts).
+5. Re-ran `dsignal.extract` (360/360 events) and `sim/baseline_model.py` on
+   the new BAMs; pulled `.npz` + labels back locally, committed as
+   `sim/experiment/npz_layer3/` + `sim/experiment/labels_layer3.tsv`, plus
+   `sim/psi_recovery_layer3.tsv`.
+   - Junction-level PSI recovery, mean abs error per label vs layer 2: A3
+     0.148->0.157, A5 0.133->0.131 (flat), CSE 0.184->0.176 (flat/slightly
+     better), RI 0.213->0.226 (worse, as expected — intronic-coverage-
+     dependent).
+   - Baseline RF, per-class F1 vs layer 2: A3 0.231->0.087, A5
+     0.191->0.110, CSE 0.420->0.288, NN 0.642->0.565, RI 0.818->0.719;
+     overall acc 0.519->0.436, macro-F1 0.461->0.354.
+   - **Notable deviation from the layer-2 pattern**: layer 2 (pre-mRNA
+     background) left A3/A5 nearly flat because it only adds smooth
+     intronic coverage, no new junctions. Layer 3 degrades A3/A5
+     substantially too, because neighbouring/antisense genes contribute
+     real spurious splice junctions that can land inside an extraction
+     window and directly confuse junction-identity-based discrimination —
+     not just coverage-shape-dependent classes. This is a qualitatively
+     different (and real) noise source, not redundant with layer 2 — worth
+     keeping in mind when layer 4 (novel low-abundance junctions,
+     unlabelled) is added next, since that's an even more direct source of
+     junction-identity confusion for A3/A5.
+
 ## Immediate next steps (not started)
 
-1. Continue noise layers 3-5 (neighbouring/antisense genes, novel
-   unlabelled junctions, PCR-dup/adapter via the ASimulatoR fork), window
-   randomization, hard-negative refinement, and split-by-gene -- each layer
-   benchmark-scored incrementally per the plan, same pattern as layer 2
-   above.
+1. Continue noise layers 4-5 (novel unlabelled junctions, PCR-dup/adapter
+   via the ASimulatoR fork), window randomization, hard-negative
+   refinement, and split-by-gene -- each layer benchmark-scored
+   incrementally per the plan, same pattern as layers 2-3 above.
 2. Scale the pilot design up once noise layers are trusted (pilot was
    deliberately small — 360 events — per explicit user choice to validate
    cheaply before committing to a full-scale run).
