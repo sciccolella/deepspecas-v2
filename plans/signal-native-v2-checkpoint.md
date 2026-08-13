@@ -124,30 +124,59 @@ records with `dsignal/extract.py`, those (small `.npz` files) need to come
 back to this machine — never the raw BAMs/FASTA/FASTQ, which are large and
 irrelevant once extracted.
 
+## Update (2026-08-13, later session) — steps 1-3 done
+
+1. **Rigorous PSI-recovery check** — `sim/psi_recovery_check.py`. Parses
+   each SUPPA event_id's raw coordinate pairs directly (not the
+   min/max-only `Event.region_start/end`) and derives real inclusion/
+   exclusion junction coordinates per type (SE: two flanking junctions vs.
+   a derived skip junction; A3/A5: first listed pair = inclusion per
+   SUPPA's own source, second = exclusion; RI: retention estimated from
+   non-split coverage over the intron interior vs. the spliced junction).
+   **Bug found**: SUPPA's own source comment claims the RI event_id's
+   middle coordinate pair is already intron-bounds with "no offset" —
+   checked against real STAR jI-tagged junctions in the pilot BAMs and
+   found it's actually exon-boundary style needing the same +1/-1
+   conversion as SE/A3/A5. Fixed; RI results then matched the other three
+   types. Result across 240 positive pilot events (480 psi1/psi2 values):
+   no systematic incl/excl sign bias per label (mean signed error -0.02 to
+   +0.10), mean abs error 0.13-0.18 per label, overall Pearson r=0.73
+   target-vs-observed. Confirms layer 1 (polyester -> real STAR 2.7.10b
+   realignment) preserves the PSI signal (the ~0.03 mean abs error at the
+   count-matrix level plus ~0.13 of realistic alignment/depth noise).
+   Output: `sim/psi_recovery.tsv` (committed).
+2. **Extracted `.npz` training records** — `sim/build_extract_csv.py`
+   builds a `region,bam1,bam2` CSV from `sim/design.tsv` (all 360 rows
+   share the pooled `c1.bam`/`c2.bam`), ran through `dsignal/extract.py`'s
+   CLI on pasteur, pulled the 360 resulting `.npz` files (2.5MB total) back
+   to this machine and committed them under `sim/experiment/npz/`, with
+   `sim/experiment/labels.tsv` (ix/event_id/label/kind) alongside.
+3. **Trivial sanity-check model** — `sim/baseline_model.py`. Hand-engineered
+   summary features (junction count, top/second junction depth share,
+   junction-depth ratio, coverage mean/CV, zero-coverage fraction,
+   skip-to-coverage ratio, per condition + cross-condition diffs; 24
+   features total), 5-fold CV, logistic regression + random forest.
+   Random forest: 55% accuracy / 0.48 macro-F1 on 5 classes (120 NN + 60
+   each A3/A5/CSE/RI). RI (F1=0.84) and NN (F1=0.68) separate cleanly, CSE
+   decent (F1=0.48), A3 vs A5 is the weak point (confused with each other
+   about as often as correct — expected, since these hand-features don't
+   encode splice-site directionality). Confirms the label signal survives
+   simulation + real STAR realignment and is learnable; clears the way to
+   build the real signal-native model rather than these placeholder
+   features.
+
 ## Immediate next steps (not started)
 
-1. Do a proper input-PSI vs. post-STAR-observed-PSI check: for each
-   positive design event, use the event's actual `inclusion_transcripts`/
-   `exclusion_transcripts` (from `sim/catalogue.py`) mapped to real
-   junction coordinates (not just "top junction share"), and compare
-   against `target psi1/psi2` from `sim/design.tsv`. This is the real
-   validation that layer 1 (simulate -> real STAR alignment) preserves the
-   PSI signal, before trusting it for anything downstream.
-2. Extract `.npz` training records for the 360 pilot events via
-   `dsignal/extract.py`'s CLI (needs a `region,bam1,bam2` CSV built from
-   `sim/design.tsv` — all rows share the same `c1.bam`/`c2.bam`, unlike the
-   real benchmark's per-event BAM pairs) and pull them back to this
-   machine.
-3. Score a first-pass model (even something trivial) against the extracted
-   pilot records to sanity-check the label signal is learnable at all,
-   before scaling up.
-4. Then continue noise layers 2-5 (pre-mRNA background, neighbouring/
+1. Continue noise layers 2-5 (pre-mRNA background, neighbouring/
    antisense genes, novel unlabelled junctions, PCR-dup/adapter via the
    ASimulatoR fork), window randomization, hard-negative refinement, and
    split-by-gene — each layer benchmark-scored incrementally per the plan.
-5. Scale the pilot design up once the above is trusted (pilot was
+2. Scale the pilot design up once noise layers are trusted (pilot was
    deliberately small — 360 events — per explicit user choice to validate
    cheaply before committing to a full-scale run).
+3. Design and build the actual signal-native model architecture (Phase 3)
+   — the baseline_model.py hand-features were only a sanity check, not a
+   candidate architecture.
 
 ## User's stated preference
 
