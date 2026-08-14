@@ -72,13 +72,15 @@ def _load_novel_junctions(path: str):
 def build_neighbor_matrix(
     gene_id: str,
     transcripts_by_gene,
-    rng,
+    rng_base,
     depth_low: float,
     depth_high: float,
     premrna_frac_low: float,
     premrna_frac_high: float,
     transcript_dispersion: float,
     gene_depth_dispersion: float,
+    rng_premrna,
+    rng_novel,
     novel_by_gene=None,
     novel_frac_low: float = 0.005,
     novel_frac_high: float = 0.03,
@@ -89,18 +91,23 @@ def build_neighbor_matrix(
     and generally lower than a design gene's fixed depth, matching real
     between-gene expression heterogeneity -- plus its own pre-mRNA
     background row (real neighbouring genes transcribe pre-mRNA too), plus
-    its own novel-junction row (noise layer 4) if one was generated."""
-    depth = float(np.exp(rng.uniform(np.log(depth_low), np.log(depth_high))))
+    its own novel-junction row (noise layer 4) if one was generated.
+
+    `rng_base`/`rng_premrna`/`rng_novel` are separate per-layer generators
+    (see `main`'s RNG-isolation comment) -- neighbour depth/baseline draws
+    never share a stream with the premrna or novel-junction draws, so
+    toggling those layers on/off doesn't perturb this layer's own draws."""
+    depth = float(np.exp(rng_base.uniform(np.log(depth_low), np.log(depth_high))))
     config = AbundanceConfig(
         gene_mean_depth=depth,
         gene_depth_dispersion=gene_depth_dispersion,
         transcript_dispersion=transcript_dispersion,
     )
-    df = build_count_matrix_baseline(gene_id, transcripts_by_gene, config, rng)
-    df = add_premrna_row(df, gene_id, config, rng, premrna_frac_low, premrna_frac_high)
+    df = build_count_matrix_baseline(gene_id, transcripts_by_gene, config, rng_base)
+    df = add_premrna_row(df, gene_id, config, rng_premrna, premrna_frac_low, premrna_frac_high)
     if novel_by_gene and gene_id in novel_by_gene:
         df = add_novel_junction_row(
-            df, novel_by_gene[gene_id], config, rng, novel_frac_low, novel_frac_high
+            df, novel_by_gene[gene_id], config, rng_novel, novel_frac_low, novel_frac_high
         )
     return df
 
@@ -142,7 +149,19 @@ def main(argv=None) -> None:
     ap.add_argument("--novel-frac-high", type=float, default=0.03)
     args = ap.parse_args(argv)
 
-    rng = np.random.default_rng(args.seed)
+    # RNG isolation: each noise layer gets its own independent Generator,
+    # spawned from one SeedSequence rather than sharing a single sequential
+    # stream. Previously every layer pulled from the same `rng`, so adding a
+    # layer (e.g. novel junctions) inserted extra draws that shifted every
+    # subsequent draw for every other layer downstream in the loop order --
+    # meaning a layer-N-vs-layer-(N+1) comparison wasn't a clean ceteris
+    # paribus ablation (see plans/signal-native-v2-checkpoint.md's noise
+    # layer 4 update). With independent streams, turning any single layer
+    # on/off leaves every other layer's draws bit-for-bit identical.
+    seed_seq = np.random.SeedSequence(args.seed)
+    rng_design, rng_premrna, rng_neighbor_base, rng_novel = (
+        np.random.default_rng(s) for s in seed_seq.spawn(4)
+    )
     config = AbundanceConfig(gene_mean_depth=args.gene_mean_depth)
 
     design_rows = _load_design(args.design)
@@ -160,12 +179,12 @@ def main(argv=None) -> None:
             continue
 
         if row["kind"] == "nn_plain":
-            df = build_count_matrix_baseline(gene_id, transcripts_by_gene, config, rng)
+            df = build_count_matrix_baseline(gene_id, transcripts_by_gene, config, rng_design)
             obs1 = obs2 = float("nan")
         else:
             event = events_by_id[row["event_id"]]
             psi1, psi2 = float(row["psi1"]), float(row["psi2"])
-            df = build_count_matrix(event, transcripts_by_gene, psi1, psi2, config, rng)
+            df = build_count_matrix(event, transcripts_by_gene, psi1, psi2, config, rng_design)
             c1_cols = [c for c in df.columns if c.startswith("cond1")]
             c2_cols = [c for c in df.columns if c.startswith("cond2")]
             obs1 = empirical_psi(df, event, c1_cols)
@@ -175,7 +194,7 @@ def main(argv=None) -> None:
         if not args.no_premrna:
             depth_before = df.sum(axis=0)
             df = add_premrna_row(
-                df, gene_id, config, rng, args.premrna_frac_low, args.premrna_frac_high
+                df, gene_id, config, rng_premrna, args.premrna_frac_low, args.premrna_frac_high
             )
             # recover the drawn fraction from the row actually added, for QC
             premrna_frac = float(
@@ -184,7 +203,7 @@ def main(argv=None) -> None:
 
         if gene_id in novel_by_gene:
             df = add_novel_junction_row(
-                df, novel_by_gene[gene_id], config, rng, args.novel_frac_low, args.novel_frac_high
+                df, novel_by_gene[gene_id], config, rng_novel, args.novel_frac_low, args.novel_frac_high
             )
 
         matrices.append(df)
@@ -212,13 +231,15 @@ def main(argv=None) -> None:
                 build_neighbor_matrix(
                     neighbor_gene,
                     transcripts_by_gene,
-                    rng,
+                    rng_neighbor_base,
                     args.neighbor_depth_low,
                     args.neighbor_depth_high,
                     args.premrna_frac_low,
                     args.premrna_frac_high,
                     config.transcript_dispersion,
                     config.gene_depth_dispersion,
+                    rng_premrna,
+                    rng_novel,
                     novel_by_gene,
                     args.novel_frac_low,
                     args.novel_frac_high,
