@@ -274,16 +274,85 @@ the plan-then-separate-session convention as layer 2.
      unlabelled) is added next, since that's an even more direct source of
      junction-identity confusion for A3/A5.
 
+## Update (2026-08-14, later session) — noise layer 4 done (novel unlabelled junctions)
+
+Plan: `plans/signal-native-v2-noise-layer4.md`. Implemented in-session per
+explicit user instruction (implement now, within-transcript exon-skip-joins
+only for this pilot; cross-transcript joins deferred as a candidate
+follow-up).
+
+1. `sim/gtf_exon_structure.py` — per-transcript exon boundaries (not just
+   exonic length), restricted to genes already in the experiment (987 =
+   360 design + 627 neighbour genes). 9360 transcripts, matching the
+   layer-3 spliced-transcript count exactly.
+2. `sim/novel_junctions.py` — for each of the 987 genes, picks its
+   most-exon-rich transcript and derives one never-annotated-junction
+   variant by shifting a donor/acceptor +-3-20bp or dropping an interior
+   exon (skip-join); the resulting intron is checked against every
+   annotated intron of every transcript of the gene and re-drawn if it
+   collides (the whole point is a junction absent from the annotation).
+   Result: 838/987 genes got a variant (472 shift, 366 skip-join; 149
+   genes failed, presumably too few exons or exhausted retries). Sequence
+   assembled directly from per-exon genomic fetches, same revcomp
+   convention as the layer-2 pre-mRNA script.
+3. `sim/abundance.add_novel_junction_row` — low-abundance background row
+   (0.5-3% of gene depth, log-uniform, lower than pre-mRNA's 1-10% since a
+   never-annotated junction should be rarer), refactored alongside
+   `add_premrna_row` into a shared `_add_low_abundance_row` helper.
+   `sim/build_experiment.py` gets a `--novel-junctions` flag, applied to
+   design genes and neighbour genes alike.
+4. Re-ran the full pipeline on pasteur: same 360-row pilot design, seed 0,
+   same fraglen/fragsd/readlen as layers 1-3. Reused layer 3's spliced.fa
+   unchanged (verified byte-identical gene/transcript set — no GTF-side
+   inputs changed), regenerated premrna.fa (987 seqs) and concatenated with
+   the new novel.fa (838 seqs) -> 11185 transcripts total, matching
+   `transcript_ids.txt` exactly. STAR stats: 97.3-98.1% uniquely mapped,
+   GT/AG-dominant splicing — same realistic profile as prior layers.
+   ~7.8M total simulated fragments.
+5. Re-ran `dsignal.extract` (360/360), `sim/psi_recovery_check.py`, and
+   `sim/baseline_model.py`; pulled `.npz`/labels back locally, committed as
+   `sim/experiment/npz_layer4/` + `sim/experiment/labels_layer4.tsv` +
+   `sim/psi_recovery_layer4.tsv` + `sim/novel_junctions.tsv`.
+   - Junction-level PSI recovery, mean abs error vs layer 3: A3
+     0.157->0.155 (flat), A5 0.131->0.141 (flat), CSE 0.176->0.197
+     (slightly worse), RI 0.226->0.202 (better).
+   - Baseline RF, per-class F1 vs layer 3: A3 0.087->0.156, A5
+     0.110->0.149, CSE 0.288->0.389, NN 0.565->0.573, RI 0.719->0.726;
+     overall acc 0.436->0.467, macro-F1 0.354->0.399.
+   - **Result contradicts the plan's prediction.** The plan expected A3/A5
+     to take the biggest hit yet (direct junction-identity confusion, novel
+     junctions landing inside genes already in the design). Instead every
+     metric went flat-to-better. **Important caveat, not previously
+     flagged**: layers 2-4 all share one `np.random.Generator` seeded once
+     at 0 in `build_experiment.py`, and each new layer's extra draws (here:
+     one novel-junction fraction draw per gene, consumed *before* the
+     neighbour-matrix loop) shift every downstream random draw relative to
+     the prior layer's run. So layer-3-vs-layer-4 is not a clean ceteris
+     paribus comparison — the design events' own PSI/depth realizations
+     differ between the two runs for reasons unrelated to novel junctions,
+     not just because of the added noise source. This likely explains most
+     or all of the counter-intuitive direction. **Before trusting any
+     layer's contribution number for the Phase 5 paper table, this needs a
+     fix** — e.g. a separate `np.random.Generator` per noise-layer, or
+     several reps per layer with different seeds averaged — otherwise the
+     "per-layer contribution table" is confounded with RNG-stream drift.
+     Flagged, not fixed, in this session.
+
 ## Immediate next steps (not started)
 
-1. Continue noise layers 4-5 (novel unlabelled junctions, PCR-dup/adapter
-   via the ASimulatoR fork), window randomization, hard-negative
-   refinement, and split-by-gene -- each layer benchmark-scored
-   incrementally per the plan, same pattern as layers 2-3 above.
-2. Scale the pilot design up once noise layers are trusted (pilot was
+1. **Before more layers**: consider isolating each noise layer's RNG stream
+   (e.g. per-layer `np.random.Generator`, or a fixed draws-per-layer budget)
+   so the per-layer contribution table isn't confounded by RNG drift, per
+   the layer-4 finding above. Not urgent for continuing to build layers,
+   but should land before the numbers are used for anything in the paper.
+2. Continue noise layer 5 (PCR-dup/adapter contamination via the
+   ASimulatoR fork), window randomization, hard-negative refinement, and
+   split-by-gene -- each layer benchmark-scored incrementally per the plan,
+   same pattern as layers 2-4 above.
+3. Scale the pilot design up once noise layers are trusted (pilot was
    deliberately small — 360 events — per explicit user choice to validate
    cheaply before committing to a full-scale run).
-3. Design and build the actual signal-native model architecture (Phase 3)
+4. Design and build the actual signal-native model architecture (Phase 3)
    — the baseline_model.py hand-features were only a sanity check, not a
    candidate architecture.
 
