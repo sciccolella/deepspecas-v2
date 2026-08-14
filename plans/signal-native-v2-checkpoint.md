@@ -519,16 +519,75 @@ scale-up.
      classes (A3/A5) are comparatively robust to window geometry — the
      same qualitative pattern as noise layer 2 (pre-mRNA background).
 
+## Update (2026-08-15) — nn_novel negatives + gene-level split (Phase 2 steps 6-7)
+
+Implemented directly in-session per explicit user instruction (normally this
+would go through the plan-file/new-session split, but the user asked to skip
+that for this task). Committed as `c456ce4`.
+
+1. `sim/select_events.py` — third NN-negative flavor, `kind="nn_novel"`:
+   genes with no catalogued AS event (same eligibility pool as `nn_plain` —
+   not in the SUPPA catalogue, >=2 isoforms) that get an elevated
+   novel-junction row later in the pipeline instead of the standard
+   background rate, so NN can't be shortcut as "no junction noise at all".
+   `select_plain_negatives`/`select_novel_negatives` are now both thin
+   wrappers around a new `select_constitutive_negatives(..., kind,
+   event_suffix)`. New `--n-nn-novel` CLI arg (default 60, matching the
+   other three pilot bucket sizes). Selection only needs *eligibility*, not
+   the actual novel-junction variant — that's still generated later by
+   `sim/novel_junctions.py` over the final design+neighbour gene set, same
+   as before, avoiding a chicken-and-egg dependency on exon structure that
+   itself depends on design.tsv existing.
+2. `sim/build_experiment.py` — `nn_novel` rows get a baseline (no forced
+   event) count matrix like `nn_plain`, but when that gene has a generated
+   novel-junction variant its fraction is drawn from a new elevated range
+   (`--novel-nn-frac-low/high`, default 0.05-0.2) instead of the standard
+   layer-4 background range (0.005-0.03, `--novel-frac-low/high`). If
+   `generate_gene_variant` found no valid shift/skip-join for that
+   particular gene (single-exon transcripts etc.), it silently falls back
+   to plain constitutive expression — now counted and reported
+   (`nn_novel rows: N/M got an elevated novel-junction row`) rather than
+   silently swallowed.
+3. New `sim/gene_split.py` — deterministic gene-level train/val/test split:
+   `split_genes()` partitions the *distinct gene set* (not rows/events) via
+   a seeded shuffle, so a gene with multiple events always lands in one
+   split once the pilot's one-event-per-gene selection constraint is lifted
+   at scale-up. `assert_no_gene_leak()` is the reusable split-integrity
+   check from the top-level plan's Verification section.
+4. `sim/baseline_model.py` — `StratifiedKFold` replaced with
+   `GroupKFold(groups=gene_ids)` (gene_id recovered from `event_id` via
+   `sim.gene_split.gene_id_of`), plus an `assert_no_gene_leak` call on the
+   resulting fold assignment. Previously no-gene-leak held only
+   incidentally, via `select_events.py`'s one-event-per-gene design
+   constraint — not enforced by the CV code itself, so it would have
+   silently broken the moment scale-up puts >1 event on a gene.
+
+Verified with synthetic in-memory smoke tests only (no gene overlap between
+`nn_plain`/`nn_novel` picks, `assert_no_gene_leak` catches an induced leak,
+`GroupKFold` keeps a synthetic multi-event gene in one fold) — **no
+pasteur-side run yet**. This repo has no local GTF/genome/BAM data, so the
+actual `select_events` -> `gene_neighbors` -> `novel_junctions` ->
+`build_experiment` -> polyester -> STAR -> `dsignal.extract` ->
+`baseline_model` chain with `nn_novel` live still needs to run on pasteur
+before this is "trusted" the way layers 1-5 and window randomization are.
+
 ## Immediate next steps (not started)
 
-1. Hard-negative refinement and split-by-gene (plan Phase 2 steps 6-7).
-2. Scale the pilot design up once noise layers + window randomization are
-   trusted (pilot was deliberately small — 360 events — per explicit user
-   choice to validate cheaply before committing to a full-scale run).
-   When that happens, the full contribution table (layers 1-5 + window
-   randomization) should be regenerated in one pass under the current
-   code, making the layer-2/3 RNG discontinuity (noted in the RNG-fix
-   update above) moot.
+1. Run the above on pasteur: regenerate `design.tsv` with `--n-nn-novel`,
+   re-run `gene_neighbors`/`novel_junctions`/`build_experiment` through
+   `baseline_model.py`, and fold the `nn_novel` bucket + gene-grouped CV
+   into the per-layer contribution table. Sanity-check the
+   `nn_novel rows: N/M got an elevated novel-junction row` line isn't
+   mostly fallback (would mean the eligibility pool is picking mostly
+   single-exon genes).
+2. Scale the pilot design up once noise layers + window randomization +
+   hard-negative refinement are trusted (pilot was deliberately small —
+   360 events, now ~420 with nn_novel — per explicit user choice to
+   validate cheaply before committing to a full-scale run). When that
+   happens, the full contribution table (layers 1-5 + window randomization
+   + nn_novel) should be regenerated in one pass under the current code,
+   making the layer-2/3 RNG discontinuity (noted in the RNG-fix update
+   above) moot.
 3. Design and build the actual signal-native model architecture (Phase 3)
    — the baseline_model.py hand-features were only a sanity check, not a
    candidate architecture.
