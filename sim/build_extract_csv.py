@@ -35,7 +35,7 @@ def main(argv=None) -> None:
     with open(args.out, "w", newline="") as f:
         writer = csv.writer(f)
         for row in rows:
-            region = f"{row['chrom']}:{row['region_start']}-{row['region_end']}"
+            region = f"{row['chrom']}:{row['win_start']}-{row['win_end']}"
             writer.writerow([region, args.bam1, args.bam2])
 
     with open(args.labels_out, "w", newline="") as f:

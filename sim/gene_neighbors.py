@@ -1,21 +1,22 @@
-"""Find genes overlapping each design row's extraction window plus flank
+"""Find genes overlapping each design row's randomized extraction window
 (noise layer 3: neighbouring/antisense genes).
 
-Window randomization (plan Phase 2 step 5) isn't implemented yet, so the
-window here is exactly `region_start`/`region_end` from a pilot
-`sim/design.tsv` row, widened by a fixed placeholder flank on each side.
+The window is `win_start`/`win_end` from `sim/design.tsv` (plan Phase 2
+step 5's per-row jittered window, see `sim/window.py`/
+`sim/select_events.py`), optionally padded by a flat `--flank` on top
+(default 0 -- the window itself already varies 0.1x-10x the event span).
 
 For every design row, finds every other gene on the same chromosome whose
-span overlaps the flanked window, excluding the row's own gene and any gene
-already used as another row's own design gene (real design genes are
-simulated at "real" depth already and must not also be treated as
+span overlaps the (possibly padded) window, excluding the row's own gene and
+any gene already used as another row's own design gene (real design genes
+are simulated at "real" depth already and must not also be treated as
 background). Neighbours are deduplicated globally: a gene near two design
 windows is reported/simulated once.
 
 Usage:
     python -m sim.gene_neighbors \
         --design sim/design.tsv --gene-spans sim/gene_spans.tsv \
-        --flank 10000 --out sim/gene_neighbors.tsv
+        --out sim/gene_neighbors.tsv
 """
 
 from __future__ import annotations
@@ -56,8 +57,8 @@ def find_neighbors(design_rows, gene_spans, flank):
         gene_id = row["gene_id"]
         chrom = row["chrom"]
         strand = row["strand"]
-        win_start = int(row["region_start"]) - flank
-        win_end = int(row["region_end"]) + flank
+        win_start = int(row["win_start"]) - flank
+        win_end = int(row["win_end"]) + flank
 
         for other_id, other_strand, other_start, other_end in by_chrom.get(chrom, []):
             if other_id == gene_id or other_id in used_genes:
@@ -81,7 +82,7 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--design", required=True)
     ap.add_argument("--gene-spans", required=True)
-    ap.add_argument("--flank", type=int, default=10_000)
+    ap.add_argument("--flank", type=int, default=0, help="extra flat pad beyond win_start/win_end")
     ap.add_argument("--out", required=True)
     args = ap.parse_args(argv)
 

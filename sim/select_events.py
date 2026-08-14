@@ -28,6 +28,17 @@ import numpy as np
 
 from sim.abundance import load_transcript_lengths
 from sim.catalogue import Event, build_catalogue
+from sim.window import sample_window
+
+
+def _load_chrom_lengths(path: str):
+    """Parses a `samtools faidx` .fai file: chrom, length, offset, linebases, linewidth."""
+    lengths = {}
+    with open(path) as f:
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            lengths[parts[0]] = int(parts[1])
+    return lengths
 
 
 def _load_gene_spans(path: str):
@@ -150,6 +161,7 @@ def main(argv=None) -> None:
     ap.add_argument("--events-dir", required=True)
     ap.add_argument("--gene-spans", required=True)
     ap.add_argument("--transcript-lengths", required=True)
+    ap.add_argument("--chrom-lengths", required=True, help="samtools faidx .fai for the reference")
     ap.add_argument("--n-per-label", type=int, default=60)
     ap.add_argument("--n-nn-plain", type=int, default=60)
     ap.add_argument("--n-nn-hard", type=int, default=60)
@@ -157,10 +169,19 @@ def main(argv=None) -> None:
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
 
+    # rng drives row selection exactly as before this change (same
+    # np.random.default_rng(args.seed) call), so a rerun at the same seed
+    # reproduces the identical event/gene set as every prior noise layer --
+    # window sampling must not perturb that stream. rng_window is seeded
+    # independently (not spawned from the same SeedSequence, which would
+    # itself change rng's own stream) and only consumed after all rows are
+    # selected.
     rng = np.random.default_rng(args.seed)
+    rng_window = np.random.default_rng(args.seed + 1_000_000)
     events = build_catalogue(args.events_dir)
     gene_spans = _load_gene_spans(args.gene_spans)
     transcripts_by_gene = load_transcript_lengths(args.transcript_lengths)
+    chrom_lengths = _load_chrom_lengths(args.chrom_lengths)
     catalogue_genes = {e.gene_id for e in events}
 
     used_genes = set()
@@ -171,7 +192,16 @@ def main(argv=None) -> None:
         gene_spans, catalogue_genes, transcripts_by_gene, args.n_nn_plain, used_genes, rng
     )
 
-    fields = ["event_id", "gene_id", "label", "kind", "chrom", "strand", "region_start", "region_end", "psi1", "psi2"]
+    for row in rows:
+        chrom_len = chrom_lengths[row["chrom"]]
+        win_start, win_end = sample_window(row["region_start"], row["region_end"], chrom_len, rng_window)
+        row["win_start"] = win_start
+        row["win_end"] = win_end
+
+    fields = [
+        "event_id", "gene_id", "label", "kind", "chrom", "strand",
+        "region_start", "region_end", "win_start", "win_end", "psi1", "psi2",
+    ]
     with open(args.out, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields, delimiter="\t")
         writer.writeheader()

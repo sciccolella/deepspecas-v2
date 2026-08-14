@@ -451,21 +451,85 @@ All five noise layers from the original plan's Phase 2 step 3 list
 novel junctions, PCR-dup/adapter contamination) are now implemented and
 individually scored.
 
+## Update (2026-08-14, later session) — window randomization done (Phase 2 step 5)
+
+Plan: `plans/signal-native-v2-window-randomization.md`. Implemented
+in-session per explicit user instruction. This is the last item in Phase
+2 step 3-5's list before hard-negative refinement/split-by-gene and
+scale-up.
+
+1. `sim/window.py` (new) — `sample_window(event_start, event_end,
+   chrom_len, rng)`: total flank drawn log-uniform in `[0.1x, 10x]` the
+   event span, split into independent left/right shares (not halved), so
+   the event ends up off-center in most draws; clipped to `[1,
+   chrom_len]`.
+2. `sim/select_events.py` — added `--chrom-lengths` (a `samtools faidx`
+   `.fai`) and `win_start`/`win_end` columns to `design.tsv`. **Care
+   taken on RNG**: the row-selection `rng` is still exactly
+   `np.random.default_rng(args.seed)` (unchanged), and `rng_window` is a
+   *separately seeded* generator (`args.seed + 1_000_000`), not spawned
+   from a shared `SeedSequence` — spawning was tried first and silently
+   produced a different row-selection stream even though window sampling
+   runs after selection (spawned children of a `SeedSequence` are not
+   equivalent to `default_rng(seed)` itself), which would have broken
+   comparability with every prior layer's event/gene selection. Caught by
+   diffing the regenerated `design.tsv` against a backup before proceeding
+   — confirmed byte-identical selection columns after the fix.
+3. `sim/gene_neighbors.py` — neighbour search now uses each row's actual
+   `win_start`/`win_end` instead of `region_start`/`region_end` ± a fixed
+   10kb placeholder; `--flank` repurposed as an optional pad on top
+   (default 0).
+4. `sim/build_extract_csv.py` — extraction region string now
+   `win_start`-`win_end`. `sim/psi_recovery_check.py` deliberately
+   untouched (re-extracts directly from BAMs using the true
+   `region_start`/`region_end`, independent of the training-data window).
+5. Regenerated on pasteur: `design.tsv` (same 360 events/genes as every
+   prior layer, now with windows: width min 134bp / median 6631bp / max
+   1.34Mb, vs the real curated benchmark's 1bp-181,765bp / median 3062bp —
+   comparable order of magnitude, no runaway multi-Mb windows).
+   Centering check: median `|event_mid - window_mid| / window_width` =
+   0.076, 63% of windows more than 10% of their width off-center — not
+   dramatically skewed, but not reliably centered either. Neighbour search
+   under the new windows found fewer genes overall than the old fixed-10kb
+   flank (184/360 design genes with >=1 neighbour, 450 distinct neighbour
+   genes, vs layer 3's 265/360 and 627) since most windows are narrower
+   than 10kb while a few outliers are much wider. Re-ran neighbours ->
+   pre-mRNA + novel-junction FASTA for the new gene set (810 genes = 360
+   design + 450 neighbour, vs layer 3-5's 987) -> polyester (reused layer
+   5's `pcr_rate=0.1 pcr_lambda=1 adapter_contamination=TRUE`) -> real STAR
+   realignment (97.6% uniquely mapped, same realistic profile as prior
+   layers) -> `dsignal.extract` (360/360) -> `psi_recovery_check.py` ->
+   `baseline_model.py`. Committed as `sim/experiment/npz_window/` +
+   `sim/experiment/labels_window.tsv` + `sim/psi_recovery_window.tsv` +
+   updated `sim/gene_neighbors.tsv` (design.tsv itself not committed, same
+   as every prior layer — it's fully reproducible from seed 0 and the
+   npz filenames already encode the window used per event).
+   - Junction-level PSI recovery (uses the *true* event span, not the
+     window, so expected to be roughly flat vs layer 5): A3 0.144->0.154,
+     A5 0.132->0.134, CSE 0.170->0.163, RI 0.199->0.196 — flat, as
+     predicted.
+   - Baseline RF (uses the *randomized-window* `.npz` features, so this is
+     where the effect should show up): accuracy 48.1%->35.8%, macro-F1
+     0.402->0.296 — a real, substantial drop. Per-class F1 vs layer 5: A3
+     0.159->0.146 (flat), A5 0.067->0.099 (flat/up), CSE 0.458->0.304
+     (down), NN 0.600->0.473 (down), RI 0.726->0.460 (down, biggest hit).
+     Matches the plan's prediction exactly: coverage-shape-dependent
+     classes (RI/CSE/NN) degrade the most once window boundaries no
+     longer align with event boundaries, while junction-identity-based
+     classes (A3/A5) are comparatively robust to window geometry — the
+     same qualitative pattern as noise layer 2 (pre-mRNA background).
+
 ## Immediate next steps (not started)
 
-1. Window randomization (plan Phase 2 step 5) -- extraction windows are
-   still exactly the design event's own span/gene span; jittering
-   boundaries and varying flank width is called out in the plan as
-   necessary to avoid the model learning window geometry instead of
-   splicing. Not yet started.
-2. Hard-negative refinement and split-by-gene (plan Phase 2 steps 6-7).
-3. Scale the pilot design up once noise layers are trusted (pilot was
-   deliberately small — 360 events — per explicit user choice to validate
-   cheaply before committing to a full-scale run). When that happens, the
-   layer-1-through-5 contribution table should be regenerated in one pass
-   under the now-fixed RNG code, making the layer-2/3 discontinuity (noted
-   in the RNG-fix update above) moot.
-4. Design and build the actual signal-native model architecture (Phase 3)
+1. Hard-negative refinement and split-by-gene (plan Phase 2 steps 6-7).
+2. Scale the pilot design up once noise layers + window randomization are
+   trusted (pilot was deliberately small — 360 events — per explicit user
+   choice to validate cheaply before committing to a full-scale run).
+   When that happens, the full contribution table (layers 1-5 + window
+   randomization) should be regenerated in one pass under the current
+   code, making the layer-2/3 RNG discontinuity (noted in the RNG-fix
+   update above) moot.
+3. Design and build the actual signal-native model architecture (Phase 3)
    — the baseline_model.py hand-features were only a sanity check, not a
    candidate architecture.
 
