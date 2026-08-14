@@ -147,6 +147,16 @@ def main(argv=None) -> None:
     )
     ap.add_argument("--novel-frac-low", type=float, default=0.005)
     ap.add_argument("--novel-frac-high", type=float, default=0.03)
+    ap.add_argument(
+        "--novel-nn-frac-low",
+        type=float,
+        default=0.05,
+        help="Elevated novel-junction fraction for design rows with kind "
+        "'nn_novel' (select_events.py's novel-junction-only NN negatives) -- "
+        "well above the --novel-frac-* background range, so these loci carry "
+        "real junction-noise signal without a labelled AS event.",
+    )
+    ap.add_argument("--novel-nn-frac-high", type=float, default=0.20)
     args = ap.parse_args(argv)
 
     # RNG isolation: each noise layer gets its own independent Generator,
@@ -172,13 +182,14 @@ def main(argv=None) -> None:
     matrices = []
     psi_check_rows = []
     n_missing_gene = 0
+    n_novel_nn_missing_variant = 0
     for row in design_rows:
         gene_id = row["gene_id"]
         if gene_id not in transcripts_by_gene:
             n_missing_gene += 1
             continue
 
-        if row["kind"] == "nn_plain":
+        if row["kind"] in ("nn_plain", "nn_novel"):
             df = build_count_matrix_baseline(gene_id, transcripts_by_gene, config, rng_design)
             obs1 = obs2 = float("nan")
         else:
@@ -202,9 +213,13 @@ def main(argv=None) -> None:
             )
 
         if gene_id in novel_by_gene:
-            df = add_novel_junction_row(
-                df, novel_by_gene[gene_id], config, rng_novel, args.novel_frac_low, args.novel_frac_high
-            )
+            if row["kind"] == "nn_novel":
+                frac_low, frac_high = args.novel_nn_frac_low, args.novel_nn_frac_high
+            else:
+                frac_low, frac_high = args.novel_frac_low, args.novel_frac_high
+            df = add_novel_junction_row(df, novel_by_gene[gene_id], config, rng_novel, frac_low, frac_high)
+        elif row["kind"] == "nn_novel":
+            n_novel_nn_missing_variant += 1
 
         matrices.append(df)
         psi_check_rows.append(
@@ -278,6 +293,15 @@ def main(argv=None) -> None:
     if args.novel_junctions:
         n_novel_rows = sum(1 for idx in full.index if idx.startswith("NOVEL_"))
         print(f"novel-junction rows added (layer 4): {n_novel_rows}", file=sys.stderr)
+    n_nn_novel = sum(1 for row in design_rows if row["kind"] == "nn_novel")
+    if n_nn_novel:
+        print(
+            f"nn_novel rows: {n_nn_novel - n_novel_nn_missing_variant}/{n_nn_novel} got an "
+            f"elevated novel-junction row (missing_variant={n_novel_nn_missing_variant} fell "
+            "back to plain constitutive expression -- generate_gene_variant found no valid "
+            "shift/skip-join for that gene)",
+            file=sys.stderr,
+        )
     print(f"transcripts: {full.shape[0]}, samples: {full.shape[1]}", file=sys.stderr)
     print(f"total simulated fragments: {full.to_numpy().sum():,}", file=sys.stderr)
     print(f"wrote {out_matrix}, {args.out_transcripts}, {args.out_psi_check}", file=sys.stderr)

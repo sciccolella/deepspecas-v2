@@ -1,5 +1,8 @@
 """Select a balanced pilot simulation design: positives (A3/A5/CSE/RI),
-plain NN negatives, and hard NN negatives (real events with target dPSI~0).
+plain NN negatives, hard NN negatives (real events with target dPSI~0), and
+novel-junction-only NN negatives (constitutive-looking genes that get an
+elevated never-annotated junction in sim/build_experiment.py, so NN isn't
+learnable as "no junction noise at all").
 
 One gene is used by at most one selected event, so the per-gene abundance
 matrix (sim/abundance.py) never has to reconcile two simulated events in the
@@ -11,7 +14,7 @@ Usage:
     python -m sim.select_events \
         --events-dir sim/events --gene-spans sim/gene_spans.tsv \
         --transcript-lengths sim/transcript_lengths.tsv \
-        --n-per-label 60 --n-nn-plain 60 --n-nn-hard 60 \
+        --n-per-label 60 --n-nn-plain 60 --n-nn-hard 60 --n-nn-novel 60 \
         --out sim/design.tsv --seed 0
 
 Output TSV columns: event_id, gene_id, label, kind, chrom, strand,
@@ -123,7 +126,16 @@ def select_hard_negatives(events, n, used_genes, rng):
     return rows
 
 
-def select_plain_negatives(gene_spans, catalogue_genes, transcripts_by_gene, n, used_genes, rng, min_transcripts=2):
+def select_constitutive_negatives(
+    gene_spans, catalogue_genes, transcripts_by_gene, n, used_genes, rng, kind, event_suffix, min_transcripts=2
+):
+    """Picks genes with no catalogued AS event and >=min_transcripts isoforms
+    -- the shared eligibility pool for both plain NN negatives (kind
+    "nn_plain") and novel-junction-only NN negatives (kind "nn_novel", see
+    select_novel_negatives). The actual novel junction is synthesized later
+    in the pipeline (sim/novel_junctions.py, run over design+neighbour
+    genes) and applied at elevated abundance in sim/build_experiment.py --
+    selection here only needs eligibility, not the variant itself."""
     candidates = [
         g
         for g in gene_spans
@@ -139,10 +151,10 @@ def select_plain_negatives(gene_spans, catalogue_genes, transcripts_by_gene, n, 
         chrom, strand, start, end = gene_spans[g]
         rows.append(
             dict(
-                event_id=f"{g};NN",
+                event_id=f"{g};{event_suffix}",
                 gene_id=g,
                 label="NN",
-                kind="nn_plain",
+                kind=kind,
                 chrom=chrom,
                 strand=strand,
                 region_start=start,
@@ -156,6 +168,18 @@ def select_plain_negatives(gene_spans, catalogue_genes, transcripts_by_gene, n, 
     return rows
 
 
+def select_plain_negatives(gene_spans, catalogue_genes, transcripts_by_gene, n, used_genes, rng, min_transcripts=2):
+    return select_constitutive_negatives(
+        gene_spans, catalogue_genes, transcripts_by_gene, n, used_genes, rng, "nn_plain", "NN", min_transcripts
+    )
+
+
+def select_novel_negatives(gene_spans, catalogue_genes, transcripts_by_gene, n, used_genes, rng, min_transcripts=2):
+    return select_constitutive_negatives(
+        gene_spans, catalogue_genes, transcripts_by_gene, n, used_genes, rng, "nn_novel", "NN_NOVEL", min_transcripts
+    )
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--events-dir", required=True)
@@ -165,6 +189,7 @@ def main(argv=None) -> None:
     ap.add_argument("--n-per-label", type=int, default=60)
     ap.add_argument("--n-nn-plain", type=int, default=60)
     ap.add_argument("--n-nn-hard", type=int, default=60)
+    ap.add_argument("--n-nn-novel", type=int, default=60)
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
@@ -190,6 +215,9 @@ def main(argv=None) -> None:
     rows += select_hard_negatives(events, args.n_nn_hard, used_genes, rng)
     rows += select_plain_negatives(
         gene_spans, catalogue_genes, transcripts_by_gene, args.n_nn_plain, used_genes, rng
+    )
+    rows += select_novel_negatives(
+        gene_spans, catalogue_genes, transcripts_by_gene, args.n_nn_novel, used_genes, rng
     )
 
     for row in rows:

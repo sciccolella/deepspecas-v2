@@ -19,6 +19,8 @@ from os.path import join as pjoin
 
 import numpy as np
 
+from sim.gene_split import assert_no_gene_leak, gene_id_of
+
 FEATURE_NAMES = [
     "n_junctions",
     "top_junction_frac",
@@ -74,7 +76,7 @@ def build_dataset(npz_dir: str, labels_path: str):
     with open(labels_path) as f:
         rows = list(csv.DictReader(f, delimiter="\t"))
 
-    X, y, event_ids = [], [], []
+    X, y, event_ids, gene_ids = [], [], [], []
     for row in rows:
         ix = row["ix"]
         matches = [p for p in __import__("os").listdir(npz_dir) if p.startswith(ix + ".")]
@@ -84,8 +86,9 @@ def build_dataset(npz_dir: str, labels_path: str):
         X.append(extract_features(record))
         y.append(row["label"])
         event_ids.append(row["event_id"])
+        gene_ids.append(gene_id_of(row["event_id"]))
 
-    return np.array(X), np.array(y), event_ids
+    return np.array(X), np.array(y), event_ids, gene_ids
 
 
 def main(argv=None) -> None:
@@ -99,15 +102,28 @@ def main(argv=None) -> None:
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import ConfusionMatrixDisplay, classification_report, confusion_matrix
-    from sklearn.model_selection import StratifiedKFold, cross_val_predict
+    from sklearn.model_selection import GroupKFold, cross_val_predict
     from sklearn.preprocessing import StandardScaler
 
-    X, y, event_ids = build_dataset(args.npz_dir, args.labels)
+    X, y, event_ids, gene_ids = build_dataset(args.npz_dir, args.labels)
     print(f"loaded {len(y)} events, {X.shape[1]} features", file=__import__("sys").stderr)
     labels_sorted = sorted(set(y))
     print("class counts:", {l: int((y == l).sum()) for l in labels_sorted})
+    print(f"distinct genes: {len(set(gene_ids))}", file=__import__("sys").stderr)
 
-    cv = StratifiedKFold(n_splits=args.folds, shuffle=True, random_state=args.seed)
+    # plan Phase 2 step 7 / split-integrity verification: folds are grouped
+    # by gene_id so no gene's events can straddle train and held-out --
+    # StratifiedKFold alone doesn't guarantee that once a gene can carry more
+    # than one event (true once the pilot's one-event-per-gene constraint is
+    # lifted at scale-up).
+    cv = GroupKFold(n_splits=args.folds)
+    fold_of = {}
+    for fold, (_, test_idx) in enumerate(cv.split(X, y, groups=gene_ids)):
+        for i in test_idx:
+            fold_of[gene_ids[i]] = fold
+    assert_no_gene_leak(
+        [dict(gene_id=g, split=fold_of[g]) for g in gene_ids], gene_key="gene_id", split_key="split"
+    )
 
     for name, clf in [
         ("logistic_regression", LogisticRegression(max_iter=2000)),
@@ -120,8 +136,8 @@ def main(argv=None) -> None:
         else:
             model = clf
 
-        y_pred = cross_val_predict(model, X, y, cv=cv)
-        print(f"\n=== {name} ({args.folds}-fold CV) ===")
+        y_pred = cross_val_predict(model, X, y, cv=cv, groups=gene_ids)
+        print(f"\n=== {name} ({args.folds}-fold group CV, grouped by gene) ===")
         print(classification_report(y, y_pred, labels=labels_sorted, digits=3))
         cm = confusion_matrix(y, y_pred, labels=labels_sorted)
         print("confusion matrix (rows=true, cols=pred):", labels_sorted)
