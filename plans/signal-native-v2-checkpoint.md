@@ -382,19 +382,90 @@ two more full pasteur pipeline runs, ~90min each, for numbers that are
 superseded anyway once the pilot design is scaled up for the real paper
 run) -- flagged here so it isn't forgotten, not resolved.
 
+## Update (2026-08-14, later session) — noise layer 5 done (PCR duplicates + adapter contamination)
+
+Plan: `plans/signal-native-v2-noise-layer5.md`. Implemented in-session per
+explicit user instruction ("tackle RNG first then move to noise layer 5").
+This is the last noise layer named in the original plan's Phase 2 step 3
+list.
+
+1. Installed the ASimulatoR polyester fork (`biomedbigdata/polyester`) into
+   the `DSsim` conda env on pasteur via `remotes::install_github`,
+   replacing plain Bioconductor polyester. Verified directly (by deparsing
+   the installed functions, not trusting secondhand notes) that it adds
+   `pcr_rate`/`pcr_lambda` to `generate_fragments` and
+   `adapter_contamination`/`adapter_sequence` to `get_reads`, both threaded
+   through `simulate_experiment_countmat`'s `...` -> `.check_extras` ->
+   `sgseq` call chain.
+2. **Fork bug found and worked around**: `simulate_experiment_countmat` has
+   `stopifnot(class(readmat) == "matrix")`, but under R>=4 `class()` on any
+   plain matrix always returns `c("matrix","array")` regardless of explicit
+   `class<-` assignment (confirmed interactively), so that check is
+   unconditionally broken on this R version -- unrelated to our own usage.
+   `sim/run_polyester.R` now defines `simulate_experiment_countmat_patched`
+   locally (byte-identical to the fork's function body except that one
+   check loosened to `is.matrix()`) rather than patching the installed
+   package file.
+3. Extended `sim/run_polyester.R` with optional
+   `pcr_rate`/`pcr_lambda`/`adapter_contamination`/`adapter_sequence` CLI
+   args, off by default (backward compatible with layer 1-4 invocations).
+   Pilot params: `pcr_rate=0.1`, `pcr_lambda=1` (~10% of fragments seeded
+   for duplication, each getting `Poisson(1)+1` total copies -- modelling
+   assumption, not fit to the benchmark's own duplication rate);
+   `adapter_contamination=TRUE` with the package default sequence -- flagged
+   as expected to be a near-no-op given our fraglen=250/fragsd=25 (adapter
+   readthrough only fires for fragments shorter than readlen=100, a ~6-sd
+   event at this fragment-length distribution).
+4. Re-ran polyester (reusing the exact same `count_matrix.tsv`/
+   `transcripts.fa` as `npz_layer4fix` -- layer 5 only changes the
+   read-generation step, not the count matrix) -> real STAR realignment ->
+   `dsignal.extract` -> `psi_recovery_check.py` -> `baseline_model.py`.
+   Fragment count inflated 7.85M -> 9.42M (+20%, matches the pcr_rate
+   prediction exactly). STAR stats slightly lower than layer4fix
+   (96.2-96.8% vs 97.6-98.3% uniquely mapped) but still realistic.
+   **Independent sanity check**: ran `samtools fixmate`/`sort`/`markdup` on
+   `c1.bam` and confirmed a measurable duplicate signal in the aligned
+   reads (4.2% duplicate pairs, 393133/9271406) -- the injected PCR
+   duplication is visible post-alignment, not just at the pre-alignment
+   fragment-count level.
+   Results, committed as `sim/experiment/npz_layer5/` +
+   `sim/experiment/labels_layer5.tsv` + `sim/psi_recovery_layer5.tsv`:
+   junction-level PSI recovery roughly flat vs layer4fix (A3 0.144->0.143,
+   A5 0.137->0.132, CSE 0.168->0.170, RI 0.200->0.199). Baseline RF:
+   47.8%->48.1% acc (flat), macro-F1 0.416->0.402 (down); per-class F1 A3
+   0.186->0.159, **A5 0.143->0.067 (biggest hit)**, CSE 0.452->0.458
+   (flat), NN 0.579->0.600 (up), RI 0.718->0.726 (flat). A5 taking the
+   biggest hit is a plausible, modest effect: PCR duplicates inflate
+   junction/coverage counts non-uniformly (favouring whichever junction/
+   isoform happened to seed a duplicate), which can distort the
+   ratio-based features (skip-to-cov ratio, junction fractions) the
+   baseline model leans on for A3/A5 discrimination more than the
+   coverage-shape-dependent classes (RI/CSE/NN). Unlike the original
+   (pre-RNG-fix) layer 4 result, this comparison to `npz_layer4fix` is a
+   clean ceteris paribus ablation (same count matrix, same RNG-isolated
+   code, only the read-generation step changed) -- no confound caveat
+   needed here.
+
+All five noise layers from the original plan's Phase 2 step 3 list
+(real STAR realignment, pre-mRNA background, neighbouring/antisense genes,
+novel junctions, PCR-dup/adapter contamination) are now implemented and
+individually scored.
+
 ## Immediate next steps (not started)
 
-1. Continue noise layer 5 (PCR-dup/adapter contamination via the
-   ASimulatoR fork), window randomization, hard-negative refinement, and
-   split-by-gene -- each layer benchmark-scored against `npz_layer4fix`
-   incrementally per the plan, same pattern as layers 2-4 above.
-2. Scale the pilot design up once noise layers are trusted (pilot was
+1. Window randomization (plan Phase 2 step 5) -- extraction windows are
+   still exactly the design event's own span/gene span; jittering
+   boundaries and varying flank width is called out in the plan as
+   necessary to avoid the model learning window geometry instead of
+   splicing. Not yet started.
+2. Hard-negative refinement and split-by-gene (plan Phase 2 steps 6-7).
+3. Scale the pilot design up once noise layers are trusted (pilot was
    deliberately small — 360 events — per explicit user choice to validate
    cheaply before committing to a full-scale run). When that happens, the
-   layer-1-through-4 contribution table should be regenerated in one pass
-   under the now-fixed RNG code, making the layer-2/3 discontinuity above
-   moot.
-3. Design and build the actual signal-native model architecture (Phase 3)
+   layer-1-through-5 contribution table should be regenerated in one pass
+   under the now-fixed RNG code, making the layer-2/3 discontinuity (noted
+   in the RNG-fix update above) moot.
+4. Design and build the actual signal-native model architecture (Phase 3)
    — the baseline_model.py hand-features were only a sanity check, not a
    candidate architecture.
 
