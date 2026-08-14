@@ -29,6 +29,7 @@ import pandas as pd
 
 from sim.abundance import (
     AbundanceConfig,
+    add_novel_junction_row,
     add_premrna_row,
     build_count_matrix,
     build_count_matrix_baseline,
@@ -57,6 +58,17 @@ def _load_neighbors(path: str):
     return by_neighbor
 
 
+def _load_novel_junctions(path: str):
+    """gene_id -> novel_id, from sim/novel_junctions.py's --out-tsv (one
+    novel-junction transcript per gene, at most)."""
+    by_gene = {}
+    with open(path) as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            by_gene[row["gene_id"]] = row["novel_id"]
+    return by_gene
+
+
 def build_neighbor_matrix(
     gene_id: str,
     transcripts_by_gene,
@@ -67,13 +79,17 @@ def build_neighbor_matrix(
     premrna_frac_high: float,
     transcript_dispersion: float,
     gene_depth_dispersion: float,
+    novel_by_gene=None,
+    novel_frac_low: float = 0.005,
+    novel_frac_high: float = 0.03,
 ):
     """Background count matrix for one neighbouring/antisense gene (noise
     layer 3): plain baseline expression (no forced event, since the gene
     isn't the labelled locus) at its own log-uniform depth -- independent of
     and generally lower than a design gene's fixed depth, matching real
     between-gene expression heterogeneity -- plus its own pre-mRNA
-    background row (real neighbouring genes transcribe pre-mRNA too)."""
+    background row (real neighbouring genes transcribe pre-mRNA too), plus
+    its own novel-junction row (noise layer 4) if one was generated."""
     depth = float(np.exp(rng.uniform(np.log(depth_low), np.log(depth_high))))
     config = AbundanceConfig(
         gene_mean_depth=depth,
@@ -82,6 +98,10 @@ def build_neighbor_matrix(
     )
     df = build_count_matrix_baseline(gene_id, transcripts_by_gene, config, rng)
     df = add_premrna_row(df, gene_id, config, rng, premrna_frac_low, premrna_frac_high)
+    if novel_by_gene and gene_id in novel_by_gene:
+        df = add_novel_junction_row(
+            df, novel_by_gene[gene_id], config, rng, novel_frac_low, novel_frac_high
+        )
     return df
 
 
@@ -111,6 +131,15 @@ def main(argv=None) -> None:
     )
     ap.add_argument("--neighbor-depth-low", type=float, default=100.0)
     ap.add_argument("--neighbor-depth-high", type=float, default=3000.0)
+    ap.add_argument(
+        "--novel-junctions",
+        default=None,
+        help="sim/novel_junctions.py --out-tsv output; when given, adds noise "
+        "layer 4 (one never-annotated-junction background row per gene, "
+        "applied to design genes and neighbour genes alike).",
+    )
+    ap.add_argument("--novel-frac-low", type=float, default=0.005)
+    ap.add_argument("--novel-frac-high", type=float, default=0.03)
     args = ap.parse_args(argv)
 
     rng = np.random.default_rng(args.seed)
@@ -119,6 +148,7 @@ def main(argv=None) -> None:
     design_rows = _load_design(args.design)
     events_by_id = {e.event_id: e for e in build_catalogue(args.events_dir)}
     transcripts_by_gene = load_transcript_lengths(args.transcript_lengths)
+    novel_by_gene = _load_novel_junctions(args.novel_junctions) if args.novel_junctions else {}
 
     matrices = []
     psi_check_rows = []
@@ -150,6 +180,11 @@ def main(argv=None) -> None:
             # recover the drawn fraction from the row actually added, for QC
             premrna_frac = float(
                 (df.loc[premrna_id(gene_id)] / depth_before).mean()
+            )
+
+        if gene_id in novel_by_gene:
+            df = add_novel_junction_row(
+                df, novel_by_gene[gene_id], config, rng, args.novel_frac_low, args.novel_frac_high
             )
 
         matrices.append(df)
@@ -184,6 +219,9 @@ def main(argv=None) -> None:
                     args.premrna_frac_high,
                     config.transcript_dispersion,
                     config.gene_depth_dispersion,
+                    novel_by_gene,
+                    args.novel_frac_low,
+                    args.novel_frac_high,
                 )
             )
             n_neighbor_genes += 1
@@ -216,6 +254,9 @@ def main(argv=None) -> None:
     print(f"genes: {len(design_rows) - n_missing_gene}/{len(design_rows)} (missing_gene={n_missing_gene})", file=sys.stderr)
     if args.neighbors:
         print(f"neighbor genes added (layer 3): {n_neighbor_genes}", file=sys.stderr)
+    if args.novel_junctions:
+        n_novel_rows = sum(1 for idx in full.index if idx.startswith("NOVEL_"))
+        print(f"novel-junction rows added (layer 4): {n_novel_rows}", file=sys.stderr)
     print(f"transcripts: {full.shape[0]}, samples: {full.shape[1]}", file=sys.stderr)
     print(f"total simulated fragments: {full.to_numpy().sum():,}", file=sys.stderr)
     print(f"wrote {out_matrix}, {args.out_transcripts}, {args.out_psi_check}", file=sys.stderr)

@@ -159,6 +159,31 @@ def premrna_id(gene_id: str) -> str:
     return f"PREMRNA_{gene_id}"
 
 
+def _add_low_abundance_row(
+    df: pd.DataFrame,
+    row_id: str,
+    config: AbundanceConfig,
+    rng: np.random.Generator,
+    frac_low: float,
+    frac_high: float,
+) -> pd.DataFrame:
+    """Append a background row to a per-gene count matrix at a fraction of
+    that sample's total gene depth. The fraction is log-uniform in
+    [frac_low, frac_high], drawn once per gene (not per sample/replicate) so
+    it represents one fixed background/total ratio for that gene, then each
+    sample's count is an independent NB draw around fraction x that sample's
+    total -- the same per-replicate noise model as every other transcript in
+    the matrix."""
+    frac = float(np.exp(rng.uniform(np.log(frac_low), np.log(frac_high))))
+    totals = df.sum(axis=0)
+    row = {
+        col: sample_nb(totals[col] * frac, config.transcript_dispersion, rng)
+        for col in df.columns
+    }
+    df.loc[row_id] = row
+    return df
+
+
 def add_premrna_row(
     df: pd.DataFrame,
     gene_id: str,
@@ -168,20 +193,23 @@ def add_premrna_row(
     frac_high: float = 0.10,
 ) -> pd.DataFrame:
     """Append an unspliced pre-mRNA background row (noise layer 2) to a
-    per-gene count matrix, at a fraction of that sample's total gene
-    depth. The fraction is log-uniform in [frac_low, frac_high], drawn once
-    per gene (not per sample/replicate) so it represents one gene's fixed
-    transcription/splicing-efficiency ratio, then each sample's count is an
-    independent NB draw around fraction x that sample's total -- the same
-    per-replicate noise model as every other transcript in the matrix."""
-    frac = float(np.exp(rng.uniform(np.log(frac_low), np.log(frac_high))))
-    totals = df.sum(axis=0)
-    row = {
-        col: sample_nb(totals[col] * frac, config.transcript_dispersion, rng)
-        for col in df.columns
-    }
-    df.loc[premrna_id(gene_id)] = row
-    return df
+    per-gene count matrix -- see `_add_low_abundance_row`."""
+    return _add_low_abundance_row(df, premrna_id(gene_id), config, rng, frac_low, frac_high)
+
+
+def add_novel_junction_row(
+    df: pd.DataFrame,
+    novel_id: str,
+    config: AbundanceConfig,
+    rng: np.random.Generator,
+    frac_low: float = 0.005,
+    frac_high: float = 0.03,
+) -> pd.DataFrame:
+    """Append a novel-junction background row (noise layer 4) to a per-gene
+    count matrix -- see `_add_low_abundance_row`. Default fraction range is
+    lower than pre-mRNA's (0.5-3% vs. 1-10%): a never-annotated junction
+    should be rarer than a general incomplete-splicing background."""
+    return _add_low_abundance_row(df, novel_id, config, rng, frac_low, frac_high)
 
 
 def empirical_psi(counts_df: pd.DataFrame, event: Event, columns: List[str]) -> float:
