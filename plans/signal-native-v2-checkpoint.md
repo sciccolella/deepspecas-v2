@@ -338,21 +338,63 @@ follow-up).
      "per-layer contribution table" is confounded with RNG-stream drift.
      Flagged, not fixed, in this session.
 
+## Update (2026-08-14, later session) — RNG stream isolation fix
+
+Fixed the confound flagged in the layer-4 update above, per explicit user
+instruction ("tackle RNG first then move to noise layer 5").
+
+`sim/build_experiment.py` previously drew every layer (design abundance,
+pre-mRNA, neighbour baseline, novel junctions) from one shared
+`np.random.Generator` consumed in loop order. Now `main` spawns four
+independent generators from one `np.random.SeedSequence(args.seed)` --
+`rng_design`, `rng_premrna`, `rng_neighbor_base`, `rng_novel` -- one per
+layer, so a layer's on/off state can never perturb another layer's draws.
+`build_neighbor_matrix` takes the three relevant generators as separate
+params instead of one shared `rng`.
+
+**Verified on pasteur**: ran `build_experiment.py` twice with identical
+seed/design/neighbours, once with `--novel-junctions` and once without --
+all 10347 shared count-matrix rows and the entire `psi_check.tsv` came back
+byte-identical between the two runs (previously they would have differed,
+since the novel-junction draws used to shift the neighbour loop's RNG
+state). Confirms the fix.
+
+**Regenerated the layer-4 pilot** under the fixed code (same 360-row
+design, seed 0, layers 1-4 all active) end to end: polyester -> real STAR
+realignment (97.6-98.3% uniquely mapped, consistent with prior layers) ->
+`dsignal.extract` -> `psi_recovery_check.py` -> `baseline_model.py`.
+Results, committed as `sim/experiment/npz_layer4fix/` +
+`sim/experiment/labels_layer4fix.tsv` + `sim/psi_recovery_layer4fix.tsv`:
+junction-level PSI recovery mean abs error A3 0.144, A5 0.137, CSE 0.168,
+RI 0.200; baseline RF 47.8% acc, macro-F1 0.416 (per-class F1: A3 0.186,
+A5 0.143, CSE 0.452, NN 0.579, RI 0.718).
+
+**Important scope note**: this corrected run is the trustworthy baseline
+going forward -- noise layer 5 (and anything after) should be compared
+against `npz_layer4fix`, not the earlier `npz_layer4` (kept only for
+reference, built under the buggy shared-RNG code). The *old*
+`npz_layer2`/`npz_layer3` numbers are **not** directly comparable to
+`npz_layer4fix` either (entirely different RNG scheme -- SeedSequence
+spawning vs. one continued stream), so the full layer-1-through-4
+contribution table has a discontinuity at this fix. Re-deriving layer
+2/3 under the new scheme was judged out of scope for this fix (would need
+two more full pasteur pipeline runs, ~90min each, for numbers that are
+superseded anyway once the pilot design is scaled up for the real paper
+run) -- flagged here so it isn't forgotten, not resolved.
+
 ## Immediate next steps (not started)
 
-1. **Before more layers**: consider isolating each noise layer's RNG stream
-   (e.g. per-layer `np.random.Generator`, or a fixed draws-per-layer budget)
-   so the per-layer contribution table isn't confounded by RNG drift, per
-   the layer-4 finding above. Not urgent for continuing to build layers,
-   but should land before the numbers are used for anything in the paper.
-2. Continue noise layer 5 (PCR-dup/adapter contamination via the
+1. Continue noise layer 5 (PCR-dup/adapter contamination via the
    ASimulatoR fork), window randomization, hard-negative refinement, and
-   split-by-gene -- each layer benchmark-scored incrementally per the plan,
-   same pattern as layers 2-4 above.
-3. Scale the pilot design up once noise layers are trusted (pilot was
+   split-by-gene -- each layer benchmark-scored against `npz_layer4fix`
+   incrementally per the plan, same pattern as layers 2-4 above.
+2. Scale the pilot design up once noise layers are trusted (pilot was
    deliberately small — 360 events — per explicit user choice to validate
-   cheaply before committing to a full-scale run).
-4. Design and build the actual signal-native model architecture (Phase 3)
+   cheaply before committing to a full-scale run). When that happens, the
+   layer-1-through-4 contribution table should be regenerated in one pass
+   under the now-fixed RNG code, making the layer-2/3 discontinuity above
+   moot.
+3. Design and build the actual signal-native model architecture (Phase 3)
    — the baseline_model.py hand-features were only a sanity check, not a
    candidate architecture.
 
