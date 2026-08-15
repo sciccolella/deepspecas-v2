@@ -176,6 +176,11 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
                 "feature_subset": args.feature_subset,
                 "fold": fold,
                 "held_out_macro_f1": best["macro_f1"],
+                # training class prior, so inference-time prior correction
+                # (dsignal.predict.PriorCorrection) does not need the labels
+                # TSV. Checkpoints written before this field exist -- callers
+                # must tolerate its absence.
+                "train_class_counts": {c: int(sum(1 for e in train_entries if e[2] == c)) for c in CLASSES},
             },
             pjoin(args.out_dir, f"fold{fold}.pt"),
         )

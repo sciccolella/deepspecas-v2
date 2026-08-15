@@ -35,7 +35,13 @@ from os.path import basename, splitext
 import numpy as np
 
 from dsignal.extract import ReadFilters, parse_region
-from dsignal.predict import Predictor, read_prediction_csv
+from dsignal.predict import (
+    Predictor,
+    PriorCorrection,
+    class_counts_from_labels,
+    make_target_prior,
+    read_prediction_csv,
+)
 
 #: benchmark CSV basename -> our label. ES ("exon skipping") is SUPPA's SE,
 #: which Phase 2 labels CSE; IR ("intron retention") is RI.
@@ -153,13 +159,35 @@ def main(argv=None) -> None:
     ap.add_argument("--max-nh", type=int, default=10)
     ap.add_argument("--min-mapq", type=int, default=0)
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument(
+        "--target-prior", choices=("none", "uniform", "benchmark"), default="none",
+        help="opt-in class-prior correction (dsignal.predict.PriorCorrection); "
+        "'none' is the default and leaves inference exactly as it was. "
+        "'benchmark' (NN excluded) is an oracle upper bound, not a deployable "
+        "setting -- see dsignal/prior_sweep.py",
+    )
+    ap.add_argument("--train-labels", default=None,
+                    help="labels TSV the checkpoints were trained on; required by --target-prior")
+    ap.add_argument("--tau", type=float, default=1.0, help="prior-correction strength")
     args = ap.parse_args(argv)
+
+    correction = None
+    if args.target_prior != "none":
+        if not args.train_labels:
+            ap.error("--target-prior needs --train-labels to count the training class prior")
 
     predictor = Predictor(
         args.net,
         device=args.device,
         filters=ReadFilters(min_anchor=args.min_anchor, max_nh=args.max_nh, min_mapq=args.min_mapq),
     )
+    if args.target_prior != "none":
+        train_counts = class_counts_from_labels(args.train_labels, predictor.classes)
+        correction = PriorCorrection(
+            train_counts, make_target_prior(predictor.classes, args.target_prior), args.tau
+        )
+        predictor.prior_correction = correction
+        print(f"prior correction: {correction}", file=sys.stderr)
     print(f"loaded {len(predictor.models)} fold checkpoint(s), classes {predictor.classes}, "
           f"feature subset {predictor.feature_subset!r}", file=sys.stderr)
 

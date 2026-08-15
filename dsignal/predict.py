@@ -33,6 +33,91 @@ from dsignal.features import FeatureConfig, build_features
 from dsignal.model import JunctionSetTransformer, ModelConfig
 
 
+class PriorCorrection:
+    """Logit adjustment for a train/deploy class-prior mismatch.
+
+    ``p'(y|x) ∝ p(y|x) · (p_target(y) / p_train(y))^tau``, which is exactly
+    ``softmax(logits + tau·log(p_target/p_train))`` -- doing it on the
+    probability vector is equivalent and lets the same object be applied to
+    cached per-fold probabilities.
+
+    **Must be applied per fold, before the folds are averaged.** Correcting the
+    averaged probability is a different (and wrong) estimator: the average of
+    corrected posteriors is not the correction of the averaged posterior.
+
+    Motivation: the simulation design is 43% NN while the curated benchmark
+    contains no NN events at all, and false NN is the dominant real error
+    (41/140 under the fixed windows). ``tau`` scales the correction: 0 is a
+    no-op, 1 is the full adjustment.
+    """
+
+    def __init__(self, train_prior, target_prior, tau: float = 1.0):
+        train = np.asarray(train_prior, dtype=np.float64)
+        target = np.asarray(target_prior, dtype=np.float64)
+        if train.shape != target.shape:
+            raise ValueError(f"prior shape mismatch: train {train.shape} vs target {target.shape}")
+        if (train <= 0).any():
+            raise ValueError("training prior has a zero/negative entry -- a class the model never saw")
+        if (target < 0).any():
+            raise ValueError("target prior has a negative entry")
+        self.train_prior = train / train.sum()
+        self.target_prior = target / target.sum()
+        self.tau = float(tau)
+        #: weight applied to each class's probability, before renormalization
+        self.weights = (self.target_prior / self.train_prior) ** self.tau
+
+    def apply(self, probs: np.ndarray) -> np.ndarray:
+        """Corrected, renormalized probabilities. Works on a [C] vector or a
+        [F, C] per-fold matrix (each row corrected independently)."""
+        out = np.asarray(probs, dtype=np.float64) * self.weights
+        total = out.sum(axis=-1, keepdims=True)
+        # a target prior that zeroes every class the model put mass on would
+        # leave nothing to renormalize; fall back to the uncorrected vector
+        # rather than emitting NaNs
+        safe = np.where(total > 0, total, 1.0)
+        return np.where(total > 0, out / safe, probs)
+
+    def __repr__(self):
+        return (f"PriorCorrection(tau={self.tau}, "
+                f"train={np.round(self.train_prior, 3).tolist()}, "
+                f"target={np.round(self.target_prior, 3).tolist()})")
+
+
+def class_counts_from_labels(labels_path: str, classes) -> np.ndarray:
+    """Training class counts read off a labels TSV (the checkpoints predating
+    this feature do not carry them)."""
+    counts = {c: 0 for c in classes}
+    with open(labels_path) as f:
+        for row in csv.DictReader(f, delimiter="\t"):
+            if row["label"] in counts:
+                counts[row["label"]] += 1
+    missing = [c for c, n in counts.items() if n == 0]
+    if missing:
+        raise ValueError(f"{labels_path}: no rows for class(es) {missing}")
+    return np.array([counts[c] for c in classes], dtype=np.float64)
+
+
+def make_target_prior(classes, kind: str = "uniform", nn_weight: float | None = None) -> np.ndarray:
+    """``uniform``: every class equally likely at deploy time -- domain-agnostic
+    and deployable. ``benchmark``: NN excluded entirely, an **oracle** setting
+    that presumes the truth set contains no negatives; useful only as an upper
+    bound. ``nn-weight``: keep the classes uniform but scale NN by
+    ``nn_weight``, which traces the curve between the two."""
+    classes = list(classes)
+    prior = np.ones(len(classes), dtype=np.float64)
+    if kind == "uniform":
+        return prior
+    if kind == "benchmark":
+        prior[classes.index("NN")] = 0.0
+        return prior
+    if kind == "nn-weight":
+        if nn_weight is None:
+            raise ValueError("kind 'nn-weight' needs nn_weight")
+        prior[classes.index("NN")] = float(nn_weight)
+        return prior
+    raise ValueError(f"unknown target prior {kind!r}")
+
+
 class Predictor:
     """One or more trained folds, applied to extractor records.
 
@@ -41,11 +126,14 @@ class Predictor:
     inference than at training is the classic silent way to get garbage.
     """
 
-    def __init__(self, checkpoint_paths, device=None, filters: ReadFilters | None = None):
+    def __init__(self, checkpoint_paths, device=None, filters: ReadFilters | None = None,
+                 prior_correction: "PriorCorrection | None" = None):
         if not checkpoint_paths:
             raise ValueError("no checkpoints given")
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.filters = filters or ReadFilters()
+        #: optional train/deploy prior adjustment, applied per fold (see PriorCorrection)
+        self.prior_correction = prior_correction
         self.models, self.scalers = [], []
         self.classes = None
         self.feature_subset = None
@@ -70,14 +158,19 @@ class Predictor:
                     f"feature subset {subset!r} vs {self.feature_subset!r}"
                 )
 
-    def predict_record(self, record: dict, need_weights: bool = False):
-        """(label, probability vector, attention or None) for one record."""
+    def fold_probs(self, record: dict, need_weights: bool = False):
+        """``([F, C] per-fold softmax, attention or None)`` -- uncorrected.
+
+        Kept separate from `predict_record` so a prior sweep can extract and
+        run each event once and then evaluate many corrections analytically:
+        the correction is a function of these per-fold posteriors alone.
+        """
         tokens_raw, cls_raw, meta = build_features(record, self.cfg)
         meta = apply_feature_subset_meta(meta, self.feature_subset)
-        probs = np.zeros(len(self.classes), dtype=np.float64)
+        per_fold = np.zeros((len(self.models), len(self.classes)), dtype=np.float64)
         attn_out = None
 
-        for model, scaler in zip(self.models, self.scalers):
+        for f, (model, scaler) in enumerate(zip(self.models, self.scalers)):
             tokens, cls = apply_feature_subset(tokens_raw, cls_raw, self.feature_subset)
             tokens, cls = scaler.transform(tokens, cls)
             batch = collate(
@@ -102,12 +195,30 @@ class Predictor:
                     batch["pad_mask"].to(self.device),
                     need_weights=need_weights,
                 )
-            probs += logits.softmax(dim=1)[0].cpu().numpy()
+            per_fold[f] = logits.softmax(dim=1)[0].cpu().numpy()
             if need_weights and attn is not None and attn_out is None:
                 attn_out = attn[0].cpu().numpy()
 
-        probs /= len(self.models)
-        return self.classes[int(probs.argmax())], probs, attn_out
+        return per_fold, attn_out
+
+    def combine(self, per_fold: np.ndarray):
+        """Per-fold posteriors -> (label, averaged probability vector).
+
+        The prior correction is applied to each fold *before* averaging -- see
+        PriorCorrection. With no correction configured this is the plain fold
+        ensemble, bit-for-bit what the model reported before the feature
+        existed.
+        """
+        if self.prior_correction is not None:
+            per_fold = self.prior_correction.apply(per_fold)
+        probs = per_fold.mean(axis=0)
+        return self.classes[int(probs.argmax())], probs
+
+    def predict_record(self, record: dict, need_weights: bool = False):
+        """(label, probability vector, attention or None) for one record."""
+        per_fold, attn_out = self.fold_probs(record, need_weights)
+        label, probs = self.combine(per_fold)
+        return label, probs, attn_out
 
     def predict_region(self, region_str: str, bam1: str, bam2: str, need_weights: bool = False):
         """Extract from the BAMs and classify. Returns (label, probs, attn,
