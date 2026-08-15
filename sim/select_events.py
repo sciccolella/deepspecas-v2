@@ -31,7 +31,7 @@ import numpy as np
 
 from sim.abundance import load_transcript_lengths
 from sim.catalogue import Event, build_catalogue
-from sim.window import sample_window
+from sim.window import sample_window_detail
 
 
 def _load_chrom_lengths(path: str):
@@ -252,11 +252,15 @@ def main(argv=None) -> None:
         gene_spans, catalogue_genes, transcripts_by_gene, args.n_nn_novel, used_genes, rng
     )
 
+    n_clamped = 0
     for row in rows:
         chrom_len = chrom_lengths[row["chrom"]]
-        win_start, win_end = sample_window(row["region_start"], row["region_end"], chrom_len, rng_window)
+        win_start, win_end, clamped = sample_window_detail(
+            row["region_start"], row["region_end"], chrom_len, rng_window
+        )
         row["win_start"] = win_start
         row["win_end"] = win_end
+        n_clamped += clamped
 
     fields = [
         "event_id", "gene_id", "label", "kind", "chrom", "strand",
@@ -273,6 +277,13 @@ def main(argv=None) -> None:
     print(f"  by kind: {Counter(r['kind'] for r in rows)}", file=sys.stderr)
     print(f"  by label: {Counter(r['label'] for r in rows)}", file=sys.stderr)
     print(f"  distinct genes: {len(used_genes) - n_excluded}", file=sys.stderr)
+    widths = [r["win_end"] - r["win_start"] + 1 for r in rows]
+    log10w = np.log10(np.asarray(widths, dtype=float))
+    print(f"  window width: median {int(np.median(widths))} log10 mean {log10w.mean():.3f} "
+          f"sd {log10w.std(ddof=1):.3f} (benchmark: median 3063, 3.445, 0.702)", file=sys.stderr)
+    print(f"  clamped to event span: {n_clamped}/{len(rows)} rows "
+          f"({n_clamped / len(rows):.1%}) -- the residual span->width coupling",
+          file=sys.stderr)
     if n_excluded:
         selected = {r["gene_id"] for r in rows}
         overlap = selected & _load_excluded_genes(args.exclude_genes)
