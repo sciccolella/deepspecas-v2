@@ -1122,3 +1122,72 @@ fraction in the design, or ship the uniform-prior correction as part of
 inference. The remaining gap after calibration (CSE->A3, and A3<->A5
 re-emerging under correction) is the part that genuinely needs domain
 adaptation.
+
+## Update (2026-08-15, later) — scale-up run, step 0: the CSE->A3 diagnosis
+
+Plan: `plans/signal-native-v2-scaleup-7500.md`. Step 0 gates the whole run, so
+it was done locally first, before any pasteur compute. Tool:
+`dsignal/diagnose_cse_a3.py`; artifacts `runs/cse_a3_diagnosis.{tsv,log}`.
+
+**The hypothesis the plan asked to test.** A curated ES window often also
+contains a genuine alternative-3' junction pair sharing a donor, so the model
+sees real A3 evidence and the "right" answer is the curator's choice, not a
+model error. If true, more data cannot fix CSE and the run's purpose narrows.
+
+**It does not hold.** Three independent lines, none of them circular (the
+detector is annotation-free junction bookkeeping, so it can disagree with the
+classifier):
+
+1. **The annotation does not call these regions ambiguous.** Only 18% of the 65
+   curated ES windows contain *any* catalogued SUPPA A3 event, against 85% that
+   contain a catalogued SE. In the misclassified ES->A3 subgroup specifically
+   the mean is 0.2 catalogued A3 events per window against 1.6 SE. For
+   contrast, 100% of the curated A3 windows contain a catalogued A3 event, so
+   the check has the resolution to see the effect if it were there.
+2. **A3-consistent structure is ubiquitous in ES windows but does not track the
+   error.** 95% of ES windows contain a supported shared-donor pair (and 94% a
+   shared-acceptor pair, and 94% a skip triplet) — but that structure is
+   *weaker*, not stronger, in the events the model calls A3: pooled minor-branch
+   fraction 0.15 (ES->A3) vs 0.33 (ES->CSE). A3 is the strongest differential
+   motif in only 3 of the 18 misclassified events.
+3. **The model's A3 probability correlates with A3 evidence at r = -0.24** —
+   the wrong sign. Whatever drives the call, it is not the A3 evidence.
+
+**What does separate the two groups** is the strength of the *skip* branch, at
+essentially equal window coverage (mean coverage 17.4 vs 14.7):
+
+| metric (median) | ES->A3 | ES->CSE |
+|---|---|---|
+| skip-triplet minor-branch reads | 16.5 | 65.5 |
+| skip-triplet minor-branch fraction | 0.237 | 0.371 |
+| shared-donor minor-branch reads | 33 | 110 |
+
+So the failure is **sensitivity to subtle exon skipping**: when the skip branch
+is thinly supported, CSE loses, and the shared-donor structure that is present
+in almost every ES window wins by default.
+
+**Why the model has that blind spot — a measurable domain gap.** Running the
+same detector over the simulated training records (`npz_windowfix`) shows the
+simulation's CSE events carry far more skip evidence than the curated ones:
+
+| set | skip minor-branch reads (median) | skip minor fraction |
+|---|---|---|
+| sim CSE (n=180) | 132 | 0.408 |
+| curated ES (n=65) | 31 | 0.342 |
+| curated ES, misclassified as A3 (n=18) | 16.5 | 0.237 |
+
+The simulation draws `|dPSI| ~ Uniform(0.3, 0.8)` (`sim/select_events.py`
+`_sample_psi_pair`) at a fixed 2,000-read gene depth, so it never produces a
+positive event as subtle as the ones the benchmark's rMATS+SUPPA p<0.05 truth
+set contains. The model's CSE detector is calibrated to a skip depth the real
+data reaches about a quarter of the time.
+
+**Gate decision: proceed, and the run keeps its full purpose.** This is not a
+label-definition problem, so the plan's narrowing clause does not fire. It is
+also not something the scale-up itself fixes — more events at the same
+`|dPSI|`/depth settings add no subtle CSE examples — so the honest expectation
+is that the scale-up addresses reasons (2) neighbour-set consistency and (3)
+class prior, while **CSE->A3 stays open and now has a concrete, testable cause
+and a concrete fix: widen `|dPSI|` below 0.3 and vary gene depth**. That is a
+one-line change to the design sampler plus a rerun of the same recipe, and it
+is the natural next run after this one.
