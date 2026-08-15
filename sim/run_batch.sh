@@ -144,8 +144,11 @@ if [[ ! -s $B/labels.tsv ]]; then
     --out "$B/extract.csv" --labels-out "$B/labels.tsv"
 fi
 
-if [[ ! -d $B/npz ]]; then
-  step "$TAG: dsignal.extract"
+# count, not mere existence: a half-finished extract leaves the directory there
+N_ROWS=$(($(wc -l < "$B/extract.csv")))
+N_NPZ=$(ls "$B/npz" 2>/dev/null | wc -l)
+if [[ $N_NPZ -ne $N_ROWS ]]; then
+  step "$TAG: dsignal.extract ($N_NPZ/$N_ROWS records present)"
   "$PY" -m dsignal.extract --csv "$B/extract.csv" --out-dir "$B/npz" \
     2>&1 | tee "$B/logs/extract.log"
 fi
