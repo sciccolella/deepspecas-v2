@@ -1,0 +1,228 @@
+"""`JunctionSetTransformer` -- the signal-native model (Phase 3 step 3,
+top-level plan item 3.2).
+
+A junction set is a *set*, not a sequence: there is no meaningful left-to-right
+order, but there is rich pairwise structure (which junctions share a donor,
+which are nested inside which, how far apart they sit). So this is a plain
+pre-norm encoder over junction tokens with two learned additive attention
+biases carrying exactly that structure:
+
+* **relative position bias** -- signed ``log10(|midpoint distance| + 1)``
+  bucketized into 32 buckets, per head. Raw base-pair distance cannot work
+  here: junction separations span four orders of magnitude (tens of bp to
+  megabases), so a linear encoding would collapse the entire short range.
+* **relation bias** -- a learned per-head scalar for each of the discrete
+  relations ``identical`` / ``shares_donor`` / ``shares_acceptor`` / ``nested``
+  / ``overlapping`` / ``disjoint``. This is the inductive bias that puts
+  A3 ("shares donor, group fractions shift between conditions"), A5 (the
+  mirror) and CSE (nested/skipping structure) directly within attention's
+  reach, instead of something the model must rediscover from coordinates.
+
+The CLS token is projected from the event-level feature vector rather than
+being a free parameter, so window-level context (coverage moments, pooled
+topology summaries, the dropped-junction tail) enters the same way. It is never
+masked, which also means events with zero junctions are a valid CLS-only
+forward pass rather than a degenerate all-padding batch.
+
+Attention weights over junctions are returned on request -- this is the
+`--explain` story that `deepSpecas.py predict` still raises
+NotImplementedError for.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, asdict
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from dsignal.features import N_EVENT_FEATURES, N_TOKEN_FEATURES
+
+#: discrete pairwise relations; order is the embedding's index order
+RELATIONS = ("identical", "shares_donor", "shares_acceptor", "nested", "overlapping", "disjoint")
+N_RELATIONS = len(RELATIONS)
+
+#: half the buckets for each sign of the midpoint offset
+N_DISTANCE_BUCKETS = 32
+#: log10(distance + 1) is clamped here before bucketizing; 10^7 bp covers any
+#: intra-chromosomal separation we will see
+_MAX_LOG_DISTANCE = 7.0
+
+
+@dataclass
+class ModelConfig:
+    n_token_features: int = N_TOKEN_FEATURES
+    n_event_features: int = N_EVENT_FEATURES
+    n_classes: int = 5
+    d_model: int = 192
+    n_heads: int = 4
+    n_layers: int = 4
+    d_ff: int = 512
+    dropout: float = 0.2
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def pairwise_relations(s_rel: torch.Tensor, e_rel: torch.Tensor) -> torch.Tensor:
+    """[B, J, J] relation index per junction pair, per RELATIONS.
+
+    Checked in priority order: identical coordinates first (otherwise a pair
+    sharing both ends would be counted as sharing only its donor), then the
+    two single-end shares, then containment, then bare overlap.
+    """
+    si, sj = s_rel.unsqueeze(2), s_rel.unsqueeze(1)
+    ei, ej = e_rel.unsqueeze(2), e_rel.unsqueeze(1)
+
+    same_s, same_e = si == sj, ei == ej
+    nested = ((si >= sj) & (ei <= ej)) | ((sj >= si) & (ej <= ei))
+    overlapping = (si <= ej) & (ei >= sj)
+
+    rel = torch.full_like(si, RELATIONS.index("disjoint"))
+    rel = torch.where(overlapping, torch.full_like(rel, RELATIONS.index("overlapping")), rel)
+    rel = torch.where(nested, torch.full_like(rel, RELATIONS.index("nested")), rel)
+    rel = torch.where(same_e, torch.full_like(rel, RELATIONS.index("shares_acceptor")), rel)
+    rel = torch.where(same_s, torch.full_like(rel, RELATIONS.index("shares_donor")), rel)
+    rel = torch.where(same_s & same_e, torch.full_like(rel, RELATIONS.index("identical")), rel)
+    return rel
+
+
+def distance_buckets(s_rel: torch.Tensor, e_rel: torch.Tensor) -> torch.Tensor:
+    """[B, J, J] signed log-distance bucket between junction midpoints.
+
+    Buckets [0, 16) are "j is left of i", [16, 32) "j is right of i", each
+    spaced logarithmically so a 50bp and a 500kb separation are distinguishable
+    without either swamping the other.
+    """
+    mid = (s_rel + e_rel).float() / 2.0
+    delta = mid.unsqueeze(1) - mid.unsqueeze(2)  # [B, J, J], j minus i
+    half = N_DISTANCE_BUCKETS // 2
+    log_d = torch.log10(delta.abs() + 1.0).clamp(0.0, _MAX_LOG_DISTANCE)
+    idx = (log_d / _MAX_LOG_DISTANCE * (half - 1)).round().long()
+    return torch.where(delta < 0, idx, idx + half)
+
+
+class BiasedSelfAttention(nn.Module):
+    """Multi-head self-attention with an additive [B, H, L, L] bias.
+
+    Written out rather than using ``nn.MultiheadAttention`` because the biases
+    are per-head and per-pair and have to be added to the logits *before*
+    softmax, which the stock module only supports via mask-shaped hacks.
+    """
+
+    def __init__(self, d_model: int, n_heads: int, dropout: float):
+        super().__init__()
+        if d_model % n_heads:
+            raise ValueError(f"d_model {d_model} not divisible by n_heads {n_heads}")
+        self.n_heads = n_heads
+        self.d_head = d_model // n_heads
+        self.qkv = nn.Linear(d_model, 3 * d_model)
+        self.proj = nn.Linear(d_model, d_model)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, bias=None, pad_mask=None, need_weights=False):
+        b, l, d = x.shape
+        qkv = self.qkv(x).view(b, l, 3, self.n_heads, self.d_head).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]  # [B, H, L, Dh]
+
+        logits = (q @ k.transpose(-2, -1)) / (self.d_head**0.5)
+        if bias is not None:
+            logits = logits + bias
+        if pad_mask is not None:
+            # a large finite penalty, not -inf: a fully-padded *query* row would
+            # otherwise softmax to NaN and poison the batch. Padded queries are
+            # discarded downstream anyway; padded keys must not be attended to.
+            logits = logits.masked_fill(pad_mask[:, None, None, :], -1e9)
+
+        attn = logits.softmax(dim=-1)
+        out = self.dropout(attn) @ v
+        out = out.transpose(1, 2).reshape(b, l, d)
+        return self.proj(out), (attn if need_weights else None)
+
+
+class EncoderLayer(nn.Module):
+    """Pre-norm block: norm -> attention -> residual, norm -> FFN -> residual."""
+
+    def __init__(self, cfg: ModelConfig):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(cfg.d_model)
+        self.attn = BiasedSelfAttention(cfg.d_model, cfg.n_heads, cfg.dropout)
+        self.norm2 = nn.LayerNorm(cfg.d_model)
+        self.ff = nn.Sequential(
+            nn.Linear(cfg.d_model, cfg.d_ff),
+            nn.GELU(),
+            nn.Dropout(cfg.dropout),
+            nn.Linear(cfg.d_ff, cfg.d_model),
+        )
+        self.dropout = nn.Dropout(cfg.dropout)
+
+    def forward(self, x, bias=None, pad_mask=None, need_weights=False):
+        h, attn = self.attn(self.norm1(x), bias, pad_mask, need_weights)
+        x = x + self.dropout(h)
+        x = x + self.dropout(self.ff(self.norm2(x)))
+        return x, attn
+
+
+class JunctionSetTransformer(nn.Module):
+    def __init__(self, cfg: ModelConfig | None = None):
+        super().__init__()
+        self.cfg = cfg or ModelConfig()
+        c = self.cfg
+
+        self.token_proj = nn.Sequential(nn.Linear(c.n_token_features, c.d_model), nn.LayerNorm(c.d_model))
+        self.cls_proj = nn.Sequential(nn.Linear(c.n_event_features, c.d_model), nn.LayerNorm(c.d_model))
+
+        # one bias table per head, shared across layers: the relations are
+        # properties of the junction set, not of a given depth
+        self.distance_bias = nn.Embedding(N_DISTANCE_BUCKETS, c.n_heads)
+        self.relation_bias = nn.Embedding(N_RELATIONS, c.n_heads)
+        nn.init.zeros_(self.distance_bias.weight)
+        nn.init.zeros_(self.relation_bias.weight)
+
+        self.layers = nn.ModuleList(EncoderLayer(c) for _ in range(c.n_layers))
+        self.norm = nn.LayerNorm(c.d_model)
+        self.head = nn.Linear(c.d_model, c.n_classes)
+
+    def _attention_bias(self, s_rel, e_rel, pad_mask):
+        """[B, H, L, L] with L = J + 1; row/col 0 is the CLS token, which
+        participates in no junction-pair relation and gets zero bias."""
+        b, j = s_rel.shape
+        h = self.cfg.n_heads
+        if j == 0:
+            return torch.zeros(b, h, 1, 1, device=s_rel.device)
+
+        rel = pairwise_relations(s_rel, e_rel)
+        dist = distance_buckets(s_rel, e_rel)
+        bias = self.relation_bias(rel) + self.distance_bias(dist)  # [B, J, J, H]
+        bias = bias.permute(0, 3, 1, 2)  # [B, H, J, J]
+
+        out = torch.zeros(b, h, j + 1, j + 1, device=bias.device, dtype=bias.dtype)
+        out[:, :, 1:, 1:] = bias
+        return out
+
+    def forward(self, tokens, cls, s_rel, e_rel, pad_mask, need_weights: bool = False):
+        """tokens [B, J, F], cls [B, E], s_rel/e_rel [B, J], pad_mask [B, J]
+        (True = padding). Returns (logits [B, C], attention or None)."""
+        b, j, _ = tokens.shape
+        x = torch.cat([self.cls_proj(cls).unsqueeze(1), self.token_proj(tokens)], dim=1)
+
+        cls_pad = torch.zeros(b, 1, dtype=torch.bool, device=pad_mask.device)
+        full_pad = torch.cat([cls_pad, pad_mask], dim=1)
+        bias = self._attention_bias(s_rel, e_rel, pad_mask)
+
+        attns = []
+        for layer in self.layers:
+            x, attn = layer(x, bias, full_pad, need_weights)
+            if need_weights:
+                attns.append(attn)
+
+        logits = self.head(self.norm(x[:, 0]))
+        if not need_weights:
+            return logits, None
+        # CLS's attention over the junction tokens, averaged over heads --
+        # "which junctions drove this call"
+        return logits, torch.stack(attns, dim=1)[:, :, :, 0, 1:].mean(dim=2)
+
+    def n_parameters(self) -> int:
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)

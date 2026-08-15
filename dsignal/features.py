@@ -356,15 +356,26 @@ def _group_fractions(key: np.ndarray, count: np.ndarray):
     return frac, size
 
 
-def build_features(record: dict, cfg: FeatureConfig | None = None, norm: NormalizedRecord | None = None):
+def build_features(
+    record: dict | None = None,
+    cfg: FeatureConfig | None = None,
+    norm: NormalizedRecord | None = None,
+):
     """``(tokens [J, N_TOKEN_FEATURES], event_vec [N_EVENT_FEATURES], meta)``.
 
-    ``meta`` carries the kept junctions' window-relative midpoints and the
+    Pass either a raw ``record`` or an already-normalized ``norm`` (the
+    augmentation path in ``dsignal.dataset`` mutates the normalized record and
+    rebuilds features from it, so everything here is derived from ``norm``
+    alone -- ``record`` is only a convenience entry point).
+
+    ``meta`` carries the kept junctions' window-relative coordinates, the
     discrete pairwise-relation inputs the Transformer's attention bias needs
     (``s_rel``/``e_rel``), so the model does not have to re-derive them.
     """
     cfg = cfg or FeatureConfig()
     if norm is None:
+        if record is None:
+            raise ValueError("build_features needs either `record` or `norm`")
         norm = normalize_record(record, cfg)
 
     n = norm.n
@@ -466,7 +477,7 @@ def build_features(record: dict, cfg: FeatureConfig | None = None, norm: Normali
         ]
         tokens = np.stack(cols, axis=1).astype(np.float32)
 
-    event = _build_event_vector(record, norm, tokens, s_rel, e_rel, n_dropped, dropped_count_frac, n)
+    event = _build_event_vector(norm, tokens, n_dropped, dropped_count_frac, n)
 
     meta = {
         "s_rel": s_rel.astype(np.int64),
@@ -483,7 +494,7 @@ def _col(name: str) -> int:
     return TOKEN_FEATURE_NAMES.index(name)
 
 
-def _build_event_vector(record, norm, tokens, s_rel, e_rel, n_dropped, dropped_count_frac, n):
+def _build_event_vector(norm, tokens, n_dropped, dropped_count_frac, n):
     def cov_stats(cov):
         if len(cov) == 0:
             return [0.0, 0.0, 0.0, 0.0, 0.0]
@@ -512,8 +523,8 @@ def _build_event_vector(record, norm, tokens, s_rel, e_rel, n_dropped, dropped_c
     vals += cov_stats(norm.cov_2)
     vals += [
         float(np.log1p(norm.s_rel.shape[0])),
-        float(np.log1p(len(record["junctions_1"]))),
-        float(np.log1p(len(record["junctions_2"]))),
+        float(np.log1p(int((norm.count_1 > 0).sum()))),
+        float(np.log1p(int((norm.count_2 > 0).sum()))),
         1.0 if norm.strand == "-" else 0.0,
         1.0 if norm.strand == "?" else 0.0,
         tmax("n_sharing_donor"),
