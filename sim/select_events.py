@@ -6,9 +6,11 @@ learnable as "no junction noise at all").
 
 One gene is used by at most one selected event, so the per-gene abundance
 matrix (sim/abundance.py) never has to reconcile two simulated events in the
-same gene. Region windows come straight from the SUPPA event span (positives)
-or the gene's genomic span (NN negatives) -- window randomization/jitter is
-a later step (plan Phase 2.5), not applied here.
+same gene. Regions come straight from the SUPPA event span (positives, hard
+negatives); constitutive NN negatives get a random sub-interval of their gene
+whose length is drawn from the pooled positive event-span distribution, so NN
+is not "the wide class" (see `shrink_constitutive_regions`). The extraction
+window around each region is then randomized by `sim/window.py`.
 
 Usage:
     python -m sim.select_events \
@@ -197,6 +199,36 @@ def select_novel_negatives(gene_spans, catalogue_genes, transcripts_by_gene, n, 
     )
 
 
+def shrink_constitutive_regions(rows, span_pool, rng, kinds=("nn_plain", "nn_novel")):
+    """Replace whole-gene regions on constitutive NN rows with a random
+    sub-interval whose length is drawn from the pooled *positive* event-span
+    distribution.
+
+    Without this, NN is "the wide class": nn_plain/nn_novel take the entire gene
+    span (median ~18kb on the 1260-event design, q90 ~145kb) where a real AS
+    event spans ~1.4kb, so window width -- which must contain the region --
+    still carries the label even with the span-independent width draw in
+    sim/window.py. nn_hard is left alone: it already uses a real event span.
+
+    ``rng`` must be a stream of its own: these draws happen after row selection
+    and must not perturb it (see the RNG note in `main`). Returns the number of
+    rows whose region was shrunk.
+    """
+    span_pool = np.asarray(span_pool, dtype=np.int64)
+    n = 0
+    for row in rows:
+        if row["kind"] not in kinds:
+            continue
+        gene_start, gene_end = row["region_start"], row["region_end"]
+        gene_len = gene_end - gene_start + 1
+        length = min(int(rng.choice(span_pool)), gene_len)
+        offset = int(rng.integers(0, gene_len - length + 1))
+        row["region_start"] = gene_start + offset
+        row["region_end"] = row["region_start"] + length - 1
+        n += 1
+    return n
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--events-dir", required=True)
@@ -231,6 +263,7 @@ def main(argv=None) -> None:
     # selected.
     rng = np.random.default_rng(args.seed)
     rng_window = np.random.default_rng(args.seed + 1_000_000)
+    rng_negspan = np.random.default_rng(args.seed + 2_000_000)
     events = build_catalogue(args.events_dir)
     gene_spans = _load_gene_spans(args.gene_spans)
     transcripts_by_gene = load_transcript_lengths(args.transcript_lengths)
@@ -251,6 +284,12 @@ def main(argv=None) -> None:
     rows += select_novel_negatives(
         gene_spans, catalogue_genes, transcripts_by_gene, args.n_nn_novel, used_genes, rng
     )
+
+    # Constitutive NN rows stop being whole-gene spans before windows are
+    # sampled around them (their region is only ever used for window sampling
+    # and the extraction CSV -- psi_recovery_check.py skips non-positive rows).
+    span_pool = [e.region_end - e.region_start + 1 for e in events]
+    n_shrunk = shrink_constitutive_regions(rows, span_pool, rng_negspan)
 
     n_clamped = 0
     for row in rows:
@@ -277,6 +316,7 @@ def main(argv=None) -> None:
     print(f"  by kind: {Counter(r['kind'] for r in rows)}", file=sys.stderr)
     print(f"  by label: {Counter(r['label'] for r in rows)}", file=sys.stderr)
     print(f"  distinct genes: {len(used_genes) - n_excluded}", file=sys.stderr)
+    print(f"  constitutive NN regions shrunk to a sampled event span: {n_shrunk}", file=sys.stderr)
     widths = [r["win_end"] - r["win_start"] + 1 for r in rows]
     log10w = np.log10(np.asarray(widths, dtype=float))
     print(f"  window width: median {int(np.median(widths))} log10 mean {log10w.mean():.3f} "
