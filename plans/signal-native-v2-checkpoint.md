@@ -1053,3 +1053,72 @@ zero-shot gain the plan hoped for.
       signal reported rather than hidden
 - [x] `no-geometry` reproduces the checkpoint table exactly on the old data
 - [x] benchmark score reported against the 50.0% baseline (42.9%, p = 0.099)
+
+## Update (2026-08-15, later) — prior-corrected inference (Phase 4 probe)
+
+Plan: `plans/signal-native-v2-prior-correction.md`. Implemented in-session per
+explicit user instruction. No retraining and no pasteur: this reuses the
+existing fold checkpoints and only changes what happens to their posteriors.
+
+**Hypothesis tested.** The dominant benchmark error is a false NN prediction,
+and NN is 540/1260 = 43% of the training design against a benchmark containing
+**no NN events at all**. If that prior mismatch is the cause rather than a
+topology failure, the logit adjustment
+`p'(y|x) ∝ p(y|x)·(p_target(y)/p_train(y))^tau` should recover most of it.
+Applied **per fold before the fold average** — correcting the averaged
+posterior is a different, wrong estimator (verified they differ numerically).
+
+The sweep was run on **both** checkpoint sets, which is the only way to
+separate "the window fix hurt transfer" from "prior mismatch always dominated":
+
+| setting | old windows (`runs/best`) | new windows (`runs/windowfix_allaug`) |
+|---|---|---|
+| uncorrected | 50.0% (30 NN preds) | 42.9% (42 NN preds) |
+| **uniform target prior** (deployable) | **55.0%** | **51.4%** |
+| nn_weight 0.25 | 58.6% | 52.1% |
+| nn_weight 0.05 | 60.7% | 56.4% |
+| nn_weight 0 (**oracle**) | 60.7% (0 NN preds) | 56.4% (0 NN preds) |
+
+Every corrected setting beats its uncorrected baseline with paired McNemar
+p <= 0.016, most at p < 0.001.
+
+**Answer: the prior mismatch was always the dominant error, and it is the
+biggest single lever found so far.** The uniform correction — chosen a priori,
+deployable, not fitted to anything — buys +5.0 points on the old windows and
++8.5 on the new ones. The gap between the two window regimes narrows from 7.1
+points uncorrected to 3.6 (uniform) / 4.3 (oracle), so **most of the apparent
+cost of the window fix was the window fix making NN a more attractive
+prediction, not the model getting worse.** The window fix's residual cost is
+real but roughly half what the raw 50.0 -> 42.9 comparison suggested, and part
+of even that is the accepted neighbour-set mismatch.
+
+**The correction is not churn.** At the best setting only 1 non-NN prediction
+changed on the new windows (0 on the old); everything else that moved was a
+previously-NN call. Of those, roughly half land on the correct class
+(new windows: 11 A3, 6 A5, 3 RI recovered out of 41 moved).
+
+**Three honest caveats, none of which the headline should hide.**
+1. `nn_weight` is selected *on the benchmark itself*, so only the `uniform`
+   row is a legitimate reportable number; the sweep is a diagnostic curve, and
+   `nn_weight=0` is an oracle that presumes the truth set has no negatives.
+2. **The correction partially reintroduces v1's failure mode.** Uncorrected,
+   there were exactly zero A3<->A5 cross-errors; after correction the collapsed
+   accuracy exceeds the 5-class one again (56.4% vs 59.3% on the new windows,
+   60.7% vs 62.9% on the old), i.e. 3-4 events of A3<->A5 confusion reappear.
+   Small, but the "v1's defining failure mode is absent" claim now has to be
+   stated for the uncorrected model specifically.
+3. **CSE is untouched by calibration.** ES-CSV accuracy barely moves
+   (43.1% -> 41.5% new, 41.5% -> 44.6% old) and CSE->A3 remains the second
+   error. That part is a real representation problem, not a prior problem, and
+   it is what Phase 4 still has to solve.
+
+Artifacts: `runs/prior_sweep_{windowfix,scale1260}.{log,tsv}`.
+
+### Implication for Phase 4
+
+Phase 4 should treat the class prior as a first-class design variable rather
+than an afterthought: either train with a class-balanced loss / a lower NN
+fraction in the design, or ship the uniform-prior correction as part of
+inference. The remaining gap after calibration (CSE->A3, and A3<->A5
+re-emerging under correction) is the part that genuinely needs domain
+adaptation.
