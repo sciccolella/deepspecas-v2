@@ -697,3 +697,174 @@ build-verify-commit-smoke-test discipline (catalogue -> abundance ->
 selection -> experiment assembly -> polyester -> STAR, with a real bug
 caught at each stage before scaling up) is the approach to keep using
 going forward, not just for Phase 2 but Phase 3+ too.
+
+## Update (2026-08-15, later) — Phase 3 done (the model)
+
+Implemented `plans/signal-native-v2-phase3-model.md` steps 0-6 (step 6 is the
+code change only; the pasteur batches themselves are not run). Every step
+built, verified, smoke-tested and committed before the next started, per the
+standing preference.
+
+**Step 0 — local torch env.** `/datasets/deepSpecas-v2/envs/DSnet` via
+mambaforge: torch 2.5.1 + working CUDA on the RTX 4080, lightgbm 4.7, sklearn
+1.9, pysam 0.24. **Gotcha worth recording**: conda-forge's plain `pytorch`
+package resolves to a **CPU-only** build (`Torch not compiled with CUDA
+enabled`); `pytorch-gpu` is the package that pulls the CUDA build. Acceptance
+test passed exactly: `sim/baseline_model.py` on `npz_scale1260` reproduces
+48.8% acc / 0.325 macro-F1 and every per-class F1 in the new env.
+
+**Step 1 — `dsignal/features.py`** (+ `dsignal/verify_features.py`). Shared
+builder consumed by both the GBM and the Transformer, so they are compared on
+identical information. Per-junction token matrix over the union of
+`(start, end)` across conditions: counts/motif, **topology**
+(`n_sharing_donor`/`n_sharing_acceptor` + per-condition donor-group and
+acceptor-group count fractions) and **coverage context** (flank vs
+intron-interior means, interior:flank ratio, interior nonzero fraction, so RI
+needs no separate encoder); plus an event-level vector used as the CLS token
+and, via `build_gbm_row`, as the LightGBM row. Minus-strand records are
+canonicalized by mirroring within the window (motif codes mapped to their
+reverse-complement partners), making A3/A5 strand-independent and the flip
+augmentation an exact A3<->A5 map.
+
+Two bugs caught by the verification checks:
+- `mirror()` sorted rows by start alone, so shared-donor ties came back
+  swapped and mirroring was **not an involution** — fixed to a lexicographic
+  `(start, end)` sort in both `mirror` and `normalize_record`.
+- The check-4 manual slice indexed `cov` with unclipped negative bounds, which
+  wrap to the far end of the array. Junctions legitimately fall outside the
+  extraction window (a read overlapping it can splice clean out), so every
+  coverage lookup must clip *before* indexing — `features.py` already did, the
+  check did not.
+
+**Step 2 — `dsignal/baseline_gbm.py`** (the honest-reporting gate). Identical
+protocol to `sim/baseline_model.py` (GroupKFold(5) by gene +
+`assert_no_gene_leak`, same CLI/report shape); only the feature set changes.
+
+**Step 3-4 — `dsignal/{dataset,model,train}.py`.** `JunctionSetTransformer`,
+1.4M params: pre-norm encoder over junction tokens with a **relative-position
+bias** (signed `log10(midpoint distance)` in 32 buckets — junction separations
+span four orders of magnitude, raw bp would collapse the short range) and a
+**relation bias** (per-head scalar for identical / shares_donor /
+shares_acceptor / nested / overlapping / disjoint). Attention is written out
+rather than using `nn.MultiheadAttention` (the biases are per-head per-pair and
+must land on the logits pre-softmax); padded keys get a large *finite* penalty,
+not `-inf`, so a fully-padded query row cannot softmax to NaN. The CLS token is
+projected from the event vector, never masked, so zero-junction events (9/1260)
+are a valid CLS-only forward pass. Augmentations act on the *normalized record*
+and features are rebuilt afterwards, so flipping really does recompute
+donor/acceptor groups from mirrored coordinates.
+
+### Results on `npz_scale1260`, all vs the standing RF reference
+
+| model | acc | macroF1 | A3 | A5 | CSE | NN | RI |
+|---|---|---|---|---|---|---|---|
+| RF hand-features (reference) | 0.488 | 0.325 | 0.108 | 0.160 | 0.132 | 0.657 | 0.568 |
+| LightGBM, topology features | 0.688 | 0.621 | 0.527 | 0.525 | 0.585 | 0.826 | 0.644 |
+| Transformer, no augmentation | 0.725 | 0.687 | 0.678 | 0.634 | 0.636 | 0.816 | 0.672 |
+| Transformer, all augmentations | **0.745** | **0.720** | 0.699 | 0.705 | 0.693 | 0.820 | 0.682 |
+| *geometry-only control* | *0.463* | *0.415* | *0.306* | *0.280* | *0.353* | *0.640* | *0.497* |
+
+**The paper's central claim is confirmed.** Same protocol, same folds, same
+data — only the feature set changed — and A3/A5 F1 go up ~4x at the *LightGBM*
+level already. That isolates it: junction identity, not model capacity, was the
+missing ingredient. The Transformer adds a further real increment on top
+(0.621 -> 0.687 macro-F1 before augmentation), so the set encoder earns its
+keep rather than just re-expressing the features.
+
+**Augmentation ablation** (5-fold, same protocol; control = no augmentation):
+
+| run | acc | macroF1 | A3 | A5 | CSE | NN | RI |
+|---|---|---|---|---|---|---|---|
+| control | 0.725 | 0.687 | 0.678 | 0.634 | 0.636 | 0.816 | 0.672 |
+| flip | 0.737 | 0.710 | 0.697 | 0.695 | 0.673 | 0.814 | 0.672 |
+| subsample | 0.737 | 0.701 | 0.678 | 0.649 | 0.646 | 0.824 | 0.707 |
+| junction_dropout | 0.719 | 0.684 | 0.624 | 0.650 | 0.638 | 0.809 | 0.697 |
+| jitter | 0.717 | 0.679 | 0.651 | 0.632 | 0.623 | 0.821 | 0.665 |
+| condition_swap | 0.712 | 0.674 | 0.628 | 0.613 | 0.623 | 0.813 | 0.691 |
+| **all** | **0.745** | **0.720** | 0.699 | 0.705 | 0.693 | 0.820 | 0.682 |
+
+Flip is the most valuable single augmentation, exactly as the plan predicted
+(+0.023 macro-F1, A5 0.634 -> 0.695) — it is the only one that is an *exact*
+label-space symmetry rather than a noise model. condition_swap and jitter are
+individually neutral-to-slightly-negative, but all-together still wins, so
+they are kept.
+
+### **Phase-2 bug found: the geometry-only control fails**
+
+Plan Verification item 2 requires the geometry-only control to score at chance.
+It does not: **window geometry alone reaches 46.3% acc / 0.415 macro-F1** with
+the Transformer (0.465 / 0.369 with LightGBM) using *no* junction or coverage
+information — above the RF reference's macro-F1. Cause: `sim/window.py` draws
+each window's flank log-uniform in [0.1x, 10x] the **event span**, so window
+width inherits the span, which tracks the label:
+
+| label | median window width |
+|---|---|
+| RI | 1,452 bp |
+| A3 / A5 | 2,563 / 2,728 bp |
+| CSE | 17,764 bp |
+| NN | 22,734 bp |
+
+The window randomization is doing something real (it cost the RF baseline
+48.1% -> 35.8% when it landed) but it does not decorrelate width from label,
+and nothing about that shortcut transfers to the real benchmark, whose windows
+come from a curator. So `--feature-subset` **defaults to `no-geometry`** in
+both `baseline_gbm.py` and `train.py`, and every number in this section is
+already geometry-excluded. With geometry included the GBM reaches 0.702 /
+0.640 (vs 0.688 / 0.621); that 0.019 macro-F1 gap is the measure of how little
+the artifact adds once topology is available. **Fixing the window sampler is
+Phase-2 work — flagged, not done here.**
+
+Leakage audit (Verification item 2) otherwise clean: no GTF/annotation input
+anywhere in `features.py`/`dataset.py`/`model.py`/`train.py`, `gene_id` is used
+only for CV grouping and never as a feature, and `extract.py`'s `% 20` mask
+still strips STAR's "annotated in the index's GTF" bit.
+
+### Step 5 — real benchmark, zero-shot sim->real
+
+`dsignal/score_benchmark.py` (the plan's `tools/score_benchmark.py`, which does
+not exist in this repo) + `dsignal/predict.py`, over all 140 curated events with
+the 5 all-augmentation fold checkpoints softmax-averaged:
+
+- **70/140 = 50.0%**, 5-class *and* A3+A5-collapsed (v1's comparable number is
+  123/140 = 87.9%). Per CSV: IR 88.2% (15/17), A3 57.1% (16/28), CSE 41.5%
+  (27/65), A5 40.0% (12/30).
+- **The collapse buys literally nothing, and that is the interesting part**:
+  the 5-class and collapsed numbers are identical because there are **zero
+  A3<->A5 cross-errors on the real benchmark** (confusion matrix has 0 in both
+  off-diagonal A3/A5 cells). v1's defining failure mode is not merely reduced,
+  it is absent — the errors go to NN/RI/CSE instead. On the sim data the same
+  thing shows up as A3<->A5 cross-confusion of 6/180 each way.
+- The dominant real error is **30/140 events predicted NN** (a false positive
+  by construction — the benchmark has no NN events). NN is 43% of the training
+  design (540/1260), so this reads as a class-prior/domain mismatch, not a
+  topology failure. Second is CSE->A3 (23/65).
+- Accuracy is roughly flat across region width (56.7% under 1kb, 42.9% at
+  5-20kb, 58.3% at 20-100kb), so this is not a width-scaling failure.
+- **Wall clock: 0.031 s/event** (0.024 extract + 0.008 inference), 4.4 s for
+  the whole benchmark, against v1's ~17 s/event of image rendering alone —
+  roughly a 550x speedup on the end-to-end path.
+
+This is the expected outcome, not a disappointment: it is zero-shot sim->real
+with no fine-tuning, and Phase 4 is what closes the gap. Its value is as the
+baseline for the Phase-5 "noise realism transfers" ablation.
+
+### Step 6 — scale-up code change only
+
+`sim/select_events.py --exclude-genes` (repeatable; accepts a prior batch's
+`design.tsv` or a bare gene-id list) pre-seeds `used_genes` so scale-up batches
+select disjoint genes — without it, different seeds re-pick the same genes and
+create cross-batch leakage that per-batch `GroupKFold` cannot see. Verified on
+both input forms. **The pasteur batches themselves were not run** — that is
+pipeline driving, unchanged from the existing scale-up recipe.
+
+### Immediate next steps
+
+1. **Fix the window-geometry leak in `sim/window.py`** (Phase 2): draw window
+   width from a distribution independent of event span — e.g. sample width
+   from the real benchmark's own width distribution, or a fixed log-uniform
+   range — then re-run the geometry control, which should then sit at chance.
+2. Phase 4 (sim->real domain adaptation / fine-tuning), which is what the 50%
+   zero-shot number exists to be measured against.
+3. Optionally run the Step-6 pasteur batches (seeds 1-5, `--exclude-genes`) to
+   go from 1,260 to ~7,560 events; the model code needs no change.

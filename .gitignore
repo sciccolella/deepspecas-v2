@@ -1,3 +1,7 @@
 __pycache__
 .vscode
 .snakemake
+
+# Transformer fold checkpoints: 27MB per run, reproducible in ~7 min from
+# the committed JSON/log (dsignal/train.py, seed 0). Metrics are committed.
+runs/*/
