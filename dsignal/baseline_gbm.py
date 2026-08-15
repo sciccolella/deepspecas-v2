@@ -89,9 +89,18 @@ def apply_feature_subset(X: np.ndarray, feat_names: list[str], subset: str) -> n
     mask = geometry_columns(feat_names)
     X = X.copy()
     if subset == "geometry":
-        X[:, ~mask] = 0.0
-        print(f"feature subset 'geometry': kept {int(mask.sum())} geometry columns, "
-              f"zeroed {int((~mask).sum())} junction/coverage columns", file=sys.stderr)
+        # Only the *event-level* geometry features survive. The token-aggregate
+        # geometry columns (max/mean/wmean of rel_start/rel_end/rel_mid/
+        # in_window) summarize where this record's junctions sit, which is
+        # junction structure rather than window geometry -- keeping them made
+        # the control score well above width alone. This matches the
+        # Transformer control in dsignal/dataset.py, whose dummy token set
+        # makes every token aggregate identically zero.
+        keep = np.array([n in _GEOMETRY_EVENT_FEATURES for n in feat_names])
+        X[:, ~keep] = 0.0
+        print(f"feature subset 'geometry': kept {int(keep.sum())} event-level geometry "
+              f"columns, zeroed {int((~keep).sum())} junction/coverage/token-aggregate "
+              f"columns", file=sys.stderr)
     elif subset == "no-geometry":
         X[:, mask] = 0.0
         print(f"feature subset 'no-geometry': zeroed {int(mask.sum())} geometry columns",

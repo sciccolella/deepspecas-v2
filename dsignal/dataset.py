@@ -252,10 +252,25 @@ GEOMETRY_TOKEN_COLS = np.array([TOKEN_FEATURE_NAMES.index(n) for n in _GEOMETRY_
 GEOMETRY_CLS_COLS = np.array([EVENT_FEATURE_NAMES.index(n) for n in _GEOMETRY_EVENT_FEATURES])
 
 
+#: Token count the geometry control emits, fixed and independent of the record.
+GEOMETRY_N_TOKENS = 4
+
+
 def apply_feature_subset(tokens: np.ndarray, cls: np.ndarray, subset: str):
-    """'geometry' zeroes everything *but* window geometry (the control that
-    must score at chance); 'no-geometry' zeroes the geometry columns, which
-    carry a Phase-2 simulation artifact -- see dsignal/baseline_gbm.py."""
+    """'geometry' keeps window geometry and nothing else (the control that must
+    score at chance); 'no-geometry' zeroes the geometry columns, which carry a
+    Phase-2 simulation artifact -- see dsignal/baseline_gbm.py.
+
+    The geometry control **replaces the token set** with a fixed number of
+    identical zero tokens rather than zeroing token columns in place. Zeroing
+    columns left the *number* of junction tokens and their relative spacing
+    (via the model's position/relation biases) intact, and junction count is
+    structural information, not geometry -- that leak, not window width, is why
+    the control originally scored 0.415 macro-F1 while width alone scores 0.253.
+    With the token set replaced, the control sees the CLS geometry features and
+    nothing else. Callers must pass the meta coordinates through
+    `apply_feature_subset_meta` so they match the emitted token count.
+    """
     if subset == "all":
         return tokens, cls
     tokens, cls = tokens.copy(), cls.copy()
@@ -264,16 +279,24 @@ def apply_feature_subset(tokens: np.ndarray, cls: np.ndarray, subset: str):
             tokens[:, GEOMETRY_TOKEN_COLS] = 0.0
         cls[GEOMETRY_CLS_COLS] = 0.0
     elif subset == "geometry":
-        keep_t = np.zeros(tokens.shape[1] if len(tokens) else N_TOKEN_FEATURES, dtype=bool)
-        keep_t[GEOMETRY_TOKEN_COLS] = True
         keep_c = np.zeros(N_EVENT_FEATURES, dtype=bool)
         keep_c[GEOMETRY_CLS_COLS] = True
-        if len(tokens):
-            tokens[:, ~keep_t] = 0.0
         cls[~keep_c] = 0.0
+        tokens = np.zeros((GEOMETRY_N_TOKENS, N_TOKEN_FEATURES), dtype=np.float32)
     else:
         raise ValueError(f"unknown feature subset {subset!r}")
     return tokens, cls
+
+
+def apply_feature_subset_meta(meta: dict, subset: str) -> dict:
+    """Junction coordinates matching what `apply_feature_subset` emitted -- the
+    model derives its relative-position and relation attention biases from
+    these, so under the geometry control they must be as content-free as the
+    dummy tokens they belong to."""
+    if subset != "geometry":
+        return meta
+    zeros = np.zeros(GEOMETRY_N_TOKENS, dtype=np.int64)
+    return {**meta, "s_rel": zeros, "e_rel": zeros.copy()}
 
 
 # --------------------------------------------------------------------------
@@ -355,6 +378,7 @@ class JunctionSetDataset(Dataset):
 
         tokens, cls, meta = build_features(cfg=self.cfg, norm=norm)
         tokens, cls = apply_feature_subset(tokens, cls, self.feature_subset)
+        meta = apply_feature_subset_meta(meta, self.feature_subset)
         if self.scaler is not None:
             tokens, cls = self.scaler.transform(tokens, cls)
 

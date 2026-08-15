@@ -27,7 +27,7 @@ import time
 import numpy as np
 import torch
 
-from dsignal.dataset import apply_feature_subset, collate, FeatureScaler
+from dsignal.dataset import apply_feature_subset, apply_feature_subset_meta, collate, FeatureScaler
 from dsignal.extract import ReadFilters, extract_event, parse_region
 from dsignal.features import FeatureConfig, build_features
 from dsignal.model import JunctionSetTransformer, ModelConfig
@@ -73,6 +73,7 @@ class Predictor:
     def predict_record(self, record: dict, need_weights: bool = False):
         """(label, probability vector, attention or None) for one record."""
         tokens_raw, cls_raw, meta = build_features(record, self.cfg)
+        meta = apply_feature_subset_meta(meta, self.feature_subset)
         probs = np.zeros(len(self.classes), dtype=np.float64)
         attn_out = None
 
