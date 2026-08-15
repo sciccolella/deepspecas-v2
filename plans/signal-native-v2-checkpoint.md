@@ -562,27 +562,89 @@ that for this task). Committed as `c456ce4`.
    constraint — not enforced by the CV code itself, so it would have
    silently broken the moment scale-up puts >1 event on a gene.
 
-Verified with synthetic in-memory smoke tests only (no gene overlap between
+Verified with synthetic in-memory smoke tests (no gene overlap between
 `nn_plain`/`nn_novel` picks, `assert_no_gene_leak` catches an induced leak,
-`GroupKFold` keeps a synthetic multi-event gene in one fold) — **no
-pasteur-side run yet**. This repo has no local GTF/genome/BAM data, so the
-actual `select_events` -> `gene_neighbors` -> `novel_junctions` ->
-`build_experiment` -> polyester -> STAR -> `dsignal.extract` ->
-`baseline_model` chain with `nn_novel` live still needs to run on pasteur
-before this is "trusted" the way layers 1-5 and window randomization are.
+`GroupKFold` keeps a synthetic multi-event gene in one fold), **then run end
+to end on pasteur** (`/data/conda/ciccolella/deepSpecas-v2`, see
+`memory/reference_pasteur_signal_native.md` for the environment layout —
+saved there per explicit user instruction, so future sessions don't have to
+rediscover ssh host/conda envs/paths):
+
+1. `select_events.py --n-per-label 60 --n-nn-plain 60 --n-nn-hard 60
+   --n-nn-novel 60 --seed 0` -> 420 rows (360 unchanged + 60 new
+   `nn_novel`); diffed the first 360 rows against the pre-existing
+   window-layer `design.tsv` and confirmed byte-identical, confirming the
+   RNG-isolation invariant held (new selection draws only append, they
+   don't perturb earlier draws).
+2. `gene_neighbors.py` -> 681 pairs / 663 distinct neighbours (up from 450
+   at the window layer, tracks the larger design gene set).
+3. `gtf_exon_structure.py` + `novel_junctions.py` -> 902/1083 genes got a
+   variant; of the 60 `nn_novel` design genes specifically, **58/60** got
+   one (2 fell back to plain constitutive expression, reported by
+   `build_experiment.py`'s new `nn_novel rows: 58/60 got an elevated
+   novel-junction row` line) -- a good hit rate, not mostly-fallback.
+4. `build_experiment.py` (defaults, `--neighbors`, `--novel-junctions`) ->
+   11209 transcripts, 9.0M simulated fragments.
+5. Reassembled `transcripts.ordered.fa` by hand (`gffread` on the
+   regenerated `spliced.gtf`/`spliced_ids.txt`, `build_premrna_fasta.py`,
+   concatenated with `novel.fa`, then reordered to match
+   `transcript_ids.txt` row-for-row -- `simulate_experiment_countmat`
+   requires `nrow(readmat) == length(transcripts)`, i.e. positional, not
+   name-matched); order-verified by diffing the FASTA header list against
+   `transcript_ids.txt` before running polyester.
+6. `run_polyester.R` (fraglen=250 fragsd=25 readlen=100 seed=0, layer-5
+   `pcr_rate=0.1 pcr_lambda=1 adapter_contamination=TRUE`, same as the
+   window layer) -> real STAR realignment (97.2-98.1% uniquely mapped,
+   consistent with every prior layer) -> `dsignal.extract` (420/420) ->
+   `psi_recovery_check.py` -> `baseline_model.py`. Pulled back to the local
+   repo: `sim/experiment/npz_nn_novel/`, `sim/experiment/labels_nn_novel.tsv`,
+   `sim/psi_recovery_nn_novel.tsv`, updated `sim/gene_neighbors.tsv`.
+   - Junction-level PSI recovery on the unchanged 240 positive events, as
+     expected, flat vs the window layer: A3 0.155 (was 0.154), A5 0.126
+     (was 0.134), CSE 0.164 (was 0.163), RI 0.198 (was 0.196).
+   - **GroupKFold-vs-StratifiedKFold isolation check**: re-ran the new
+     `GroupKFold` `baseline_model.py` against the *old* `npz_window`/
+     `labels_window.tsv` data first, before touching the new data --
+     accuracy 35.8%, macro-F1 0.294, essentially identical to the
+     previously-reported `StratifiedKFold` numbers (35.8%, 0.296). Confirms
+     what the code comment predicted: the pilot's one-event-per-gene
+     selection constraint already made `StratifiedKFold`'s folds
+     incidentally gene-disjoint, so this particular swap is a no-op on
+     today's data and only starts mattering once scale-up puts >1 event on
+     a gene.
+   - **`nn_novel` effect** (420-event data, same `GroupKFold` code):
+     accuracy 46.2% (was 35.8%), macro-F1 0.271 (was 0.294) -- accuracy up,
+     macro-F1 slightly down. Per-class RF F1: NN 0.638 (was 0.478, a big
+     jump), RI 0.503 (flat), but **A3 0.077 (was 0.167), A5 0.027 (was
+     0.067), CSE 0.108 (was 0.252) all dropped substantially**. Two
+     candidate explanations, not disentangled: (a) `nn_novel` genes look
+     easier for the model to call NN than the existing `nn_hard`/`nn_plain`
+     mix (they have no labelled AS junction pattern to mimic, just a
+     background novel junction), which mechanically raises NN's own recall
+     and thus overall accuracy while leaving other classes' absolute
+     performance unchanged but their relative/macro standing worse; (b)
+     with only 60 examples/class split 5 ways (12/fold), `GroupKFold`'s
+     specific fold composition is high-variance at this sample size and a
+     10-gene reshuffle (663 vs 450 neighbours changes which genes overlap
+     which windows, feeding back into extraction) could swing per-class F1
+     this much on noise alone. **Not a trustworthy causal read at pilot
+     scale** -- flagged here rather than resolved; re-examine once the
+     design is scaled up (bigger per-class n stabilizes the CV estimate)
+     rather than trying to explain it away now.
 
 ## Immediate next steps (not started)
 
-1. Run the above on pasteur: regenerate `design.tsv` with `--n-nn-novel`,
-   re-run `gene_neighbors`/`novel_junctions`/`build_experiment` through
-   `baseline_model.py`, and fold the `nn_novel` bucket + gene-grouped CV
-   into the per-layer contribution table. Sanity-check the
-   `nn_novel rows: N/M got an elevated novel-junction row` line isn't
-   mostly fallback (would mean the eligibility pool is picking mostly
-   single-exon genes).
-2. Scale the pilot design up once noise layers + window randomization +
-   hard-negative refinement are trusted (pilot was deliberately small —
-   360 events, now ~420 with nn_novel — per explicit user choice to
+1. Phase 2 steps 6-7 are now done and pasteur-verified (see the 2026-08-15
+   update above) — the `nn_novel` A3/A5/CSE regression there is flagged but
+   **not resolved**; worth a second look once per-class n is bigger than 60
+   (either at scale-up, or a cheap standalone check: re-run
+   `baseline_model.py` a few more times with different `--folds`/reshuffled
+   `GroupKFold` splits on the current 420-event data to see if the
+   A3/A5/CSE drop is stable or an artifact of one unlucky fold assignment).
+2. Scale the pilot design up now that all of noise layers 1-5, window
+   randomization, and hard-negative refinement (incl. `nn_novel`) are
+   implemented and individually verified (pilot was deliberately small —
+   360 events, now 420 with `nn_novel` — per explicit user choice to
    validate cheaply before committing to a full-scale run). When that
    happens, the full contribution table (layers 1-5 + window randomization
    + nn_novel) should be regenerated in one pass under the current code,
