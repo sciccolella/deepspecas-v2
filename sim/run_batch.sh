@@ -144,9 +144,15 @@ if [[ ! -s $B/labels.tsv ]]; then
     --out "$B/extract.csv" --labels-out "$B/labels.tsv"
 fi
 
-# count, not mere existence: a half-finished extract leaves the directory there
-N_ROWS=$(($(wc -l < "$B/extract.csv")))
-N_NPZ=$(ls "$B/npz" 2>/dev/null | wc -l)
+# count, not mere existence: a half-finished extract leaves the directory there.
+# `ls` on a missing directory exits non-zero, which under `set -e -o pipefail`
+# kills the whole script -- hence the explicit guard rather than `ls 2>/dev/null`.
+N_ROWS=$(wc -l < "$B/extract.csv")
+if [[ -d $B/npz ]]; then
+  N_NPZ=$(find "$B/npz" -maxdepth 1 -name '*.npz' | wc -l)
+else
+  N_NPZ=0
+fi
 if [[ $N_NPZ -ne $N_ROWS ]]; then
   step "$TAG: dsignal.extract ($N_NPZ/$N_ROWS records present)"
   "$PY" -m dsignal.extract --csv "$B/extract.csv" --out-dir "$B/npz" \

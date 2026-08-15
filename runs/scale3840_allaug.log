@@ -1,0 +1,11 @@
+loaded 3840 events
+gene-grouped 5-fold CV over 3840 genes: no gene leak
+model: 1,403,229 trainable parameters
+  fold 0 epoch   0  loss 1.2475  held-out macro-F1 0.534  (best 0.534 @ 0)
+  fold 0 epoch  10  loss 0.7786  held-out macro-F1 0.732  (best 0.748 @ 9)
+  fold 0 epoch  20  loss 0.6499  held-out macro-F1 0.742  (best 0.768 @ 17)
+  fold 0 epoch  30  loss 0.5774  held-out macro-F1 0.758  (best 0.769 @ 21)
+  fold 0: early stop at epoch 36 (no improvement for 15 epochs)
+fold 0: best held-out macro-F1 0.769 at epoch 21
+  fold 1 epoch   0  loss 1.2399  held-out macro-F1 0.541  (best 0.541 @ 0)
+  fold 1 epoch  10  loss 0.7354  held-out macro-F1 0.722  (best 0.738 @ 9)

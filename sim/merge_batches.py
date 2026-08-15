@@ -142,9 +142,15 @@ def resample_to_nn_frac(rows, target_frac: float, seed: int, out_path: str):
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--batch", action="append", required=True, metavar="TAG=DIR",
+    ap.add_argument("--batch", action="append", metavar="TAG=DIR",
                     help="repeatable; DIR must contain npz/ and labels.tsv")
-    ap.add_argument("--out-npz", required=True)
+    ap.add_argument("--from-labels", default=None,
+                    help="skip merging and resample this existing labels file instead. "
+                    "Used to derive a *positive-matched* NN condition: resampling the "
+                    "43%%-NN file down to 25%% keeps its exact positive subset, so the "
+                    "pair differs only in NN count and not in how much positive data "
+                    "each was trained on")
+    ap.add_argument("--out-npz", default=None)
     ap.add_argument("--out-labels", required=True)
     ap.add_argument("--nn-frac", type=float, action="append", default=None,
                     help="also write a labels file whose NN class is this fraction; repeatable")
@@ -152,14 +158,20 @@ def main(argv=None) -> None:
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
 
-    batches = []
-    for spec in args.batch:
-        tag, _, path = spec.partition("=")
-        if not path:
-            raise SystemExit(f"--batch expects TAG=DIR, got {spec!r}")
-        batches.append((tag, path))
-
-    rows = merge(batches, args.out_npz, args.out_labels)
+    if args.from_labels:
+        with open(args.from_labels) as fh:
+            rows = list(csv.DictReader(fh, delimiter="\t"))
+        print(f"read {len(rows)} records from {args.from_labels}")
+    else:
+        if not args.batch or not args.out_npz:
+            raise SystemExit("need --batch ... --out-npz, or --from-labels")
+        batches = []
+        for spec in args.batch:
+            tag, _, path = spec.partition("=")
+            if not path:
+                raise SystemExit(f"--batch expects TAG=DIR, got {spec!r}")
+            batches.append((tag, path))
+        rows = merge(batches, args.out_npz, args.out_labels)
 
     for frac in args.nn_frac or []:
         out = args.nn_frac_out or args.out_labels.replace(".tsv", f".nn{int(frac * 100)}.tsv")

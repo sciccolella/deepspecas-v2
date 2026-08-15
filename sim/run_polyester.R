@@ -120,6 +120,40 @@ if (adapter_contamination) {
   if (!is.null(adapter_sequence)) sim_args$adapter_sequence <- adapter_sequence
   cat("noise layer 5: adapter_contamination = TRUE, adapter_sequence =",
       if (is.null(adapter_sequence)) "(package default)" else adapter_sequence, "\n")
+
+  # Second bug in the ASimulatoR fork (the first is the class(readmat) check
+  # above). In get_reads()'s short-fragment branch, after the adapter is
+  # appended to every short fragment it trims any that now exceed readlen:
+  #
+  #   subseq(outShort[width(outShort) > readlen], start = (readlen + 1)) <- ""
+  #
+  # If that selection is *empty* -- there were short fragments, but none long
+  # enough to overrun readlen even after padding -- `subseq<-` calls xscat()
+  # with zero sequences against a one-sequence value and dies with
+  # "xscat() cannot mix arguments made of 0 sequence with arguments made of 1
+  # or more sequences". At fraglen=250/fragsd=25 short fragments are already a
+  # ~6-sd event, so whether any of them clears readlen is luck of the seed:
+  # scale-up batches 1-4 happened to have one, batch 5 did not and crashed
+  # after 25 minutes of read generation.
+  #
+  # Guard the selection instead of disabling adapter contamination, so every
+  # batch keeps an identical noise model. Patched by text substitution on the
+  # deparsed function, asserted to match exactly once so a future package
+  # version silently changing the line is a loud failure, not a silent no-op.
+  .src <- deparse(polyester:::get_reads)
+  .needle <- "subseq(outShort[width(outShort) > readlen], start = (readlen + "
+  .hits <- grep(.needle, .src, fixed = TRUE)
+  if (length(.hits) != 1L) {
+    stop("polyester:::get_reads no longer matches the expected adapter-trim ",
+         "line (", length(.hits), " matches); re-check the fork before patching")
+  }
+  .src[.hits] <- paste0(
+    "if (any(width(outShort) > readlen)) ", .src[.hits]
+  )
+  .patched <- eval(parse(text = paste(.src, collapse = "\n")))
+  environment(.patched) <- getNamespace("polyester")
+  assignInNamespace("get_reads", .patched, ns = "polyester")
+  cat("noise layer 5: patched polyester:::get_reads (empty adapter-trim selection)\n")
 }
 
 do.call(simulate_experiment_countmat_patched, sim_args)
