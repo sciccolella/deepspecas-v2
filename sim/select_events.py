@@ -53,6 +53,23 @@ def _load_gene_spans(path: str):
     return spans
 
 
+def _load_excluded_genes(paths) -> set:
+    """Gene ids from prior batches' design.tsv files (the `gene_id` column) or
+    from bare one-id-per-line lists. Both forms are accepted so a batch can be
+    excluded straight from its own design output with no extra step."""
+    genes = set()
+    for path in paths or []:
+        with open(path) as f:
+            first = f.readline()
+            f.seek(0)
+            if "\t" in first and "gene_id" in first:
+                for row in csv.DictReader(f, delimiter="\t"):
+                    genes.add(row["gene_id"])
+            else:
+                genes.update(line.strip() for line in f if line.strip())
+    return genes
+
+
 def _sample_psi_pair(rng: np.random.Generator, dpsi_lo: float, dpsi_hi: float):
     dpsi = rng.uniform(dpsi_lo, dpsi_hi) * rng.choice([-1.0, 1.0])
     mid = rng.uniform(0.25, 0.75)
@@ -192,6 +209,17 @@ def main(argv=None) -> None:
     ap.add_argument("--n-nn-novel", type=int, default=60)
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--exclude-genes",
+        action="append",
+        default=[],
+        metavar="FILE",
+        help="pre-seed the used-genes set from a prior batch's design.tsv (or a "
+        "bare gene-id list), so a scale-up batch selects genes disjoint from it. "
+        "Repeatable. Without this, different seeds re-pick the same genes and "
+        "create cross-batch gene leakage that GroupKFold cannot see, because "
+        "each batch's folds are computed independently.",
+    )
     args = ap.parse_args(argv)
 
     # rng drives row selection exactly as before this change (same
@@ -209,7 +237,11 @@ def main(argv=None) -> None:
     chrom_lengths = _load_chrom_lengths(args.chrom_lengths)
     catalogue_genes = {e.gene_id for e in events}
 
-    used_genes = set()
+    used_genes = _load_excluded_genes(args.exclude_genes)
+    if used_genes:
+        print(f"excluding {len(used_genes)} genes from "
+              f"{len(args.exclude_genes)} file(s)", file=sys.stderr)
+    n_excluded = len(used_genes)
     rows = []
     rows += select_positives(events, args.n_per_label, used_genes, rng)
     rows += select_hard_negatives(events, args.n_nn_hard, used_genes, rng)
@@ -240,7 +272,12 @@ def main(argv=None) -> None:
     print(f"wrote {len(rows)} design rows to {args.out}", file=sys.stderr)
     print(f"  by kind: {Counter(r['kind'] for r in rows)}", file=sys.stderr)
     print(f"  by label: {Counter(r['label'] for r in rows)}", file=sys.stderr)
-    print(f"  distinct genes: {len(used_genes)}", file=sys.stderr)
+    print(f"  distinct genes: {len(used_genes) - n_excluded}", file=sys.stderr)
+    if n_excluded:
+        selected = {r["gene_id"] for r in rows}
+        overlap = selected & _load_excluded_genes(args.exclude_genes)
+        print(f"  overlap with excluded genes: {len(overlap)} (must be 0)", file=sys.stderr)
+        assert not overlap, f"excluded genes were selected anyway: {sorted(overlap)[:5]}"
 
 
 if __name__ == "__main__":
