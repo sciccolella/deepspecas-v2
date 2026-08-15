@@ -868,3 +868,188 @@ pipeline driving, unchanged from the existing scale-up recipe.
    zero-shot number exists to be measured against.
 3. Optionally run the Step-6 pasteur batches (seeds 1-5, `--exclude-genes`) to
    go from 1,260 to ~7,560 events; the model code needs no change.
+
+## Update (2026-08-15, later) — window-geometry leak fixed (Phase-2 follow-up)
+
+Implemented `plans/signal-native-v2-window-geometry-fix.md`, which closes the
+"Fix the window-geometry leak in `sim/window.py`" item above. Each step was
+built, verified and committed before the next started.
+
+### Diagnosis (three findings, all confirmed)
+
+1. **The control's accuracy was just window width.** A depth-4 decision tree on
+   window width *alone* (widths read off the `.npz` filenames of
+   `npz_scale1260`) scores 0.457 acc / 0.235 macro-F1 — the same accuracy as
+   the Transformer geometry control's 0.463, and the accuracy lives entirely in
+   NN and RI; A5/CSE get nothing from width.
+2. **The control's extra macro-F1 was not geometry at all.**
+   `dsignal/dataset.apply_feature_subset("geometry")` zeroed feature *columns*
+   but left the *number* of junction tokens and their spacing (which the
+   attention position/relation biases read) intact. Junction count is
+   structure, not geometry, so the control was never the control the plan's
+   Verification item 2 asks for. Re-running the *honest* control on the *old*
+   data isolates the two effects: Transformer 0.463/0.415 -> 0.444/0.399,
+   LightGBM 0.465/0.369 -> 0.399/0.298.
+3. **Width<->label correlation is partly real biology and does transfer.** The
+   curated benchmark shows the same per-class ordering as the simulation
+   (benchmark median region width: RI 943 < A5 1,544 < A3 1,731 < CSE 6,885).
+   The genuine artifacts were narrower than "windows correlate with label":
+   NN windows came from whole gene spans (median 22,734bp), and sim windows ran
+   ~2x wider than benchmark ones because flank was a multiple of event span.
+
+### What changed
+
+- **`sim/window.py`** — window width is now drawn from a log-normal fitted to
+  the pooled curated benchmark (all four CSVs pooled, so the draw carries no
+  label information: n=140, log10 mean 3.4448, sd 0.7024, truncated by
+  rejection to the observed [2, 181,766] range), independent of the event span.
+  The event is then placed uniformly at random inside the window, preserving
+  the off-center property. A draw narrower than the event span is clamped up to
+  span + a log-uniform **absolute** 50-500bp flank per side — the residual,
+  irreducible coupling, since a window must contain its event.
+  `sample_window_detail` returns that clamp flag; `select_events.py` reports
+  the rate. Redrawing from a span-truncated distribution instead of clamping
+  was tried and rejected: same leak-test result, but it inflates pooled width
+  (log10 mean 3.96 vs 3.78, benchmark 3.44).
+- **`sim/select_events.py`** — `nn_plain`/`nn_novel` rows no longer take the
+  whole gene span as their region; each gets a random sub-interval of its gene
+  whose length is drawn from the pooled positive event-span distribution
+  (`shrink_constitutive_regions`). `nn_hard` is untouched (real event span).
+  Draws come from their own generator (`seed + 2_000_000`), like the window
+  stream, so **the row-selection stream is bit-for-bit unchanged** — verified:
+  the regenerated 1260-row `design.tsv` is byte-identical to the previous one
+  on event_id/gene_id/label/kind/chrom/strand/psi1/psi2, and the only region
+  changes are 139/180 `nn_plain` + 139/180 `nn_novel` rows (the other 41 each
+  have genes shorter than their sampled span).
+- **`dsignal/dataset.py` + `predict.py`** — the geometry control replaces the
+  token set with a fixed 4 identical zero tokens and zeroes the meta
+  coordinates the attention biases derive from (`apply_feature_subset_meta`),
+  so it tests window geometry and nothing else. `dsignal/baseline_gbm.py`'s
+  geometry subset likewise keeps only the two event-level geometry features,
+  dropping the token-aggregate geometry columns — the same information the
+  Transformer control now gets. **`all` and `no-geometry` are untouched**:
+  LightGBM no-geometry (0.688/0.621) and the Transformer no-augmentation
+  control (0.725/0.687, every per-class F1) reproduce the table above exactly
+  on `npz_scale1260`.
+
+### Re-extraction (no re-simulation, scope decided with the user)
+
+Regenerated `design.tsv` on pasteur -> `build_extract_csv.py` ->
+`dsignal/extract.py` against the **existing** scale1260 BAMs -> pulled back as
+`sim/experiment/npz_windowfix/` + `labels_windowfix.tsv` (1260/1260 events,
+13MB vs the old set's 22MB, consistent with narrower windows).
+`select_events.py` reports: window width median 5,816bp, log10 mean 3.801
+sd 0.541 (benchmark 3,063 / 3.445 / 0.702), **clamp rate 46.9%**.
+
+**Accepted mismatch**: the neighbour background gene set baked into those BAMs
+was chosen under the *old* windows, so some new windows contain genes never
+simulated as background and vice versa. Fine for measuring whether the shortcut
+is gone; a consistent re-simulation comes with the next scale-up, which is a
+rerun of the existing recipe with no new code. It does mean the sim-CV numbers
+below are not a perfectly clean ceteris-paribus comparison against the old
+ones.
+
+### Results — window width per label
+
+| label | old median width | new median width |
+|---|---|---|
+| RI | 1,452 | 3,051 |
+| A3 / A5 | 2,564 / 2,728 | 5,144 / 4,971 |
+| CSE | 17,764 | 12,560 |
+| NN | 22,735 | 6,365 |
+
+NN is no longer the widest class by an order of magnitude; CSE is now the
+widest, which is also the curated benchmark's ordering (ES 6,885bp). Pooled
+log10 width sd drops 0.851 -> 0.541.
+
+### Results — the leak tests (chance references: majority-class 0.429 acc /
+0.120 macro-F1; stratified-random 0.264 / 0.197)
+
+| test | old windows | new windows |
+|---|---|---|
+| width-only decision tree | 0.457 / 0.235 | **0.432 / 0.199** |
+| LightGBM geometry control (honest) | 0.399 / 0.298 | **0.351 / 0.260** |
+| Transformer geometry control (honest) | 0.444 / 0.399 | **0.364 / 0.331** |
+
+Both controls now score *below* the majority-class accuracy with a diffuse
+confusion matrix — they cannot even match "always predict NN". Macro-F1 sits
+above stratified-chance (0.331 vs 0.197 for the Transformer), and the residual
+is CSE: `apply_feature_subset("geometry")` keeps two features, and splitting
+them (LightGBM, new windows) gives width alone 0.332/0.222 and
+`frac_junctions_out_of_window` alone 0.400/0.232. **The honest reading is that
+the control is at chance on accuracy but retains a weak CSE-vs-rest width
+signal**, which is exactly the clamp residual — CSE event spans are genuinely
+long, so their windows are genuinely wide, in the simulation and in the curated
+benchmark alike. That part is biology, not an artifact, and it is now the same
+relationship the real data has.
+
+### Results — the real model on the new windows (5-fold, grouped by gene)
+
+| run | acc | macroF1 | A3 | A5 | CSE | NN | RI |
+|---|---|---|---|---|---|---|---|
+| LightGBM, no-geometry | 0.658 | 0.578 | 0.536 | 0.424 | 0.580 | 0.831 | 0.519 |
+| LightGBM, all features | 0.664 | 0.591 | 0.525 | 0.448 | 0.591 | 0.826 | 0.563 |
+| Transformer, no aug | 0.694 | 0.647 | 0.636 | 0.607 | 0.611 | 0.818 | 0.561 |
+| Transformer, all aug | 0.712 | 0.674 | 0.695 | 0.637 | 0.628 | 0.824 | 0.585 |
+| Transformer, all aug, **all features** | 0.717 | 0.678 | 0.681 | 0.645 | 0.643 | 0.833 | 0.590 |
+
+Against the old windows the no-geometry numbers move -0.03 to -0.05 macro-F1
+(Transformer all-aug 0.720 -> 0.674), concentrated in RI (0.682 -> 0.585) and
+CSE. That is the expected direction and size: narrower windows give the
+coverage-shape classes less flanking context, and part of it is the accepted
+neighbour-set mismatch. No large move, so the window change did nothing
+unintended.
+
+**`all` vs `no-geometry`, re-opened as the plan asked**: geometry now buys
++0.004 macro-F1 for the Transformer (0.678 vs 0.674) and +0.013 for LightGBM
+(0.591 vs 0.578), against +0.019 for LightGBM before the fix. That is inside
+run-to-run noise. **Decision: keep `no-geometry` as the default.** The gap no
+longer measures a shortcut worth excluding, but it also buys nothing, and
+keeping geometry out keeps the reported number provably free of the clamp
+residual described above — a free guarantee at no measurable cost.
+
+### Results — zero-shot sim->real benchmark: it got worse, not better
+
+`dsignal/score_benchmark.py` over the 140 curated events, 5 all-augmentation
+fold checkpoints (`runs/windowfix_allaug/`) softmax-averaged:
+
+- **60/140 = 42.9%**, 5-class and A3+A5-collapsed alike, **down from 50.0%**.
+  Per CSV: IR 70.6% (was 88.2%), ES 43.1% (was 41.5%), A5 36.7% (was 40.0%),
+  A3 32.1% (was 57.1%).
+- Paired over the 139 events both runs scored: 20 old-correct/new-wrong vs 10
+  old-wrong/new-correct, **McNemar exact p = 0.099** — a real directional move
+  but not significant at 0.05.
+- The dominant error is still false NN, and it got worse: **41/140 NN
+  predictions, up from 29** (the benchmark contains no NN events, so every one
+  is a false positive).
+- **The A3<->A5 result survives**: still exactly zero A3<->A5 cross-errors on
+  the real benchmark, so v1's defining failure mode remains absent.
+- Wall clock 0.037 s/event, unchanged in character (v1: ~17 s/event of image
+  rendering alone).
+
+**This is the honest outcome and it should not be spun.** The fix was expected
+to help transfer, on the reasoning that NN's absurd window widths were the
+biggest artifact; instead removing them made NN *more* attractive as a
+prediction, because constitutive NN regions now look dimensionally like real
+curated windows. Two candidate explanations, not disentangled: (a) NN is 43% of
+the training design and the benchmark has no NN at all, so any change that
+makes NN's window statistics more benchmark-like increases false NN — a
+class-prior/domain problem that Phase 4 exists to fix; (b) part of the drop is
+the accepted neighbour-set mismatch rather than the window change. Resolving
+this needs a consistent re-simulation at the next scale-up, and it is a strong
+argument for putting the NN class fraction (or a prior correction) on Phase 4's
+list. The fix is still correct on its own terms — the control is at chance and
+the reported CV numbers no longer rest on a shortcut — but it did not buy the
+zero-shot gain the plan hoped for.
+
+### Verification checklist (from the plan)
+
+- [x] regenerated `design.tsv` selection columns byte-identical
+- [x] window width distribution per label vs the benchmark table
+- [x] NN window widths no longer the widest class by an order of magnitude
+- [x] clamp rate reported (46.9%)
+- [x] width-only tree at chance (0.432 acc vs 0.429 majority-class floor)
+- [x] geometry-only control at chance on accuracy, with the residual CSE width
+      signal reported rather than hidden
+- [x] `no-geometry` reproduces the checkpoint table exactly on the old data
+- [x] benchmark score reported against the 50.0% baseline (42.9%, p = 0.099)

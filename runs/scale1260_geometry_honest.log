@@ -1,0 +1,86 @@
+loaded 1260 events
+gene-grouped 5-fold CV over 1260 genes: no gene leak
+model: 1,403,229 trainable parameters
+  fold 0 epoch   0  loss 1.5422  held-out macro-F1 0.229  (best 0.229 @ 0)
+  fold 0 epoch  10  loss 1.3721  held-out macro-F1 0.363  (best 0.363 @ 10)
+  fold 0 epoch  20  loss 1.3421  held-out macro-F1 0.350  (best 0.389 @ 11)
+  fold 0: early stop at epoch 26 (no improvement for 15 epochs)
+fold 0: best held-out macro-F1 0.389 at epoch 11
+  fold 1 epoch   0  loss 1.5410  held-out macro-F1 0.281  (best 0.281 @ 0)
+  fold 1 epoch  10  loss 1.3927  held-out macro-F1 0.305  (best 0.363 @ 5)
+  fold 1 epoch  20  loss 1.3657  held-out macro-F1 0.323  (best 0.370 @ 13)
+  fold 1 epoch  30  loss 1.3347  held-out macro-F1 0.371  (best 0.389 @ 24)
+  fold 1: early stop at epoch 39 (no improvement for 15 epochs)
+fold 1: best held-out macro-F1 0.389 at epoch 24
+  fold 2 epoch   0  loss 1.4970  held-out macro-F1 0.282  (best 0.282 @ 0)
+  fold 2 epoch  10  loss 1.3691  held-out macro-F1 0.347  (best 0.347 @ 10)
+  fold 2 epoch  20  loss 1.3562  held-out macro-F1 0.337  (best 0.353 @ 15)
+  fold 2 epoch  30  loss 1.3355  held-out macro-F1 0.359  (best 0.367 @ 29)
+  fold 2 epoch  40  loss 1.3144  held-out macro-F1 0.361  (best 0.379 @ 36)
+  fold 2 epoch  50  loss 1.3031  held-out macro-F1 0.375  (best 0.395 @ 49)
+fold 2: best held-out macro-F1 0.395 at epoch 51
+  fold 3 epoch   0  loss 1.5019  held-out macro-F1 0.219  (best 0.219 @ 0)
+  fold 3 epoch  10  loss 1.3767  held-out macro-F1 0.308  (best 0.404 @ 9)
+  fold 3 epoch  20  loss 1.3436  held-out macro-F1 0.330  (best 0.404 @ 9)
+  fold 3: early stop at epoch 24 (no improvement for 15 epochs)
+fold 3: best held-out macro-F1 0.404 at epoch 9
+  fold 4 epoch   0  loss 1.5417  held-out macro-F1 0.247  (best 0.247 @ 0)
+  fold 4 epoch  10  loss 1.3680  held-out macro-F1 0.335  (best 0.396 @ 7)
+  fold 4 epoch  20  loss 1.3514  held-out macro-F1 0.357  (best 0.407 @ 14)
+  fold 4: early stop at epoch 29 (no improvement for 15 epochs)
+fold 4: best held-out macro-F1 0.407 at epoch 14
+
+trained 5 folds in 6.3 min (per-fold macro-F1 0.389 0.389 0.395 0.404 0.407)
+class counts: {'A3': 180, 'A5': 180, 'CSE': 180, 'NN': 540, 'RI': 180}
+augmentations: ['none (control)'], feature subset: geometry
+
+=== junction-set transformer [geometry] [aug: none] (5-fold group CV, by gene) ===
+              precision    recall  f1-score   support
+
+          A3      0.404     0.200     0.268       180
+          A5      0.244     0.417     0.308       180
+         CSE      0.264     0.406     0.319       180
+          NN      0.725     0.522     0.607       540
+          RI      0.470     0.517     0.492       180
+
+    accuracy                          0.444      1260
+   macro avg      0.421     0.412     0.399      1260
+weighted avg      0.508     0.444     0.458      1260
+
+confusion matrix (rows=true, cols=pred): ['A3', 'A5', 'CSE', 'NN', 'RI']
+[[ 36  55  32  24  33]
+ [ 21  75  29  24  31]
+ [  8  36  73  53  10]
+ [ 18  75 134 282  31]
+ [  6  66   9   6  93]]
+
+vs sim/baseline_model.py random forest (same data, same protocol):
+  metric         this   RF ref    delta
+  accuracy      0.444    0.488   -0.044
+  macro-F1      0.399    0.325   +0.074
+  F1 A3         0.268    0.108   +0.160
+  F1 A5         0.308    0.160   +0.148
+  F1 CSE        0.319    0.132   +0.187
+  F1 NN         0.607    0.657   -0.050
+  F1 RI         0.492    0.568   -0.076
+
+  A3/A5 F1 is the metric that matters -- that is the class pair the
+  topology features exist to fix.
+
+=== transformer, A3+A5 collapsed to A ===
+              precision    recall  f1-score   support
+
+           A      0.472     0.519     0.495       360
+         CSE      0.264     0.406     0.319       180
+          NN      0.725     0.522     0.607       540
+          RI      0.470     0.517     0.492       180
+
+    accuracy                          0.504      1260
+   macro avg      0.483     0.491     0.478      1260
+weighted avg      0.550     0.504     0.517      1260
+
+confusion matrix (rows=true, cols=pred): ['A', 'CSE', 'NN', 'RI']
+[[187  61  48  64]
+ [ 44  73  53  10]
+ [ 93 134 282  31]
+ [ 72   9   6  93]]

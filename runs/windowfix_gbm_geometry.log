@@ -1,0 +1,83 @@
+feature subset 'geometry': kept 2 event-level geometry columns, zeroed 174 junction/coverage/token-aggregate columns
+loaded 1260 events, 176 features
+distinct genes: 1260
+gene-grouped 5-fold CV over 1260 genes: no gene leak
+  fold 0: 1008 train / 252 held out
+  fold 1: 1008 train / 252 held out
+  fold 2: 1008 train / 252 held out
+  fold 3: 1008 train / 252 held out
+  fold 4: 1008 train / 252 held out
+class counts: {'A3': 180, 'A5': 180, 'CSE': 180, 'NN': 540, 'RI': 180}
+
+=== lightgbm [geometry] (5-fold group CV, grouped by gene) ===
+              precision    recall  f1-score   support
+
+          A3      0.190     0.211     0.200       180
+          A5      0.175     0.178     0.176       180
+         CSE      0.240     0.267     0.253       180
+          NN      0.576     0.515     0.543       540
+          RI      0.237     0.256     0.246       180
+
+    accuracy                          0.351      1260
+   macro avg      0.284     0.285     0.284      1260
+weighted avg      0.367     0.351     0.358      1260
+
+confusion matrix (rows=true, cols=pred): ['A3', 'A5', 'CSE', 'NN', 'RI']
+[[ 38  31  34  40  37]
+ [ 31  32  25  53  39]
+ [ 29  20  48  65  18]
+ [ 70  64  74 278  54]
+ [ 32  36  19  47  46]]
+
+vs sim/baseline_model.py random forest (same data, same protocol):
+  metric         this   RF ref    delta
+  accuracy      0.351    0.488   -0.137
+  macro-F1      0.284    0.325   -0.041
+  F1 A3         0.200    0.108   +0.092
+  F1 A5         0.176    0.160   +0.016
+  F1 CSE        0.253    0.132   +0.121
+  F1 NN         0.543    0.657   -0.114
+  F1 RI         0.246    0.568   -0.322
+
+  A3/A5 F1 is the metric that matters -- that is the class pair the
+  topology features exist to fix.
+
+=== lightgbm, A3+A5 collapsed to A (comparable to v1's 123/140) ===
+              precision    recall  f1-score   support
+
+           A      0.345     0.367     0.355       360
+         CSE      0.240     0.267     0.253       180
+          NN      0.576     0.515     0.543       540
+          RI      0.237     0.256     0.246       180
+
+    accuracy                          0.400      1260
+   macro avg      0.349     0.351     0.349      1260
+weighted avg      0.413     0.400     0.406      1260
+
+confusion matrix (rows=true, cols=pred): ['A', 'CSE', 'NN', 'RI']
+[[132  59  93  76]
+ [ 49  48  65  18]
+ [134  74 278  54]
+ [ 68  19  47  46]]
+
+top 20 gain importances (full-data fit, for inspection only):
+  log10_window_width                                 19632.4
+  frac_junctions_out_of_window                       13591.0
+  wmean__present_2                                       0.0
+  wmean__present_1                                       0.0
+  wmean__rel_end                                         0.0
+  wmean__rel_start                                       0.0
+  wmean__in_window                                       0.0
+  wmean__rel_mid                                         0.0
+  wmean__contains_top                                    0.0
+  wmean__nested_in_top                                   0.0
+  wmean__shares_acceptor_with_top                        0.0
+  wmean__shares_donor_with_top                           0.0
+  wmean__is_top                                          0.0
+  wmean__interior_nonzero_frac_2                         0.0
+  wmean__disjoint_from_top                               0.0
+  wmean__overlaps_top                                    0.0
+  wmean__log1p_flank_acc_cov_2                           0.0
+  wmean__log1p_flank_donor_cov_2                         0.0
+  wmean__interior_nonzero_frac_1                         0.0
+  wmean__interior_flank_ratio_1                          0.0
