@@ -1,0 +1,35 @@
+loaded 5 fold checkpoint(s), classes ('A3', 'A5', 'CSE', 'NN', 'RI'), feature subset 'no-geometry'
+training prior from sim/experiment/labels_geomwin.nn15.tsv: A3 900, A5 900, CSE 900, NN 635, RI 900  (NN = 15.0%)
+cached per-fold posteriors for 140 benchmark events
+
+wrote runs/prior_sweep_geomwin_nn15.tsv
+
+=== prior sweep, tau=1, 140 curated events ===
+setting                      acc  collapsed  NN pred  base>new  new>base  McNemar p
+-----------------------------------------------------------------------------------
+uncorrected                75.7%      77.1%       12         0         0      1.000
+uniform                    75.7%      77.1%       12         0         0      1.000
+nn_weight=1                75.7%      77.1%       12         0         0      1.000
+nn_weight=0.5              76.4%      77.9%       10         0         1      1.000
+nn_weight=0.25             77.1%      78.6%        6         0         2      0.500
+nn_weight=0.1              77.9%      79.3%        5         0         3      0.250
+nn_weight=0.05             77.9%      79.3%        3         0         3      0.250
+nn_weight=0  (oracle)      80.0%      81.4%        0         0         6      0.031
+
+best setting: nn_weight=0  (oracle)  (80.0% vs 75.7% uncorrected)
+per-CSV accuracy, uncorrected -> best:
+  A3  (truth A3  ) n= 28   71.4% ->  75.0%
+  A5  (truth A5  ) n= 30   73.3% ->  83.3%
+  ES  (truth CSE ) n= 65   80.0% ->  81.5%
+  IR  (truth RI  ) n= 17   70.6% ->  76.5%
+
+12 predictions moved. Where the previously-NN calls went:
+    3  A5 was NN -> A5  [correct]
+    2  A3 was NN -> RI
+    1  A3 was NN -> CSE
+    1  A3 was NN -> A3  [correct]
+    1  A5 was NN -> CSE
+    1  CSE was NN -> CSE  [correct]
+    1  CSE was NN -> A3
+    1  RI was NN -> RI  [correct]
+    1  RI was NN -> A3

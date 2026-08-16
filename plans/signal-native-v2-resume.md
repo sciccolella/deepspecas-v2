@@ -1,5 +1,13 @@
 # signal-native-v2 — START HERE (2026-08-16)
 
+> **SUPERSEDED for direction by `plans/signal-native-v2-audit-geometry-results.md`**
+> (same day, later). The state described below is still accurate as history, but
+> its central numbers have moved: transfer is now **78.6% collapsed (79.3%
+> prior-corrected), not 62.1%**, after fixing the extraction-window geometry —
+> no re-simulation. The "more simulated data makes transfer worse" and "sim-CV
+> is anticorrelated with transfer" findings below were measured under the old
+> windows and did not survive the fix. Read the results doc first.
+
 Resume document. Branch `signal-native-v2`, HEAD `b9e4986`, clean tree, nothing
 pushed (per repo convention — pushing is the user's call).
 
