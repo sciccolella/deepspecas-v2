@@ -93,10 +93,21 @@ MIN_INTRON_FOR_COV = 100
 #: extractor masks it off; the audit is the one place that needs it.
 _JM_ANNOTATED_BIT = 20
 
-#: benchmark/c1.bam merges three SRA runs, so read names carry their run as a
-#: prefix (``SRR1513329.6348221``). Duplicate keys are scoped to this prefix.
 def _library_of(query_name: str) -> str:
-    return query_name.split(".", 1)[0]
+    """Source library of a read, for scoping duplicate detection.
+
+    benchmark/c1.bam merges three SRA runs and names reads
+    ``SRR1513329.6348221``, so three runs' independent fragments can land on
+    the same coordinate without being PCR duplicates of each other -- the
+    prefix separates them.
+
+    Simulated reads are named ``read2270765``, with **no dot**. Splitting those
+    on "." returns the whole (unique) name, which made every simulated read its
+    own library and drove the measured duplicate rate to ~0 by construction.
+    A name with no dot therefore means one library, not one library per read.
+    """
+    prefix, sep, _ = query_name.partition(".")
+    return prefix if sep else ""
 
 
 # --------------------------------------------------------------------------
