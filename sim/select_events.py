@@ -72,15 +72,52 @@ def _load_excluded_genes(paths) -> set:
     return genes
 
 
-def _sample_psi_pair(rng: np.random.Generator, dpsi_lo: float, dpsi_hi: float):
-    dpsi = rng.uniform(dpsi_lo, dpsi_hi) * rng.choice([-1.0, 1.0])
-    mid = rng.uniform(0.25, 0.75)
+#: Effect-size and PSI-level distributions, fitted by moments to the curated
+#: benchmark's own events (n=125 matched to the SUPPA catalogue, measured with
+#: the identical junction logic sim/psi_recovery_check.py applies to the
+#: simulation). Fitted quantiles track the observed ones closely:
+#:
+#:   |dPSI|     q05 .010/.034  q25 .111/.098  q50 .180/.172  q75 .277/.268
+#:   PSI level  q05 .083/.075  q25 .373/.362  q50 .668/.666  q75 .893/.891
+#:
+#: **Caveat, and it is not small.** These two marginals are calibrated *on the
+#: benchmark*, so the benchmark is no longer a fully held-out set along the
+#: effect-size axis -- results after this change are domain-calibrated, not
+#: zero-shot, and should be reported that way. What leaks is two 2-parameter
+#: marginals, not per-event labels or structures; the honest mitigation is a
+#: held-out split of the benchmark, or an independent dPSI distribution from
+#: another dataset, neither of which exists here yet.
+DPSI_BETA = (1.781, 7.396)
+PSI_LEVEL_BETA = (0.981, 0.620)
+
+
+def _sample_psi_pair(rng: np.random.Generator, dpsi_lo: float, dpsi_hi: float,
+                     dist: str = "uniform"):
+    """(psi1, psi2) for one simulated positive.
+
+    ``dist="uniform"`` is the original draw: ``|dPSI| ~ U(dpsi_lo, dpsi_hi)``
+    with the level at ``U(0.25, 0.75)``. At the shipped 0.3-0.8 that floor is
+    the problem -- **81.6% of curated benchmark events have |dPSI| below 0.30**,
+    so four out of five real events are of a kind the simulation has never
+    produced. The level draw is wrong in the same direction: real PSI is
+    U-shaped and piles up near 0 and 1 (median 0.668, q05 0.083, q95 0.999),
+    while U(0.25, 0.75) is flat and central.
+
+    ``dist="beta"`` draws both from the fitted marginals above.
+    """
+    if dist == "beta":
+        dpsi = float(rng.beta(*DPSI_BETA))
+        mid = float(rng.beta(*PSI_LEVEL_BETA))
+    else:
+        dpsi = float(rng.uniform(dpsi_lo, dpsi_hi))
+        mid = float(rng.uniform(0.25, 0.75))
+    dpsi *= rng.choice([-1.0, 1.0])
     psi1 = np.clip(mid - dpsi / 2, 0.02, 0.98)
     psi2 = np.clip(mid + dpsi / 2, 0.02, 0.98)
     return float(psi1), float(psi2)
 
 
-def select_positives(events, n_per_label, used_genes, rng):
+def select_positives(events, n_per_label, used_genes, rng, psi_dist: str = "uniform"):
     by_label = {}
     for e in events:
         if e.gene_id in used_genes:
@@ -96,7 +133,7 @@ def select_positives(events, n_per_label, used_genes, rng):
             if e.gene_id in used_genes:
                 continue
             used_genes.add(e.gene_id)
-            psi1, psi2 = _sample_psi_pair(rng, 0.3, 0.8)
+            psi1, psi2 = _sample_psi_pair(rng, 0.3, 0.8, dist=psi_dist)
             rows.append(
                 dict(
                     event_id=e.event_id,
@@ -244,6 +281,13 @@ def main(argv=None) -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument(
+        "--psi-dist", choices=("uniform", "beta"), default="uniform",
+        help="effect-size draw for positives. 'uniform' is |dPSI| ~ U(0.3, 0.8) "
+        "with level U(0.25, 0.75) -- the original, whose floor excludes the 81.6%% "
+        "of curated benchmark events below 0.30. 'beta' draws both from marginals "
+        "fitted to the benchmark (see DPSI_BETA; note the calibration caveat).",
+    )
+    ap.add_argument(
         "--exclude-genes",
         action="append",
         default=[],
@@ -278,7 +322,7 @@ def main(argv=None) -> None:
               f"{len(args.exclude_genes)} file(s)", file=sys.stderr)
     n_excluded = len(used_genes)
     rows = []
-    rows += select_positives(events, args.n_per_label, used_genes, rng)
+    rows += select_positives(events, args.n_per_label, used_genes, rng, args.psi_dist)
     rows += select_hard_negatives(events, args.n_nn_hard, used_genes, rng)
     rows += select_plain_negatives(
         gene_spans, catalogue_genes, transcripts_by_gene, args.n_nn_plain, used_genes, rng
