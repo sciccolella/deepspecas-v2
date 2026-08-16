@@ -1,0 +1,41 @@
+loaded 5 fold checkpoint(s), classes ('A3', 'A5', 'CSE', 'NN', 'RI'), feature subset 'no-geometry'
+
+wrote per-event results to runs/benchmark_events_subsample015.tsv
+
+=== curated benchmark: 140 events ===
+
+per-CSV accuracy (5-class / A3+A5 collapsed):
+  A3  (truth A3  ) n= 28   67.9% /  67.9%   (19/28 correct)
+  A5  (truth A5  ) n= 30   70.0% /  76.7%   (21/30 correct)
+  ES  (truth CSE ) n= 65   73.8% /  73.8%   (48/65 correct)
+  IR  (truth RI  ) n= 17   76.5% /  76.5%   (13/17 correct)
+
+aggregate 5-class:  101/140 = 72.1%
+aggregate collapsed: 103/140 = 73.6%   (this is the number comparable to v1's 123/140 = 87.9%)
+
+confusion matrix, 5-class (rows=truth, cols=pred): ['A3', 'A5', 'CSE', 'NN', 'RI']
+  NB: the benchmark contains no NN events, so the NN row is empty by
+  construction and every NN *prediction* is a false positive.
+[[19  0  1  7  1]
+ [ 2 21  2  5  0]
+ [ 8  5 48  4  0]
+ [ 0  0  0  0  0]
+ [ 0  2  0  2 13]]
+
+confusion matrix, A3+A5 collapsed (rows=truth, cols=pred): ['A', 'CSE', 'NN', 'RI']
+[[42  3 12  1]
+ [13 48  4  0]
+ [ 0  0  0  0]
+ [ 2  0  2 13]]
+
+accuracy vs region width (5-class), for plotting against v1's:
+  [     0,   1000) n= 30   70.0% /  70.0%
+  [  1000,   5000) n= 55   80.0% /  83.6%
+  [  5000,  20000) n= 42   64.3% /  64.3%
+  [ 20000, 100000) n= 12   66.7% /  66.7%
+  [100000,    inf) n=  1  100.0% / 100.0%
+
+wall clock: 0.030 s/event (0.022 extract + 0.008 inference), 4.2 s total.
+  v1's ensemble spends ~17 s/event on image rendering alone, so this is
+  the Phase-5 cost comparison in its rawest form.
+  widest event 181,765 bp, median 3,062 bp

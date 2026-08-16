@@ -177,6 +177,77 @@ reversed. Combined with the earlier step-4 finding that calibration beats
 rebalancing, the position is now: leave the mix at 25% NN and apply the uniform
 prior correction, which is free.
 
+---
+
+# Addendum — depth invariance and effect-size realism (same session)
+
+Two further interventions, both well-motivated by measurement, **both null**.
+Significance is McNemar on the 140 paired per-event outcomes throughout.
+
+| change | training set | sim-CV macro-F1 | benchmark collapsed | vs its control |
+|---|---|---|---|---|
+| *(control)* v3 windows | 4,800 | 0.867 | **78.6%** | — |
+| `--depth-norm scale` | 4,800 | 0.868 | 77.9% | p = 1.000 |
+| `--subsample-low 0.15` | 4,800 | 0.862 | 73.6% | — |
+| `--depth-norm drop` | 4,800 | 0.834 | 72.9% | — |
+| *(control)* uniform \|dPSI\| | 960 | 0.784 | **72.9%** | — |
+| `--psi-dist beta` | 960 | 0.693 | 70.0% | p = 0.572 |
+| `--psi-dist beta` + depth scale | 960 | 0.689 | 72.1% | p = 1.000 |
+
+For contrast, the window change **is** significant: v2 → v3 windows at 4,800
+events is 27 events gained against 4 lost, **p = 3.4e-05** (and p = 1.1e-02
+against the nn15 arm). It is the only intervention in this branch that has
+moved transfer at all.
+
+### Depth invariance
+
+Absolute depth is not a property of an event, and 16 features carried it. The
+fix works exactly (max feature change 0.0 under 0.2x/5x rescaling) and changes
+nothing: 7 vs 8 discordant events, and +2 of 35 even on the shallowest depth
+quartile where the mechanism predicted the gain. Kept as `--depth-norm scale`,
+non-default. The argument for adopting it is design, not evidence — the
+benchmark is one dataset at one depth and structurally cannot test what
+invariance protects against.
+
+`drop` costs both sim-CV and transfer, so the model *does* use magnitude
+productively; `scale` preserves that while removing the nuisance scale.
+Widening the subsample augmentation to reach real depth actively hurts.
+
+### Effect-size realism
+
+The measurement is solid and stands: **81.6% of curated benchmark events have
+\|dPSI\| below 0.30**, the simulation's floor, measured like-for-like (n=125,
+same SUPPA-junction logic on both sides; real median 0.180 vs simulated
+recovered 0.415). Simulated events are 2.3x more differential *and* 5.2x
+deeper than real ones.
+
+Fixing it did not help. Per class it traded rather than gained: A3 64.3% vs
+57.1% and A5 collapsed 76.7% vs 66.7%, against ES 69.2% vs 76.9% and IR 64.7%
+vs 82.4%. Plausible reading — subtle events sharpen A3/A5 discrimination, but a
+retained intron at \|dPSI\| ~ 0.1 carries almost no signal, so RI degrades. If
+pursued, the effect-size distribution should probably be per class rather than
+pooled.
+
+### What this implies
+
+The audit's premise was that transfer is limited by simulation realism along
+the axes it can measure. On its two largest measured discrepancies that premise
+is now **0 for 2**, while the one change that worked was about how the window
+is drawn — framing, not noise. Two readings, and the evidence does not yet
+separate them:
+
+1. the remaining 8.6 points are not a simulation-realism problem at all, and
+   the representation/model deserves the attention it was denied; or
+2. realism only pays when several axes are corrected together, and single-axis
+   fixes are individually invisible.
+
+Reading 2 is what the original plan assumed. Reading 1 is now the one with
+supporting evidence. **This materially raises the priority of the
+representation crossover** (v1 images + ResNet50 on v2 data) that was
+deprioritized above: it is the experiment that separates the two, and the case
+for deferring it was that the audit had not finished asking its question. It
+has now asked twice and got no for an answer.
+
 ## Suggested next steps
 
 1. **A calibration re-simulation batch**, now justified by numbers rather than
