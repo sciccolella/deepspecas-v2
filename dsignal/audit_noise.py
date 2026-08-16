@@ -442,7 +442,13 @@ METRICS = [
     ("se_delta", "level", "_sample_psi_pair"),
     ("left_flank", "level", "sim/window.py (Track B)"),
     ("right_flank", "level", "sim/window.py (Track B)"),
-    ("struct_span_frac", "rate", "sim/window.py (Track B)"),
+    # SATURATED: median 1.000 for every label on both sides. Some supported
+    # junction almost always spans the whole window, so the clipped structure
+    # span equals the window and this measures nothing. Kept because its *mean*
+    # still separates (0.98 real vs 0.93 sim) via the minority of windows where
+    # it does not saturate, but the design-level span/width ratio reported by
+    # sim/select_events.py is the geometry number to actually read.
+    ("struct_span_frac", "rate", "sim/window.py (Track B) -- saturates, see note"),
 ]
 
 #: quantities the real side under-measures because benchmark/c1.bam only keeps
