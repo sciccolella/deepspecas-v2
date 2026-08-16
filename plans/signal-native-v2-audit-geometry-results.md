@@ -250,21 +250,26 @@ has now asked twice and got no for an answer.
 
 ## Suggested next steps
 
-1. **A calibration re-simulation batch**, now justified by numbers rather than
-   suspicion. One batch, fixing the audit's shortlist together: drop
-   `--gene-mean-depth` ~5×, widen it into a distribution rather than a constant,
-   raise layer 4's novel-junction rate ~2×, cut layer 2's pre-mRNA fraction
-   except for RI rows, cut layer 3 and layer 5 by ~2.5×. Do not fix one
-   variable at a time — the audit gives the whole list at once.
-2. **Understand the `delta` shortfall** before or alongside (1). The realised
-   differential change is half the real one despite a requested `|dPSI|` of
-   0.3–0.8; the abundance model or the PSI recovery is losing it. This is the
-   single largest lever left and it is not a knob, it is a defect.
-3. Re-run the audit after (1) — it is the acceptance test now, cheap and
-   annotation-free.
-4. The representation crossover (v1 images on v2 data) is still open and still
-   out of scope; the case for it is weaker now that the signal-native model is
-   within 8.6 points.
+**Superseded by the addendum above — the `delta` item below rested on a metric
+that turned out to be confounded, and two of these have since been tested.**
+
+1. **The representation crossover** (v1 images + ResNet50 trained on v2's
+   simulated data). Now the highest-value experiment rather than the deferred
+   one: it separates "our simulation is wrong" from "signal-native is fragile",
+   and two single-axis realism fixes have failed to move transfer.
+2. **NN false positives** — 41% of remaining errors, the largest single bucket.
+   Decide the deployment prior on principle and fix it *before* scoring; the
+   sweep's 85.7% at `nn_weight=0.05` is currently chosen by looking at
+   benchmark accuracy, which is test-set fitting.
+3. **A multi-axis calibration batch**, if reading 2 in the addendum is to be
+   tested honestly: the rest of the audit shortlist at once (depth down ~5× and
+   made a distribution, layer 4 up ~2×, layer 2 down except RI rows, layers 3
+   and 5 down ~2.5×) *plus* the beta effect-size draw. Single-axis nulls cannot
+   rule this out.
+4. **Per-class effect-size distributions** if (3) runs: the pooled beta draw
+   helped A3/A5 and hurt RI, so one distribution likely does not fit all four.
+5. Re-run the audit after any re-simulation — it is the acceptance test now,
+   cheap and annotation-free.
 
 ## Artifacts
 
