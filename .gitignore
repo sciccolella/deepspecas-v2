@@ -5,3 +5,7 @@ __pycache__
 # Transformer fold checkpoints: 27MB per run, reproducible in ~7 min from
 # the committed JSON/log (dsignal/train.py, seed 0). Metrics are committed.
 runs/*/
+
+# SUPPA event catalogue: 40MB of .ioe, regenerated on pasteur from the GTF
+# (SUPPA2 generateEvents). sim/catalogue.py reads it; nothing needs it in git.
+sim/events/

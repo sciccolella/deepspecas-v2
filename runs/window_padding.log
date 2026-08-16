@@ -1,0 +1,22 @@
+=== curated window vs SUPPA event span (92178 catalogued events) ===
+padding > 0 means the curated window extends beyond the event span.
+
+csv     matched                   pad_left                  pad_right  span/width
+                            med [q10, q90]             med [q10, q90]
+A3      28/28           -1 [   -89,    -1]         -1 [    -1,    -1]       1.001
+A5      29/30           -1 [    -1,    -1]         -1 [    -1,    -1]       1.001
+ES      55/65          100 [   100,   100]        100 [   100,   100]       0.971
+IR      13/17            0 [     0,     0]          0 [     0,     0]       1.000
+
+pooled n=125
+  window == event span on both edges exactly: 13/125
+  both edges within 10 bp:                    67/125
+  both edges within 200 bp:                   120/125
+  event span / window width: median 1.000
+  pooled padding: left median 0, right median 0, max |pad| 6116
+
+Read this as the specification for sim/window.py: the curated window is
+the event span plus a small constant (per type: ES +100 bp on each edge,
+IR exactly 0, A3/A5 -1 -- an off-by-one coordinate convention). Drawing a
+label-independent flank of the same magnitude reproduces the geometry
+without hard-coding a per-class constant, which would be pure leakage.
