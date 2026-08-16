@@ -1,0 +1,92 @@
+loaded 2791 events
+gene-grouped 5-fold CV over 2791 genes: no gene leak
+model: 1,403,229 trainable parameters
+  fold 0 epoch   0  loss 1.2268  held-out macro-F1 0.496  (best 0.496 @ 0)
+  fold 0 epoch  10  loss 0.7973  held-out macro-F1 0.722  (best 0.743 @ 9)
+  fold 0 epoch  20  loss 0.6495  held-out macro-F1 0.725  (best 0.755 @ 17)
+  fold 0 epoch  30  loss 0.5825  held-out macro-F1 0.751  (best 0.755 @ 17)
+  fold 0: early stop at epoch 32 (no improvement for 15 epochs)
+fold 0: best held-out macro-F1 0.755 at epoch 17
+  fold 1 epoch   0  loss 1.2757  held-out macro-F1 0.543  (best 0.543 @ 0)
+  fold 1 epoch  10  loss 0.7672  held-out macro-F1 0.695  (best 0.706 @ 8)
+  fold 1 epoch  20  loss 0.6589  held-out macro-F1 0.702  (best 0.714 @ 17)
+  fold 1 epoch  30  loss 0.5830  held-out macro-F1 0.699  (best 0.725 @ 28)
+  fold 1 epoch  40  loss 0.4627  held-out macro-F1 0.715  (best 0.731 @ 38)
+  fold 1 epoch  50  loss 0.4118  held-out macro-F1 0.714  (best 0.731 @ 38)
+  fold 1: early stop at epoch 53 (no improvement for 15 epochs)
+fold 1: best held-out macro-F1 0.731 at epoch 38
+  fold 2 epoch   0  loss 1.2395  held-out macro-F1 0.519  (best 0.519 @ 0)
+  fold 2 epoch  10  loss 0.7745  held-out macro-F1 0.695  (best 0.725 @ 9)
+  fold 2 epoch  20  loss 0.6486  held-out macro-F1 0.722  (best 0.737 @ 14)
+  fold 2 epoch  30  loss 0.5654  held-out macro-F1 0.719  (best 0.738 @ 29)
+  fold 2 epoch  40  loss 0.4808  held-out macro-F1 0.740  (best 0.741 @ 37)
+  fold 2 epoch  50  loss 0.4585  held-out macro-F1 0.744  (best 0.744 @ 50)
+fold 2: best held-out macro-F1 0.749 at epoch 51
+  fold 3 epoch   0  loss 1.2592  held-out macro-F1 0.528  (best 0.528 @ 0)
+  fold 3 epoch  10  loss 0.7586  held-out macro-F1 0.683  (best 0.690 @ 9)
+  fold 3 epoch  20  loss 0.6697  held-out macro-F1 0.704  (best 0.726 @ 13)
+  fold 3 epoch  30  loss 0.6113  held-out macro-F1 0.732  (best 0.737 @ 24)
+  fold 3 epoch  40  loss 0.5062  held-out macro-F1 0.757  (best 0.757 @ 40)
+  fold 3 epoch  50  loss 0.4523  held-out macro-F1 0.757  (best 0.757 @ 50)
+fold 3: best held-out macro-F1 0.757 at epoch 50
+  fold 4 epoch   0  loss 1.2596  held-out macro-F1 0.528  (best 0.528 @ 0)
+  fold 4 epoch  10  loss 0.7892  held-out macro-F1 0.695  (best 0.720 @ 7)
+  fold 4 epoch  20  loss 0.6615  held-out macro-F1 0.709  (best 0.720 @ 7)
+  fold 4: early stop at epoch 22 (no improvement for 15 epochs)
+fold 4: best held-out macro-F1 0.720 at epoch 7
+
+trained 5 folds in 12.2 min (per-fold macro-F1 0.755 0.731 0.749 0.757 0.720)
+wrote metrics to runs/scaleup_nn43_allaug.json
+class counts: {'A3': 410, 'A5': 367, 'CSE': 395, 'NN': 1200, 'RI': 419}
+augmentations: ['all'], feature subset: no-geometry
+
+=== junction-set transformer [no-geometry] [aug: all] (5-fold group CV, by gene) ===
+              precision    recall  f1-score   support
+
+          A3      0.783     0.712     0.746       410
+          A5      0.681     0.749     0.713       367
+         CSE      0.669     0.797     0.727       395
+          NN      0.907     0.795     0.847      1200
+          RI      0.631     0.740     0.681       419
+
+    accuracy                          0.769      2791
+   macro avg      0.734     0.759     0.743      2791
+weighted avg      0.784     0.769     0.773      2791
+
+confusion matrix (rows=true, cols=pred): ['A3', 'A5', 'CSE', 'NN', 'RI']
+[[292  25  54  15  24]
+ [  9 275  31  21  31]
+ [ 22  35 315  18   5]
+ [ 31  34  60 954 121]
+ [ 19  35  11  44 310]]
+
+vs sim/baseline_model.py random forest (same data, same protocol):
+  metric         this   RF ref    delta
+  accuracy      0.769    0.488   +0.281
+  macro-F1      0.743    0.325   +0.418
+  F1 A3         0.746    0.108   +0.638
+  F1 A5         0.713    0.160   +0.553
+  F1 CSE        0.727    0.132   +0.595
+  F1 NN         0.847    0.657   +0.190
+  F1 RI         0.681    0.568   +0.113
+
+  A3/A5 F1 is the metric that matters -- that is the class pair the
+  topology features exist to fix.
+
+=== transformer, A3+A5 collapsed to A ===
+              precision    recall  f1-score   support
+
+           A      0.773     0.773     0.773       777
+         CSE      0.669     0.797     0.727       395
+          NN      0.907     0.795     0.847      1200
+          RI      0.631     0.740     0.681       419
+
+    accuracy                          0.781      2791
+   macro avg      0.745     0.776     0.757      2791
+weighted avg      0.795     0.781     0.785      2791
+
+confusion matrix (rows=true, cols=pred): ['A', 'CSE', 'NN', 'RI']
+[[601  85  36  55]
+ [ 57 315  18   5]
+ [ 65  60 954 121]
+ [ 54  11  44 310]]

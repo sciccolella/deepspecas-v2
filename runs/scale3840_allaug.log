@@ -9,3 +9,87 @@ model: 1,403,229 trainable parameters
 fold 0: best held-out macro-F1 0.769 at epoch 21
   fold 1 epoch   0  loss 1.2399  held-out macro-F1 0.541  (best 0.541 @ 0)
   fold 1 epoch  10  loss 0.7354  held-out macro-F1 0.722  (best 0.738 @ 9)
+  fold 1 epoch  20  loss 0.6405  held-out macro-F1 0.766  (best 0.766 @ 20)
+  fold 1 epoch  30  loss 0.5558  held-out macro-F1 0.771  (best 0.771 @ 30)
+  fold 1 epoch  40  loss 0.4998  held-out macro-F1 0.770  (best 0.772 @ 35)
+  fold 1 epoch  50  loss 0.4571  held-out macro-F1 0.764  (best 0.774 @ 49)
+fold 1: best held-out macro-F1 0.774 at epoch 49
+  fold 2 epoch   0  loss 1.2462  held-out macro-F1 0.563  (best 0.563 @ 0)
+  fold 2 epoch  10  loss 0.7339  held-out macro-F1 0.776  (best 0.776 @ 10)
+  fold 2 epoch  20  loss 0.6811  held-out macro-F1 0.801  (best 0.801 @ 20)
+  fold 2 epoch  30  loss 0.5925  held-out macro-F1 0.794  (best 0.804 @ 29)
+  fold 2 epoch  40  loss 0.5239  held-out macro-F1 0.800  (best 0.818 @ 35)
+  fold 2 epoch  50  loss 0.4779  held-out macro-F1 0.801  (best 0.818 @ 35)
+  fold 2: early stop at epoch 50 (no improvement for 15 epochs)
+fold 2: best held-out macro-F1 0.818 at epoch 35
+  fold 3 epoch   0  loss 1.2222  held-out macro-F1 0.573  (best 0.573 @ 0)
+  fold 3 epoch  10  loss 0.7698  held-out macro-F1 0.744  (best 0.754 @ 8)
+  fold 3 epoch  20  loss 0.6598  held-out macro-F1 0.760  (best 0.771 @ 18)
+  fold 3 epoch  30  loss 0.5731  held-out macro-F1 0.759  (best 0.789 @ 29)
+  fold 3 epoch  40  loss 0.5432  held-out macro-F1 0.771  (best 0.789 @ 29)
+  fold 3: early stop at epoch 44 (no improvement for 15 epochs)
+fold 3: best held-out macro-F1 0.789 at epoch 29
+  fold 4 epoch   0  loss 1.2153  held-out macro-F1 0.546  (best 0.546 @ 0)
+  fold 4 epoch  10  loss 0.7403  held-out macro-F1 0.733  (best 0.733 @ 9)
+  fold 4 epoch  20  loss 0.6688  held-out macro-F1 0.735  (best 0.748 @ 16)
+  fold 4 epoch  30  loss 0.5555  held-out macro-F1 0.762  (best 0.765 @ 28)
+  fold 4 epoch  40  loss 0.5137  held-out macro-F1 0.770  (best 0.778 @ 38)
+  fold 4 epoch  50  loss 0.4666  held-out macro-F1 0.772  (best 0.778 @ 38)
+  fold 4: early stop at epoch 53 (no improvement for 15 epochs)
+fold 4: best held-out macro-F1 0.778 at epoch 38
+
+trained 5 folds in 14.9 min (per-fold macro-F1 0.769 0.774 0.818 0.789 0.778)
+wrote metrics to runs/scale3840_allaug.json
+class counts: {'A3': 720, 'A5': 720, 'CSE': 720, 'NN': 960, 'RI': 720}
+augmentations: ['all'], feature subset: no-geometry
+
+=== junction-set transformer [no-geometry] [aug: all] (5-fold group CV, by gene) ===
+              precision    recall  f1-score   support
+
+          A3      0.799     0.750     0.774       720
+          A5      0.776     0.760     0.768       720
+         CSE      0.754     0.817     0.784       720
+          NN      0.842     0.798     0.819       960
+          RI      0.761     0.812     0.786       720
+
+    accuracy                          0.788      3840
+   macro avg      0.786     0.787     0.786      3840
+weighted avg      0.790     0.788     0.788      3840
+
+confusion matrix (rows=true, cols=pred): ['A3', 'A5', 'CSE', 'NN', 'RI']
+[[540  38  70  34  38]
+ [ 34 547  63  30  46]
+ [ 42  47 588  29  14]
+ [ 29  36  43 766  86]
+ [ 31  37  16  51 585]]
+
+vs sim/baseline_model.py random forest (same data, same protocol):
+  metric         this   RF ref    delta
+  accuracy      0.788    0.488   +0.300
+  macro-F1      0.786    0.325   +0.461
+  F1 A3         0.774    0.108   +0.666
+  F1 A5         0.768    0.160   +0.608
+  F1 CSE        0.784    0.132   +0.652
+  F1 NN         0.819    0.657   +0.162
+  F1 RI         0.786    0.568   +0.218
+
+  A3/A5 F1 is the metric that matters -- that is the class pair the
+  topology features exist to fix.
+
+=== transformer, A3+A5 collapsed to A ===
+              precision    recall  f1-score   support
+
+           A      0.839     0.805     0.822      1440
+         CSE      0.754     0.817     0.784       720
+          NN      0.842     0.798     0.819       960
+          RI      0.761     0.812     0.786       720
+
+    accuracy                          0.807      3840
+   macro avg      0.799     0.808     0.803      3840
+weighted avg      0.809     0.807     0.807      3840
+
+confusion matrix (rows=true, cols=pred): ['A', 'CSE', 'NN', 'RI']
+[[1159  133   64   84]
+ [  89  588   29   14]
+ [  65   43  766   86]
+ [  68   16   51  585]]

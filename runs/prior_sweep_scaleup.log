@@ -1,0 +1,39 @@
+loaded 5 fold checkpoint(s), classes ('A3', 'A5', 'CSE', 'NN', 'RI'), feature subset 'no-geometry'
+training prior from sim/experiment/labels_scaleup.tsv: A3 900, A5 900, CSE 900, NN 1200, RI 900  (NN = 25.0%)
+cached per-fold posteriors for 140 benchmark events
+
+wrote runs/prior_sweep_scaleup.tsv
+
+=== prior sweep, tau=1, 140 curated events ===
+setting                      acc  collapsed  NN pred  base>new  new>base  McNemar p
+-----------------------------------------------------------------------------------
+uncorrected                61.4%      62.1%       32         0         0      1.000
+uniform                    61.4%      62.9%       31         0         0      1.000
+nn_weight=1                61.4%      62.9%       31         0         0      1.000
+nn_weight=0.5              68.6%      70.0%       18         0        10      0.002
+nn_weight=0.25             72.1%      73.6%        9         1        16      0.000
+nn_weight=0.1              73.6%      75.0%        6         1        18      0.000
+nn_weight=0.05             74.3%      75.7%        5         1        19      0.000
+nn_weight=0  (oracle)      74.3%      77.1%        0         1        19      0.000
+
+best setting: nn_weight=0.05  (74.3% vs 61.4% uncorrected)
+per-CSV accuracy, uncorrected -> best:
+  A3  (truth A3  ) n= 28   46.4% ->  64.3%
+  A5  (truth A5  ) n= 30   46.7% ->  66.7%
+  ES  (truth CSE ) n= 65   73.8% ->  75.4%
+  IR  (truth RI  ) n= 17   64.7% -> 100.0%
+
+29 predictions moved. Where the previously-NN calls went:
+    6  RI was NN -> RI  [correct]
+    5  A3 was NN -> A3  [correct]
+    5  A5 was NN -> A5  [correct]
+    2  A3 was NN -> RI
+    2  A3 was NN -> CSE
+    2  A5 was NN -> CSE
+    2  CSE was NN -> CSE  [correct]
+    1  A5 was NN -> A3
+    1  A5 was NN -> RI
+    1  CSE was NN -> RI
+non-NN changes (a correction should not be churning these):
+    1  A5: CSE -> A5
+    1  CSE: CSE -> A3

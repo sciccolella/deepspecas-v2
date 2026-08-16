@@ -1191,3 +1191,176 @@ class prior, while **CSE->A3 stays open and now has a concrete, testable cause
 and a concrete fix: widen `|dPSI|` below 0.3 and vary gene depth**. That is a
 one-line change to the design sampler plus a rerun of the same recipe, and it
 is the natural next run after this one.
+
+## Update (2026-08-16) — scale-up run complete, and it overturns the v2 premise
+
+Plan: `plans/signal-native-v2-scaleup-7500.md`, steps 1-5. All five batches ran
+and every gate passed, so the plan executed as designed. The *result* is that
+the direction it was extending does not work.
+
+### Steps 1-2 — the batches
+
+Five batches, seeds 1-5, 960 rows each (180 per positive label + 80 each
+`nn_plain`/`nn_hard`/`nn_novel` = 25% NN, down from 43%). **4,800 events over
+4,800 distinct genes with zero cross-batch overlap**, asserted per batch by
+`select_events.py --exclude-genes` and re-checked pairwise. Fresh simulation
+throughout, so the neighbour-set mismatch the window-geometry fix had to accept
+is gone.
+
+Gates, all five batches: STAR **96.4-97.7%** uniquely mapped with GT/AG-dominant
+splicing; PSI-recovery mean abs error per label **0.126-0.211** (only b1's RI
+0.211 and b4's 0.202 exceed the plan's 0.20 ceiling, both inside the 0.199-0.226
+range of every prior noise layer); window reports consistent across seeds
+(log10 width mean 3.80-3.86, clamp 46-49%, against the 1260-run's 3.801/46.9%).
+
+New tooling, since the recipe had lived only in this file's prose:
+`sim/run_batch.sh` (whole pipeline, resumable), `sim/order_fasta.py` (the
+positional FASTA/count-matrix ordering, the easiest step to get silently
+wrong), `sim/merge_batches.py` (re-keys batches as `<tag>_<ix>`; `--nn-frac`
+and `--from-labels` build the step-4 conditions), `sim/run_measurements.sh`.
+
+**Two bugs fixed en route.** (1) `run_batch.sh`'s resume check ran
+`ls "$B/npz" 2>/dev/null | wc -l`, whose non-zero exit under `set -e -o pipefail`
+silently killed the script right after alignment on three batches. (2) A second
+bug in the ASimulatoR polyester fork (the first was the `class(readmat)` check):
+`get_reads()` trims short fragments that exceed `readlen` after adapter padding,
+but when that selection is **empty** `subseq<-` calls `xscat()` with zero
+sequences and aborts. At fraglen=250/fragsd=25 short fragments are already a
+~6-sd event, so whether any clears `readlen` is luck of the seed -- b1-b4 had
+one, b5 did not and died after 25 min of read generation. `run_polyester.R` now
+patches `polyester:::get_reads`, asserting the substitution matches exactly
+once, and the patch was verified to produce **byte-identical output** when the
+selection is non-empty, so b1-b4 stand unchanged.
+
+### Step 3 — the model at 4,800 events
+
+Sim-CV, 5-fold grouped by gene, `no-geometry`:
+
+| model | acc | macroF1 | A3 | A5 | CSE | NN | RI |
+|---|---|---|---|---|---|---|---|
+| LightGBM geometry control | 0.319 | 0.314 | 0.238 | 0.206 | 0.304 | 0.488 | 0.333 |
+| Transformer geometry control | 0.360 | 0.359 | 0.280 | 0.230 | 0.406 | 0.488 | 0.391 |
+| LightGBM, no-geometry | 0.651 | 0.643 | 0.586 | 0.596 | 0.611 | 0.776 | 0.644 |
+| Transformer, no aug | 0.772 | 0.770 | 0.778 | 0.757 | 0.751 | 0.816 | 0.746 |
+| **Transformer, all aug** | **0.803** | **0.800** | 0.791 | 0.777 | 0.795 | 0.845 | 0.794 |
+
+The best sim-CV numbers this project has produced, by a wide margin. Width-only
+leak test at chance (0.279 acc vs 0.250 most-frequent, macro-F1 0.221 vs 0.199
+stratified). **Note the chance references move with the class mix**: at 25% NN
+"always predict NN" is worth 0.250, not 0.429, so the geometry controls'
+accuracies are no longer below the majority-class floor even though they are
+close to stratified chance. Their residual is still concentrated in CSE and NN,
+the documented clamp residual.
+
+### The finding that matters: sim-CV and transfer move in opposite directions
+
+| training set | sim-CV macroF1 | benchmark (collapsed) |
+|---|---|---|
+| old 1,260 @ 43% NN | 0.674 | 42.9% |
+| 960 (batch 1) @ 25% NN | 0.667 | 67.9% |
+| 3,840 @ 25% NN | 0.759 | 65.7% |
+| 4,800 @ 25% NN | **0.800** | **62.1%** |
+
+Holding the design fixed and adding simulated data raises sim-CV monotonically
+and lowers zero-shot transfer monotonically. The step-4 conditions isolate it
+further: `posmatched25` (1,591 positives, 25% NN) scores **64.3%** while the
+full `scaleup` (3,600 positives, same 25% NN) scores **61.4%** -- same class
+mix, **more than twice the positive data, worse transfer**. This is the
+signature of fitting the simulator rather than the phenomenon.
+
+### Step 4 — design-time rebalancing vs inference-time calibration
+
+The plan asked for "same events, NN downsampled to 43%", which is arithmetically
+impossible from a 25%-NN design (reaching 43% requires dropping 2,009
+positives, confounding mix with volume). Built a **positive-matched** pair
+instead: `nn43` and `posmatched25` share the identical 1,591 positives and
+differ only in NN count (1,200 vs 530).
+
+| condition | positives | NN | uncorrected | uniform-corrected |
+|---|---|---|---|---|
+| nn43 (43% NN) | 1,591 | 1,200 | 61.4% | **67.1%** |
+| posmatched25 (25% NN) | 1,591 | 530 | **64.3%** | 65.7% |
+| scaleup (25% NN, all data) | 3,600 | 1,200 | 61.4% | 61.4% |
+| nn15 (15% NN, all data) | 3,600 | 635 | **67.9%** | 67.9% |
+
+**Answer: the two are largely redundant, and calibration is the better buy.**
+Rebalancing 43%->25% at fixed positives gains +2.9 points; calibrating the
+43% model gains +5.7 and lands slightly *higher* than the rebalanced model
+(67.1% vs 65.7%). Since calibration is free and rebalancing costs a full
+re-simulation, **future designs need not be rebalanced** -- which is exactly the
+"useful negative result" the plan anticipated. Pushing further down (15% NN)
+does keep helping (67.9%), and there correction adds nothing, consistent with
+the prior mismatch being what correction was ever fixing.
+
+### Step 0 — the CSE->A3 diagnosis (reported before any compute was spent)
+
+Recorded in full in the previous section. Summary: the plan's hypothesis (curated
+ES windows genuinely contain competing A3 events, so the label is the curator's
+choice) is **refuted** -- SUPPA catalogues an A3 event in only 18% of ES windows
+and *fewer* in the misclassified subgroup; A3-consistent structure is
+near-ubiquitous but *weaker* in the events called A3; `p_A3` tracks A3 evidence
+at r = -0.24. The real cause is sensitivity to thin skip evidence, and the
+simulation trains CSE on ~4x the skip support curated events carry. In the
+4,800-event model CSE->A3 is down to 11/65 and the residual sits on the
+lowest-coverage events, so the mechanism held even as the error shrank.
+
+### **v1 reproduced: 123/140 = 87.9%, exactly**
+
+The v1 comparison in every prior section of this file was quoted from the
+manuscript and had never been recomputed here. It has now been run locally with
+the released `data/trained_nets/*` via `dsEnsemble.py --zoom -1 --a --cse` over
+the same four benchmark CSVs (`runs/v1/pred_*.csv`), in a **separate** `DSv1`
+conda env:
+
+| CSV | v1 | v2 (4,800) | v2 best (nn15) |
+|---|---|---|---|
+| A3 (n=28) | 75.0% | 46.4% | -- |
+| A5 (n=30) | 90.0% | 50.0% | -- |
+| ES (n=65) | 90.8% | 73.8% | -- |
+| IR (n=17) | 94.1% | 64.7% | -- |
+| **total (collapsed)** | **87.9%** | **62.1%** | **69.3%** |
+
+v1 predicts NN twice in 140 events; v2 predicts it 25-32 times.
+
+**This is the central problem, and it should not be softened.** v1 is *also*
+trained on simulated data only (`runDS.smk`: `SIMDIR=".../simulations/simulated_reads/"`),
+with a **much cruder** simulator -- no pre-mRNA background, no neighbouring
+genes, no novel junctions, no PCR duplicates, no window randomization. It beats
+v2 by 25.8 points on the identical events, zero-shot in both cases, and beats it
+in **every** category. An earlier session in this thread asserted v1 had been
+trained on real data; that was wrong, inferred from the gap rather than checked,
+and it had been propping up a reading in which v2's number was an acceptable
+baseline for Phase 4 to improve on. It is not.
+
+The reasonable interpretation is that v2's added "realism" is **miscalibrated
+rather than insufficient**: every noise layer was validated only by showing it
+*degraded* the baseline model, which was read as evidence it added
+signal-relevant noise, but nobody ever checked whether the *amount* matches the
+real data. Step 0 found the first hard instance in the other direction (sim CSE
+events carry ~4x the skip support of curated ones), so the simulation is
+simultaneously noisier along some axes and cleaner along others -- a larger
+distribution shift than v1's simpler simulator had, not a smaller one.
+
+### What this means for the next session
+
+1. **Stop scaling the simulation.** Volume is not the constraint and is
+   actively harmful to transfer (batch 1 alone beat all 4,800 events).
+2. **Noise-calibration audit.** Measure in `benchmark/c1.bam`/`c2.bam` each
+   quantity the simulation injects -- intronic/pre-mRNA coverage fraction,
+   duplicate rate, unannotated-junction rate, neighbour-gene expression,
+   coverage depth, |dPSI| distribution -- and compare against what the
+   simulation actually produces. `dsignal/diagnose_cse_a3.py` demonstrates the
+   method; it found a 4x mismatch on the first quantity it examined.
+3. **Suspect the window randomization specifically.** v1 trained and tested on
+   event-derived windows; v2 randomizes. The randomization correctly removed a
+   shortcut, but it may also have moved training windows away from what a
+   curator draws.
+4. **Consider the representation.** v1's images + ResNet50 may simply be more
+   robust to this shift than a transformer keyed on exact junction identity and
+   counts. Worth testing directly rather than assuming the signal-native
+   representation is strictly better.
+5. Ship the uniform prior correction regardless -- it is free and never hurts.
+
+Artifacts: `sim/experiment/batches/b{1..5}/`, `sim/experiment/npz_scaleup/`,
+`sim/experiment/labels_scaleup*.tsv`, `runs/scaleup*`, `runs/scale3840_*`,
+`runs/b1_*`, `runs/v1/`, `runs/cse_a3_diagnosis.*`.

@@ -1,0 +1,10 @@
+[06:46:10] === scaleup_nn43: Transformer all-aug ===
+[06:58:22] === scaleup_nn43: benchmark ===
+[06:58:35] === scaleup_nn43: prior sweep ===
+[06:58:43] === scaleup_posmatched25: Transformer all-aug ===
+[07:07:01] === scaleup_posmatched25: benchmark ===
+[07:07:07] === scaleup_posmatched25: prior sweep ===
+[07:07:12] === scaleup_nn15: Transformer all-aug ===
+[07:24:03] === scaleup_nn15: benchmark ===
+[07:24:08] === scaleup_nn15: prior sweep ===
+[07:24:14] === variants done ===

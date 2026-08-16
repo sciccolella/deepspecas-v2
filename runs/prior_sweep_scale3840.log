@@ -1,0 +1,36 @@
+loaded 5 fold checkpoint(s), classes ('A3', 'A5', 'CSE', 'NN', 'RI'), feature subset 'no-geometry'
+training prior from /tmp/claude-1000/-home-ciccolella-code-deepSpecas/755bcd3d-cd9b-475e-bb1d-e752158682ce/scratchpad/labels4.tsv: A3 720, A5 720, CSE 720, NN 960, RI 720  (NN = 25.0%)
+cached per-fold posteriors for 140 benchmark events
+
+wrote runs/prior_sweep_scale3840.tsv
+
+=== prior sweep, tau=1, 140 curated events ===
+setting                      acc  collapsed  NN pred  base>new  new>base  McNemar p
+-----------------------------------------------------------------------------------
+uncorrected                64.3%      65.7%       23         0         0      1.000
+uniform                    65.0%      66.4%       20         0         1      1.000
+nn_weight=1                65.0%      66.4%       20         0         1      1.000
+nn_weight=0.5              68.6%      70.0%       15         0         6      0.031
+nn_weight=0.25             69.3%      71.4%       11         0         7      0.016
+nn_weight=0.1              70.7%      72.9%        7         0         9      0.004
+nn_weight=0.05             71.4%      74.3%        4         0        10      0.002
+nn_weight=0  (oracle)      70.7%      73.6%        0         0         9      0.004
+
+best setting: nn_weight=0.05  (71.4% vs 64.3% uncorrected)
+per-CSV accuracy, uncorrected -> best:
+  A3  (truth A3  ) n= 28   50.0% ->  60.7%
+  A5  (truth A5  ) n= 30   53.3% ->  60.0%
+  ES  (truth CSE ) n= 65   73.8% ->  76.9%
+  IR  (truth RI  ) n= 17   70.6% ->  88.2%
+
+19 predictions moved. Where the previously-NN calls went:
+    3  A3 was NN -> A3  [correct]
+    3  A3 was NN -> RI
+    3  RI was NN -> RI  [correct]
+    2  A5 was NN -> A5  [correct]
+    2  A5 was NN -> A3
+    2  CSE was NN -> CSE  [correct]
+    1  A3 was NN -> CSE
+    1  A5 was NN -> RI
+    1  A5 was NN -> CSE
+    1  CSE was NN -> RI
