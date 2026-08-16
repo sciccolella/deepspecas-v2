@@ -1,6 +1,7 @@
 # signal-native-v2 — START HERE (2026-08-16)
 
-> **SUPERSEDED for direction by `plans/signal-native-v2-audit-geometry-results.md`**
+> **SUPERSEDED — start at `plans/signal-native-v2-resume-2.md` (2026-08-17).**
+> Detail in `plans/signal-native-v2-audit-geometry-results.md`
 > (same day, later). The state described below is still accurate as history, but
 > its central numbers have moved: transfer is now **78.6% collapsed (79.3%
 > prior-corrected), not 62.1%**, after fixing the extraction-window geometry —
