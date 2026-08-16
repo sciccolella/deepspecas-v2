@@ -206,9 +206,11 @@ def shrink_constitutive_regions(rows, span_pool, rng, kinds=("nn_plain", "nn_nov
 
     Without this, NN is "the wide class": nn_plain/nn_novel take the entire gene
     span (median ~18kb on the 1260-event design, q90 ~145kb) where a real AS
-    event spans ~1.4kb, so window width -- which must contain the region --
-    still carries the label even with the span-independent width draw in
-    sim/window.py. nn_hard is left alone: it already uses a real event span.
+    event spans ~1.4kb, so window width -- which contains the region -- carries
+    the label. This matters *more* under the v3 window sampler, not less: the
+    window is now the region plus <=100bp, so an unshrunk NN row would be a
+    ~18kb window in a set whose positives are ~1.4kb. nn_hard is left alone: it
+    already uses a real event span.
 
     ``rng`` must be a stream of its own: these draws happen after row selection
     and must not perturb it (see the RNG note in `main`). Returns the number of
@@ -318,12 +320,19 @@ def main(argv=None) -> None:
     print(f"  distinct genes: {len(used_genes) - n_excluded}", file=sys.stderr)
     print(f"  constitutive NN regions shrunk to a sampled event span: {n_shrunk}", file=sys.stderr)
     widths = [r["win_end"] - r["win_start"] + 1 for r in rows]
+    spans = [r["region_end"] - r["region_start"] + 1 for r in rows]
     log10w = np.log10(np.asarray(widths, dtype=float))
+    frac = np.asarray(spans, dtype=float) / np.asarray(widths, dtype=float)
     print(f"  window width: median {int(np.median(widths))} log10 mean {log10w.mean():.3f} "
           f"sd {log10w.std(ddof=1):.3f} (benchmark: median 3063, 3.445, 0.702)", file=sys.stderr)
-    print(f"  clamped to event span: {n_clamped}/{len(rows)} rows "
-          f"({n_clamped / len(rows):.1%}) -- the residual span->width coupling",
-          file=sys.stderr)
+    # Under the v3 sampler the window is the event span plus <=100bp per edge,
+    # so this ratio should sit just under 1 for every label -- that is the
+    # benchmark's geometry (median 1.000), and its per-label spread is the
+    # thing the v2 sampler got wrong (median 0.567, RI 0.22 vs CSE 0.94).
+    print(f"  event span / window width: median {np.median(frac):.3f} "
+          f"(benchmark: 1.000)", file=sys.stderr)
+    print(f"  clamped at a chromosome edge: {n_clamped}/{len(rows)} rows "
+          f"({n_clamped / len(rows):.1%})", file=sys.stderr)
     if n_excluded:
         selected = {r["gene_id"] for r in rows}
         overlap = selected & _load_excluded_genes(args.exclude_genes)

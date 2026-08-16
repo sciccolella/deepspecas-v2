@@ -1,64 +1,69 @@
-"""Randomized extraction windows around an event span (plan Phase 2 step 5,
-recalibrated by plans/signal-native-v2-window-geometry-fix.md).
+"""Extraction windows around an event span.
 
-Every row selected by `sim/select_events.py` has its own true span (the
-SUPPA event span for positives/hard negatives, a sub-interval of the gene
-span for plain/novel negatives). Using that span as the extraction window
-verbatim would let a model learn "junction near byte 0/N" instead of
-splicing signal, so the window is randomized around it.
+Third iteration. The two earlier ones are kept in the record below because each
+was rejected for a reason that is still true, and this one is not a return to
+either.
 
-**The first version of this module drew the flank as a log-uniform multiple
-of the event span**, which made window *width* a function of the event span
--- and event span tracks the label (RI introns are short, CSE/NN spans are
-not). Window geometry alone then reached 46.3% accuracy on the 1260-event
-set, a shortcut that cannot transfer to the real benchmark, whose windows
-come from a curator. Width is now drawn from a **span-independent**
-log-normal fitted to the pooled curated benchmark
-(`benchmark/{A3,A5,ES,IR}.csv`, n=140, all four CSVs pooled so the draw
-carries no label information), truncated to that benchmark's observed
-width range. The event is then placed uniformly at random inside the drawn
-window, which keeps the off-center property the original sampler had.
+**v1 -- flank as a log-uniform multiple of the event span** (plan Phase 2 step
+5). This made window *width* a function of the event span, and event span
+tracks the label (RI introns are short, CSE/NN spans are not). Window geometry
+alone reached 46.3% accuracy on the 1260-event set.
 
-The one residual span->width coupling is irreducible: a window must contain
-its event, so a drawn width below the event span is clamped up to it. That
-is counted (`sample_window_detail` returns a `clamped` flag) and reported by
-`sim/select_events.py`, since the clamp rate is the honest measure of how
-much span information is left in the width.
+**v2 -- span-independent width drawn from the pooled curated benchmark**
+(`plans/signal-native-v2-window-geometry-fix.md`). Width was drawn from a
+log-normal fitted to `benchmark/{A3,A5,ES,IR}.csv` (n=140, all four CSVs pooled
+so the draw carried no label information), and the event was then placed
+uniformly at random inside it. The width leak measured at chance afterwards.
+
+**v3 -- this one: the window is the event span plus a small flank.** v2 matched
+the benchmark's *marginal* width distribution while destroying the
+*relationship* between window and event that the benchmark actually has.
+Measured (`python -m dsignal.audit_noise padding`, matching all 140 curated
+windows against the same SUPPA catalogue the simulation draws its events from):
+
+    csv   matched   pad_left med [q10,q90]   pad_right med [q10,q90]
+    A3     28/28        -1 [  -89,   -1]         -1 [   -1,   -1]
+    A5     29/30        -1 [   -1,   -1]         -1 [   -1,   -1]
+    ES     55/65       100 [  100,  100]        100 [  100,  100]
+    IR     13/17         0 [    0,    0]          0 [    0,    0]
+
+    event span / window width: median 1.000
+    both edges within 200 bp: 120/125
+
+The curated window *is* the event span, offset by a per-type constant (ES pads
+100 bp on each edge; IR is exact; A3/A5 are off by one, a coordinate
+convention). Under v2 the simulated event filled a label-dependent 4-98% of its
+window (median 0.567: RI 0.22, A3 0.42, A5 0.49, NN 0.71, CSE 0.94) and windows
+were ~2x too wide (log10 mean 3.82 vs the benchmark's 3.44). That is a large
+train/test geometry shift, and it is the shift this version removes.
+
+**What this knowingly reintroduces**, and why it is not simply the v1 leak
+coming back: window width is again ~ the event span, so width again carries
+label information. The difference is that *the deployment distribution has the
+same coupling* -- the curator's window is the event span too. A model using it
+is using something genuinely available at inference, not a simulation artifact.
+That
+claim is not assumed: the geometry-only control is scored on the **benchmark**,
+not only on sim CV, and `sim/width_leak_check.py` is expected to rise. Both
+numbers get reported rather than suppressed. See
+`plans/signal-native-v2-audit-geometry.md` (Track B).
+
+The flank is drawn **label-independently**, uniform over [0, MAX_FLANK] bp per
+edge, rather than reproducing the per-type constants above: a per-class padding
+constant would be pure label leakage with no counterpart at inference, where
+nobody knows the class. Uniform-over-both-edges reproduces the *magnitude* of a
+curator's padding (0-100 bp) and leaves the event boundaries non-deterministic,
+so "the window edge is exactly the event edge" is not itself learnable.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
-#: Pooled curated-benchmark window widths (1-based inclusive, n=140 over
-#: benchmark/{A3,A5,ES,IR}.csv): log10 mean 3.4448, sd 0.7024, observed
-#: range [2, 181766]. Measured, not assumed -- see the module docstring.
-BENCH_LOG10_MEAN = 3.4448
-BENCH_LOG10_SD = 0.7024
-BENCH_MIN_WIDTH = 2
-BENCH_MAX_WIDTH = 181766
-
-#: Flank kept on each side when a drawn width has to be clamped up to the event
-#: span, drawn log-uniform in this **absolute** bp range (never a multiple of
-#: the span -- that is the coupling being removed). Without it a clamped window
-#: would coincide exactly with the event boundaries, which is the original
-#: "window == event" leak this module exists to remove, and every clamped
-#: window would be exactly centered on its event.
-MIN_FLANK_LO = 50
-MIN_FLANK_HI = 500
-
-
-def _draw_width(rng: np.random.Generator, log10_mean: float, log10_sd: float,
-                min_width: int, max_width: int, max_tries: int = 64) -> int:
-    """Log-normal width truncated to [min_width, max_width] by rejection, so
-    the retained distribution is the true truncation rather than a clipped one
-    with mass piled on the bounds. Falls back to clipping in the (practically
-    unreachable) event that every draw is rejected."""
-    for _ in range(max_tries):
-        w = int(round(10.0 ** float(rng.normal(log10_mean, log10_sd))))
-        if min_width <= w <= max_width:
-            return w
-    return int(np.clip(w, min_width, max_width))
+#: Curated padding is 0 bp (IR), -1 bp (A3/A5, an off-by-one) or 100 bp (ES) per
+#: edge. Drawn uniform over this range instead of per type -- see the module
+#: docstring on why the per-type constant is not reproduced.
+MAX_FLANK = 100
 
 
 def sample_window_detail(
@@ -66,56 +71,35 @@ def sample_window_detail(
     event_end: int,
     chrom_len: int,
     rng: np.random.Generator,
-    log10_mean: float = BENCH_LOG10_MEAN,
-    log10_sd: float = BENCH_LOG10_SD,
-    min_width: int = BENCH_MIN_WIDTH,
-    max_width: int = BENCH_MAX_WIDTH,
-    min_flank_lo: int = MIN_FLANK_LO,
-    min_flank_hi: int = MIN_FLANK_HI,
+    max_flank: int = MAX_FLANK,
 ) -> tuple:
-    """Returns (win_start, win_end, clamped), coordinates 1-based inclusive
-    like the region_start/region_end convention already used in design.tsv.
+    """Returns (win_start, win_end, clamped), coordinates 1-based inclusive like
+    the region_start/region_end convention already used in design.tsv.
 
-    A window must contain its event, so a draw narrower than the event span
-    (plus a log-uniform absolute flank of ``MIN_FLANK_LO``-``MIN_FLANK_HI`` bp
-    on each side) is clamped up to it. ``clamped`` marks
-    those rows: they are the residual, irreducible span->width coupling, and
-    `sim/select_events.py` reports the rate. (Redrawing from the benchmark
-    distribution *truncated below the span* was tried instead and rejected: it
-    removes the deterministic width-given-span mapping on those rows but
-    inflates the pooled width distribution well past the benchmark it is
-    supposed to match -- log10 mean 3.96 vs 3.78 for clamping, against the
-    benchmark's 3.44 -- while measuring the same at the leak test.)
+    ``clamped`` is retained for the caller's reporting and is now True only when
+    the chromosome edge forced the window to lose part of its drawn flank. Under
+    v2 it flagged the far more common case of a drawn width narrower than the
+    event span, which cannot arise here -- the window is built outward from the
+    span rather than drawn independently of it.
     """
-    span = max(event_end - event_start + 1, 1)
-    width = _draw_width(rng, log10_mean, log10_sd, min_width, max_width)
+    left = int(rng.integers(0, max_flank + 1))
+    right = int(rng.integers(0, max_flank + 1))
 
-    min_flank = int(round(np.exp(rng.uniform(np.log(min_flank_lo), np.log(min_flank_hi)))))
-    floor_width = span + 2 * min_flank
-    clamped = width < floor_width
-    if clamped:
-        width = floor_width
+    win_start = event_start - left
+    win_end = event_end + right
 
-    # place the event uniformly at random inside the window
-    slack = width - span
-    left_flank = int(round(float(rng.uniform(0.0, 1.0)) * slack))
-
-    win_start = event_start - left_flank
-    win_end = win_start + width - 1
-
-    # keep the window on the chromosome by *sliding* it, not shrinking it, so
-    # the drawn width survives; only a window wider than the chromosome (never
-    # the case for GRCh38 vs a 182kb ceiling) would end up truncated.
+    clamped = False
     if win_start < 1:
-        win_start, win_end = 1, width
+        win_start, clamped = 1, True
     if win_end > chrom_len:
-        win_end = chrom_len
-        win_start = max(win_end - width + 1, 1)
+        win_end, clamped = chrom_len, True
 
+    # a degenerate span (event outside the chromosome, never seen in practice)
+    # must still yield a usable interval rather than an empty fetch
     if win_end <= win_start:
-        win_start, win_end = max(min(event_start, chrom_len - 1), 1), min(event_end, chrom_len)
-        if win_end <= win_start:
-            win_end = win_start + 1
+        win_start = max(min(event_start, chrom_len - 1), 1)
+        win_end = min(max(event_end, win_start + 1), chrom_len)
+        clamped = True
 
     return win_start, win_end, clamped
 
@@ -128,5 +112,4 @@ def sample_window(
     **kw,
 ) -> tuple:
     """(win_start, win_end); see `sample_window_detail` for the clamp flag."""
-    win_start, win_end = sample_window_detail(event_start, event_end, chrom_len, rng, **kw)[:2]
-    return win_start, win_end
+    return sample_window_detail(event_start, event_end, chrom_len, rng, **kw)[:2]
