@@ -1,0 +1,50 @@
+
+=== noise calibration: simulation vs curated benchmark ===
+real n=140   sim n=1500
+
+'rate' quantities are compared on the mean (their median is often 0), 'level' quantities on the median (heavy tails).
+
+quantity                   kind         real        sim  sim/real  audits
+intron_cov_frac            level    0.003659    0.02717      7.43  layer 2: --premrna-frac-low/high 0.01/0.10 <<<
+novel_junction_rate        rate       0.1435    0.07458      0.52  layer 4: --novel-frac 0.005-0.03, --novel-nn-frac-high 0.20
+novel_junction_read_frac   rate      0.02114    0.01256      0.59  layer 4 (read share)
+dup_rate                   rate      0.05039     0.1394      2.77  layer 5: PCR_RATE=0.1 PCR_LAMBDA=1 <<<
+background_frac            rate      0.06467     0.1571      2.43  layer 3: --neighbor-depth 100-3000  [LOWER BOUND on real] (?)
+antisense_frac             rate     0.008578     0.0546      6.36  layer 3, antisense component  [LOWER BOUND on real] (?)
+cov_mean                   level        15.1      78.56      5.20  --gene-mean-depth 2000 <<<
+cov_median                 level           0        2.5       nan  --gene-mean-depth 2000
+top_junction_count         level         382       1703      4.46  --gene-mean-depth 2000 <<<
+n_supported                level         5.5          9      1.64  -
+a3_minor_count             level          46        243      5.28  _sample_psi_pair: |dPSI| ~ U(0.3, 0.8) <<<
+a3_delta                   level      0.2191     0.1234      0.56  _sample_psi_pair
+se_minor_count             level          20        135      6.75  _sample_psi_pair <<<
+se_delta                   level      0.2661     0.1465      0.55  _sample_psi_pair
+left_flank                 level      -974.5      -2551      2.62  sim/window.py (Track B) <<<
+right_flank                level       -1521      -2042      1.34  sim/window.py (Track B)
+struct_span_frac           rate       0.9849     0.9285      0.94  sim/window.py (Track B)
+
+=== off by more than 2.0x ===
+  intron_cov_frac              7.43x  simulation OVER-injects  (layer 2: --premrna-frac-low/high 0.01/0.10)
+  se_minor_count               6.75x  simulation OVER-injects  (_sample_psi_pair)
+  antisense_frac               6.36x  simulation OVER-injects  (layer 3, antisense component  [LOWER BOUND on real])  [real side is a lower bound -- direction only]
+  a3_minor_count               5.28x  simulation OVER-injects  (_sample_psi_pair: |dPSI| ~ U(0.3, 0.8))
+  cov_mean                     5.20x  simulation OVER-injects  (--gene-mean-depth 2000)
+  top_junction_count           4.46x  simulation OVER-injects  (--gene-mean-depth 2000)
+  dup_rate                     2.77x  simulation OVER-injects  (layer 5: PCR_RATE=0.1 PCR_LAMBDA=1)  [rises with depth on its own -- read next to cov_mean]
+  left_flank                   2.62x  simulation OVER-injects  (sim/window.py (Track B))
+  background_frac              2.43x  simulation OVER-injects  (layer 3: --neighbor-depth 100-3000  [LOWER BOUND on real])  [real side is a lower bound -- direction only]
+
+=== per-label medians, simulation (the sim-side breakdown) ===
+label        n     cov_mean top_junction  n_supported se_minor_cou a3_minor_cou intron_cov_f   left_flank  right_flank struct_span_
+A3         275        80.72         1759            9        114.5        310.5      0.03054        -3523        -1791            1
+A5         260        82.33         1834            9          135          187      0.03994        -1119        -2469            1
+CSE        265        36.01         1716           11          150          272      0.00924        -3960        -2947            1
+NN         395        59.17         1573            6        123.5          204       0.0142        -4982        -3498            1
+RI         305        159.8         1664            9          132          257       0.1333        -1473        -1013            1
+
+=== per-CSV medians, curated benchmark ===
+csv          n     cov_mean top_junction  n_supported se_minor_cou a3_minor_cou intron_cov_f   left_flank  right_flank struct_span_
+A3          28        3.848        205.5          3.5         10.5           43      0.01929           -1          -16            1
+A5          30        6.905          374          4.5           11           16      0.03063        -1008         -260            1
+ES          65        16.21          521            7           38          109     0.001981         -987        -2424            1
+IR          17        164.9          609            5         22.5           10       0.5584        -3166        -2094            1
