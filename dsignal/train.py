@@ -72,8 +72,10 @@ def macro_f1(pred, gold, n_classes) -> float:
 
 
 def train_fold(args, entries, train_idx, test_idx, fold: int, device):
-    cfg = FeatureConfig(flank=args.flank, max_junctions=args.max_junctions)
-    aug = AugmentConfig.from_names(args.augment, prob=args.augment_prob)
+    cfg = FeatureConfig(flank=args.flank, max_junctions=args.max_junctions,
+                        depth_norm=args.depth_norm)
+    aug = AugmentConfig.from_names(args.augment, prob=args.augment_prob,
+                                   subsample_low=args.subsample_low)
 
     train_entries = [entries[i] for i in train_idx]
     test_entries = [entries[i] for i in test_idx]
@@ -172,7 +174,9 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
                 "scaler": scaler.state_dict(),
                 "classes": list(CLASSES),
                 "feature_config": {"flank": cfg.flank, "max_junctions": cfg.max_junctions,
-                                   "canonicalize": cfg.canonicalize},
+                                   "canonicalize": cfg.canonicalize,
+                                   "depth_norm": cfg.depth_norm,
+                                   "depth_target": cfg.depth_target},
                 "feature_subset": args.feature_subset,
                 "fold": fold,
                 "held_out_macro_f1": best["macro_f1"],
@@ -223,6 +227,21 @@ def _build_argparser() -> argparse.ArgumentParser:
         "Default none -- the control run.",
     )
     ap.add_argument("--augment-prob", type=float, default=0.5)
+    ap.add_argument(
+        "--subsample-low", type=float, default=0.3,
+        help="subsample augmentation retains p ~ U(this, 1) of the reads. The "
+        "default 0.3 never reaches the depth the curated benchmark actually "
+        "sits at -- dsignal/audit_noise.py measures the simulation as 5.2x "
+        "deeper, i.e. real data lives near 0.19.",
+    )
+    ap.add_argument(
+        "--depth-norm", choices=("none", "scale", "drop"), default="none",
+        help="how to treat absolute sequencing depth (dsignal/features.py: "
+        "rescale_depth). 'scale' maps every record onto a reference spliced "
+        "depth, making the features invariant to how deeply the locus was "
+        "sequenced; 'drop' zeroes the depth-absolute columns instead. "
+        "Default 'none' is the historical behaviour.",
+    )
 
     ap.add_argument("--num-workers", type=int, default=0)
     ap.add_argument("--no-cache", action="store_true", help="do not hold normalized records in RAM")
@@ -243,7 +262,8 @@ def main(argv=None) -> None:
     gene_ids = [e[3] for e in entries]
     print(f"loaded {len(entries)} events", file=sys.stderr)
     print("class counts:", {c: labels.count(c) for c in CLASSES})
-    print(f"augmentations: {args.augment or ['none (control)']}, feature subset: {args.feature_subset}")
+    print(f"augmentations: {args.augment or ['none (control)']}, feature subset: {args.feature_subset}, "
+          f"depth norm: {args.depth_norm}, subsample_low: {args.subsample_low}")
 
     splits = grouped_folds(np.zeros(len(entries)), labels, gene_ids, args.folds)
 
@@ -275,6 +295,7 @@ def main(argv=None) -> None:
             json.dump(
                 {
                     "augment": args.augment, "feature_subset": args.feature_subset,
+                    "depth_norm": args.depth_norm, "subsample_low": args.subsample_low,
                     "folds": args.folds, "seed": args.seed,
                     "per_fold_macro_f1": fold_f1, "elapsed_min": elapsed / 60,
                     "result": result, "collapsed": collapsed,

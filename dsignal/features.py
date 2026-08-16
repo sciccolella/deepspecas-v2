@@ -64,6 +64,13 @@ class FeatureConfig:
     max_junctions: int | None = None
     #: canonicalize minus-strand records by mirroring within the window
     canonicalize: bool = True
+    #: how to treat absolute sequencing depth -- see `rescale_depth`.
+    #: "none" (the historical behaviour), "scale", or "drop".
+    depth_norm: str = "none"
+    #: reference spliced depth that "scale" maps every record onto. Arbitrary
+    #: but shared by train and inference; chosen to sit in the numeric range
+    #: the unnormalized features already occupied, so nothing else retunes.
+    depth_target: float = 100.0
 
 
 def _token_feature_names(cfg: FeatureConfig) -> list[str]:
@@ -151,6 +158,47 @@ TOKEN_FEATURE_NAMES = _token_feature_names(FeatureConfig())
 EVENT_FEATURE_NAMES = _event_feature_names()
 N_TOKEN_FEATURES = len(TOKEN_FEATURE_NAMES)
 N_EVENT_FEATURES = len(EVENT_FEATURE_NAMES)
+
+#: Features that scale linearly with sequencing depth *before* their log1p --
+#: multiply every read in the window by k and these move by log1p(k), while
+#: every other feature here is a ratio, a fraction, a count of things, or
+#: geometry, and does not move at all.
+#:
+#: An event is the same event at 5x and at 300x, so absolute depth is not a
+#: property of the class and these columns are where a depth-calibration error
+#: in the simulation reaches the model. See `rescale_depth`.
+DEPTH_ABSOLUTE_TOKEN_FEATURES = (
+    "log1p_count_1", "log1p_count_2", "log1p_nhw_1", "log1p_nhw_2",
+    "log1p_flank_donor_cov_1", "log1p_flank_acc_cov_1", "log1p_interior_cov_1",
+    "log1p_flank_donor_cov_2", "log1p_flank_acc_cov_2", "log1p_interior_cov_2",
+)
+DEPTH_ABSOLUTE_EVENT_FEATURES = (
+    "log1p_cov_mean_1", "log1p_cov_median_1", "log1p_cov_max_1",
+    "log1p_cov_mean_2", "log1p_cov_median_2", "log1p_cov_max_2",
+)
+
+# One feature is depth-dependent without being depth-*absolute*, and zeroing
+# the list above does not fix it: `log2_count_ratio` is
+# log2((count_1 + 1) / (count_2 + 1)), and the pseudocount makes it a function
+# of scale. Measured over 40 records at 0.2x and 5x depth it moves by up to
+# 2.17 (and `max_abs_log2_count_ratio` by 2.115) with every declared column
+# zeroed.
+#
+# This matters more than its size suggests: it is precisely the
+# between-condition ratio -- the differential quantity that *should* be the
+# whole signal -- and at low depth the pseudocount compresses it toward zero.
+# The curated benchmark sits at ~1/5 of the simulation's depth, so real events
+# arrive with their apparent differential systematically damped, on top of the
+# genuine shortfall the audit measured. "scale" fixes it for free by mapping
+# every record onto the reference depth before the pseudocount applies;
+# "drop" does not, which is why "drop" is only an ablation.
+
+
+def depth_absolute_masks() -> tuple:
+    """(token_mask, event_mask) over TOKEN_/EVENT_FEATURE_NAMES."""
+    tok = np.array([n in DEPTH_ABSOLUTE_TOKEN_FEATURES for n in TOKEN_FEATURE_NAMES])
+    ev = np.array([n in DEPTH_ABSOLUTE_EVENT_FEATURES for n in EVENT_FEATURE_NAMES])
+    return tok, ev
 
 
 # --------------------------------------------------------------------------
@@ -276,6 +324,76 @@ def normalize_record(record: dict, cfg: FeatureConfig | None = None, force_flip:
     )
 
 
+def depth_scale(norm: NormalizedRecord) -> float:
+    """The record's local spliced depth: the pooled count of its **top**
+    junction.
+
+    A max, not a sum, so it does not move with how many junctions a window
+    happens to contain, and it measures *spliced* depth specifically -- pooled
+    mean coverage would have worked too but is inflated exactly where an intron
+    is retained, which would deflate an RI window's junction counts and bleed
+    the class into the scale it is normalized by.
+
+    Pooled across both conditions on purpose: normalizing each condition by its
+    own depth would divide out the between-condition difference, which is the
+    entire signal. Falls back to pooled mean coverage for a junctionless window,
+    and returns 0 when there is nothing at all.
+    """
+    if len(norm.count_1):
+        s = float(np.max(norm.count_1 + norm.count_2))
+        if s > 0:
+            return s
+    if norm.n:
+        s = float((norm.cov_1.mean() + norm.cov_2.mean()) / 2.0)
+        if s > 0:
+            return s
+    return 0.0
+
+
+def rescale_depth(norm: NormalizedRecord, cfg: FeatureConfig) -> NormalizedRecord:
+    """Map a record onto a reference depth, so that features built from it are
+    invariant to how deeply the locus was sequenced.
+
+    Every read count and every coverage value is multiplied by the same factor
+    ``depth_target / depth_scale(norm)``. One shared factor is what makes this
+    exactly invariant: scale a window's reads by k and the factor divides by k,
+    so every feature -- absolute or relative, within-condition or between --
+    comes out unchanged. The differential signal survives untouched, because
+    both conditions are scaled identically.
+
+    This is a *representation* fix, not a robustness trick. Depth is not a
+    property of an event: the same A3 event is an A3 event at 5x and at 300x.
+    Training on a simulation whose depth is miscalibrated (measured: 5.2x the
+    curated benchmark, `dsignal/audit_noise.py`) puts every depth-absolute
+    feature in the wrong place at inference, and no amount of subsample
+    augmentation fixes a feature that should not carry scale in the first
+    place.
+
+    A no-op when ``cfg.depth_norm != "scale"``, or when the record is empty.
+    """
+    if cfg.depth_norm != "scale":
+        return norm
+    s = depth_scale(norm)
+    if s <= 0:
+        return norm
+    k = cfg.depth_target / s
+    return NormalizedRecord(
+        n=norm.n,
+        cov_1=norm.cov_1 * k,
+        cov_2=norm.cov_2 * k,
+        s_rel=norm.s_rel,
+        e_rel=norm.e_rel,
+        count_1=norm.count_1 * k,
+        count_2=norm.count_2 * k,
+        nhw_1=norm.nhw_1 * k,
+        nhw_2=norm.nhw_2 * k,
+        motif=norm.motif,
+        min_anchor=norm.min_anchor,
+        strand=norm.strand,
+        flipped=norm.flipped,
+    )
+
+
 def mirror(norm: NormalizedRecord) -> NormalizedRecord:
     """Mirror an already-normalized record within its window (the flip
     augmentation). An involution: ``mirror(mirror(x)) == x``."""
@@ -378,6 +496,14 @@ def build_features(
             raise ValueError("build_features needs either `record` or `norm`")
         norm = normalize_record(record, cfg)
 
+    # Applied here rather than in `normalize_record` so it lands *after* the
+    # augmentations in dsignal.dataset, which mutate the normalized record.
+    # The two are complementary, not redundant: rescaling removes the
+    # systematic depth *scale*, while `augment_subsample` thins counts
+    # binomially, so the sampling noise a shallow locus really carries survives
+    # the rescale and is still worth training against.
+    norm = rescale_depth(norm, cfg)
+
     n = norm.n
     s_rel, e_rel = norm.s_rel, norm.e_rel
     total_j = len(s_rel)
@@ -478,6 +604,18 @@ def build_features(
         tokens = np.stack(cols, axis=1).astype(np.float32)
 
     event = _build_event_vector(norm, tokens, n_dropped, dropped_count_frac, n)
+
+    if cfg.depth_norm == "drop":
+        # The blunt ablation: zero the depth-absolute columns instead of
+        # rescaling them. Strictly less informative than "scale" (it discards
+        # within-window magnitude too, not just the global scale), and it
+        # exists to separate "absolute depth was actively misleading" from
+        # "absolute depth was merely miscalibrated".
+        tok_mask, ev_mask = depth_absolute_masks()
+        if tokens.size:
+            tokens[:, tok_mask] = 0.0
+        event = np.asarray(event, dtype=np.float32)
+        event[ev_mask] = 0.0
 
     meta = {
         "s_rel": s_rel.astype(np.int64),
