@@ -1,4 +1,12 @@
-# signal-native-v2 — checkpoint (2026-08-14)
+# signal-native-v2 — checkpoint (2026-08-14 .. 2026-08-16)
+
+> **Resuming? Read `plans/signal-native-v2-resume.md` first.**
+> This file is the chronological build log — accurate on *how* each piece was
+> built and verified, and still the reference for that. But its framing up to
+> the final section assumes a premise the 2026-08-16 scale-up disproved: v2
+> transfers to real data far worse than v1 (62.1% vs a locally reproduced
+> 87.9%), and more simulated data makes transfer *worse*, not better. Read this
+> file for mechanism, not for direction.
 
 Status snapshot for resuming work on `plans/signal-native-v2.md` in a new
 session. Branch: `signal-native-v2` (created from `master`, not `ensemble-perf`).
