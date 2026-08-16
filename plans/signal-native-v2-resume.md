@@ -95,6 +95,14 @@ So the simulation is plausibly *noisier* along the axes we added and *cleaner*
 along the ones we never varied — a larger distribution shift than v1's simpler
 simulator had, not a smaller one.
 
+> **Superseded by `plans/signal-native-v2-audit-geometry.md`** (approved
+> 2026-08-16). That plan keeps the audit as its Track A, drops the
+> representation crossover, and adds a Track B for a *second, larger* shift
+> found while planning it: the curated benchmark's window **is** the event span
+> (`benchmark/events.bed` == the region CSVs), while sim events fill a
+> label-dependent 4-98% of a window ~2x too wide. The list below is kept for its
+> reasoning; take the order from the newer plan.
+
 ## Proposed next steps, in order
 
 1. **Noise-calibration audit** (the main line). For each quantity the simulation
