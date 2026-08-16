@@ -42,6 +42,10 @@ EVENTS=$ROOT/sim/events
 # --- plans/signal-native-v2-scaleup-7500.md. The 1260-event batch was 43% NN.
 N_PER_LABEL=${N_PER_LABEL:-180}
 N_NN=${N_NN:-80}
+# effect-size draw for positives: "uniform" (|dPSI| ~ U(0.3,0.8), the original)
+# or "beta" (fitted to the curated benchmark; 81.6% of real events fall below
+# the uniform draw's 0.30 floor). See sim/select_events.py::_sample_psi_pair.
+PSI_DIST=${PSI_DIST:-uniform}
 # read simulation, unchanged since noise layer 1 / layer 5
 FRAGLEN=${FRAGLEN:-250}
 FRAGSD=${FRAGSD:-25}
@@ -68,6 +72,7 @@ if [[ ! -s $B/design.tsv ]]; then
     --chrom-lengths "$REF.fai" \
     --n-per-label "$N_PER_LABEL" \
     --n-nn-plain "$N_NN" --n-nn-hard "$N_NN" --n-nn-novel "$N_NN" \
+    --psi-dist "$PSI_DIST" \
     --seed "$SEED" --out "$B/design.tsv" 2>&1 | tee "$B/logs/select_events.log"
 fi
 

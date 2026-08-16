@@ -1,0 +1,13 @@
+
+[16:14:12] === depthscale ===
+aggregate collapsed: 109/140 = 77.9%   (this is the number comparable to v1's 123/140 = 87.9%)
+
+[16:30:39] === subsample015 ===
+aggregate collapsed: 103/140 = 73.6%   (this is the number comparable to v1's 123/140 = 87.9%)
+
+[16:45:12] === depthscale_sub015 ===
+aggregate collapsed: 108/140 = 77.1%   (this is the number comparable to v1's 123/140 = 87.9%)
+
+[17:01:11] === depthdrop ===
+aggregate collapsed: 102/140 = 72.9%   (this is the number comparable to v1's 123/140 = 87.9%)
+ALL DEPTH RUNS DONE
