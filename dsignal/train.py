@@ -25,7 +25,17 @@ folds. Benchmark transfer fell too: dev half 55/70 -> 48/70 collapsed (78.6% ->
 68.6%, McNemar p = 0.065; 5-class p = 0.022). That drop is **not** an accounting
 artifact -- it is a real change in the model, and it confounds two things this
 switch does at once: it makes selection honest *and* it trains each fold on 15%
-less data. ``--refit`` separates them.
+less data. ``--refit`` separates them, and the answer is **the data is not it**:
+refitting on the whole fold gives back 49/70 vs 48/70 (p = 1.000) and sim-CV
+0.853 vs 0.854. The transfer cost belongs to the epoch choice itself.
+
+The uncomfortable reading, recorded rather than buried: the branch's headline
+78.6% came from checkpoints whose epoch was picked by peeking at a held-out
+fold, and picking on ~960 gene-disjoint events tracked benchmark transfer
+better than picking on ~576 does. Part of that 10-point gap is a genuinely
+better selection signal and part is the optimism of a maximum -- this
+experiment cannot split them. What is certain is that 78.6% was selected
+optimistically on both axes, and that the honest re-baseline is ~70% on dev.
 
 Usage:
     python -m dsignal.train --npz-dir sim/experiment/npz_scale1260 \

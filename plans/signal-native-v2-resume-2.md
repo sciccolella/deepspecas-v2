@@ -78,6 +78,7 @@ on the 140 paired outcomes.
 | *(control)* v3 windows | 4,800 | 0.867 | 78.6% | — |
 | `--feature-subset all` | 4,800 | 0.873 | 74.3% (dev) | p = 0.549 |
 | `--select-on inner` (protocol fix) | 4,800 | 0.854 | 68.6% (dev) | p = 0.065 |
+| `--select-on inner --refit` | 4,800 | 0.853 | 70.0% (dev) | p = 0.109 |
 | `--depth-norm scale` | 4,800 | 0.868 | 77.9% | **p = 1.000** |
 | `--subsample-low 0.15` | 4,800 | 0.862 | 73.6% | — |
 | `--depth-norm drop` | 4,800 | 0.834 | 72.9% | — |
@@ -103,6 +104,19 @@ accounting — and it confounds two things the switch does at once, honest
 selection *and* 15% less training data per fold. `--refit` (added the same day)
 keeps the honest choice and retrains on the full fold for the chosen number of
 epochs, which separates them.
+
+**The refit control says the data is not it.** 49/70 vs 48/70 (p = 1.000),
+sim-CV 0.853 vs 0.854. The whole transfer cost sits in the epoch choice: picking
+on ~960 gene-disjoint held-out events tracked benchmark transfer better than
+picking on ~576 inner-val ones. How much of that is a genuinely better selection
+signal and how much is the optimism of taking a maximum, this experiment cannot
+say — but **78.6% was selected optimistically on both axes, and the honest
+re-baseline is ~70% on dev.** Every Stage-1 comparison from here goes against
+`runs/geomwin_innerval_refit` (49/70 dev), not against 78.6%.
+
+Worth trying before accepting the loss: a larger `--inner-val-frac` (the
+selection signal is noisy at 576 events), or averaging the last k epochs instead
+of picking one.
 
 **Window geometry as a feature** (Stage 1.1, dev half). The `no-geometry`
 default was set to suppress a v1-window artifact that v3 deliberately
