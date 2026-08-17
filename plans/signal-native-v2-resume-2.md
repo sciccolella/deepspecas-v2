@@ -76,12 +76,23 @@ on the 140 paired outcomes.
 | change | set | sim-CV | benchmark | vs control |
 |---|---|---|---|---|
 | *(control)* v3 windows | 4,800 | 0.867 | 78.6% | — |
+| `--feature-subset all` | 4,800 | 0.873 | 74.3% (dev) | p = 0.549 |
 | `--depth-norm scale` | 4,800 | 0.868 | 77.9% | **p = 1.000** |
 | `--subsample-low 0.15` | 4,800 | 0.862 | 73.6% | — |
 | `--depth-norm drop` | 4,800 | 0.834 | 72.9% | — |
 | *(control)* uniform \|dPSI\| | 960 | 0.784 | 72.9% | — |
 | `--psi-dist beta` | 960 | 0.693 | 70.0% | p = 0.572 |
 | beta + depth scale | 960 | 0.689 | 72.1% | p = 1.000 |
+
+**Window geometry as a feature** (Stage 1.1, dev half). The `no-geometry`
+default was set to suppress a v1-window artifact that v3 deliberately
+re-legitimized, and `all` had never been benchmark-scored under v3. It buys
+sim-CV (0.867 → 0.873) and loses transfer (55/70 → 52/70 collapsed, 7 lost / 4
+gained, p = 0.549). The loss is **all RI**: 6/8 → 3/8, two RI events going to
+A5. Geometry alone recovers 13/17 curated IR, so geometry carries real RI
+signal — but it does not add: given both, the model leans on the *simulated*
+width→label coupling, which is only partly the real one. Default unchanged, now
+on evidence.
 
 **Depth invariance.** Absolute depth is not a property of an event (the user's
 point: the same event occurs at 5x and at 300x), and 16 features carried it.

@@ -221,9 +221,10 @@ def _build_argparser() -> argparse.ArgumentParser:
         "excluded by default -- originally because the v1 window sampler made it "
         "a pure simulation artifact. Under window sampler v3 the coupling is "
         "partly real (geometry alone recovers 13/17 curated IR events on the "
-        "benchmark), so the default is now conservative rather than a fix, and "
-        "'all' has not been benchmark-scored under v3. 'geometry' is the "
-        "geometry-only control.",
+        "benchmark). 'all' has now been scored under v3 and is a null with the "
+        "wrong sign: sim-CV 0.867 -> 0.873 but benchmark dev 55/70 -> 52/70 "
+        "collapsed (McNemar p = 0.549), the loss concentrated in RI (6/8 -> "
+        "3/8). The default stays. 'geometry' is the geometry-only control.",
     )
     ap.add_argument(
         "--augment", nargs="*", default=[],

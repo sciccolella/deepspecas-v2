@@ -42,9 +42,18 @@ collapsed (above a ~20% random floor, below the 46.4% always-CSE baseline), and
 recovers 13 of 17 curated IR events from geometry alone. So: not a strong
 general signal, but a real RI one.
 
-The default is still ``no-geometry``, which zeroes those columns outright. That
-is now a conservative choice rather than a correctness fix, and
-``--feature-subset all`` under v3 windows has **not** been benchmark-scored.
+The default is still ``no-geometry``, which zeroes those columns outright.
+
+*Measured (2026-08-17, ``runs/geomwin_allfeat.*``):* ``--feature-subset all``
+under v3 windows buys sim-CV and nothing else. sim-CV macro-F1 0.867 -> **0.873**,
+benchmark dev half 55/70 -> **52/70** collapsed (78.6% -> 74.3%, 7 lost / 4
+gained, McNemar p = 0.549 -- a null, and the sign is wrong). The loss is
+concentrated in RI: 6/8 -> 3/8 on the dev half, with two RI events going to A5
+and one to A3. So geometry does not transfer *additively*: geometry alone
+recovers 13/17 curated IR events, but handing the model geometry alongside
+topology moves it onto the simulated width->label coupling, which is only
+partly the real one. The conservative default stands, now on evidence rather
+than on caution.
 
 Usage:
     python -m dsignal.baseline_gbm --npz-dir sim/experiment/npz_geomwin \
