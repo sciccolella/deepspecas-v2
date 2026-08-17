@@ -1,0 +1,4 @@
+loaded 4800 events
+gene-grouped 5-fold CV over 4800 genes: no gene leak
+model: 1,403,229 trainable parameters
+  fold 0 epoch   0  loss 0.9829  inner-val macro-F1 0.678  (best 0.678 @ 0)

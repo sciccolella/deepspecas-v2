@@ -7,6 +7,26 @@ comparable to the whole layer-by-layer history. Held-out-fold predictions are
 pooled across folds into one out-of-fold report, exactly as
 ``cross_val_predict`` does for the two baselines.
 
+**Epoch selection changed on 2026-08-17 and old numbers are not comparable.**
+Until then the best epoch (and early stopping) was chosen by held-out-fold
+macro-F1 -- the same fold the run then reported. That makes the reported sim-CV
+a best-of-N maximum over epochs rather than an estimate of held-out
+performance, which matters here because sim-CV is the steering signal for every
+experiment on this branch. The default is now ``--select-on inner``: a
+gene-disjoint 15% of each *training* fold picks the epoch, and the held-out
+fold is scored exactly once with that epoch. Reported sim-CV drops as a result;
+that is the point, and ``--select-on held-out`` reproduces any older number.
+
+*Measured (2026-08-17, ``runs/geomwin_innerval.*`` vs ``runs/geomwin_allaug.*``,
+same data and hyperparameters):* sim-CV macro-F1 0.867 -> **0.854**, per-fold
+0.843/0.884/0.873/0.872/0.860 -> 0.847/0.863/0.856/0.849/0.855 -- the old
+protocol was inflating by ~0.013 and, tellingly, was also *noisier* across
+folds. Benchmark transfer fell too: dev half 55/70 -> 48/70 collapsed (78.6% ->
+68.6%, McNemar p = 0.065; 5-class p = 0.022). That drop is **not** an accounting
+artifact -- it is a real change in the model, and it confounds two things this
+switch does at once: it makes selection honest *and* it trains each fold on 15%
+less data. ``--refit`` separates them.
+
 Usage:
     python -m dsignal.train --npz-dir sim/experiment/npz_scale1260 \
         --labels sim/experiment/labels_scale1260.tsv --out-dir runs/control
@@ -37,6 +57,7 @@ from dsignal.dataset import (
 )
 from dsignal.features import FeatureConfig
 from dsignal.model import JunctionSetTransformer, ModelConfig
+from sim.gene_split import assert_no_gene_leak, split_genes
 
 
 def class_weights(labels, classes, device):
@@ -77,13 +98,38 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
     aug = AugmentConfig.from_names(args.augment, prob=args.augment_prob,
                                    subsample_low=args.subsample_low)
 
-    train_entries = [entries[i] for i in train_idx]
+    fold_entries = [entries[i] for i in train_idx]
     test_entries = [entries[i] for i in test_idx]
 
+    # Model selection happens on an inner split carved out of the *training*
+    # fold, never on the held-out fold being reported. Selecting the best epoch
+    # on the reported fold -- which is what this did until 2026-08-17 -- makes
+    # the fold's own noise part of the choice, so the reported sim-CV is a
+    # best-of-N maximum rather than an estimate, and it is being used as the
+    # steering signal for every experiment. The split is by gene, like the
+    # outer one, and seeded per fold so the folds do not share an inner
+    # partition. Cost: the model trains on ~15% less data per fold.
+    if args.select_on == "inner":
+        assign = split_genes([e[3] for e in fold_entries],
+                             val_frac=args.inner_val_frac, test_frac=0.0,
+                             seed=args.seed + 1000 + fold)
+        train_entries = [e for e in fold_entries if assign[e[3]] == "train"]
+        val_entries = [e for e in fold_entries if assign[e[3]] == "val"]
+        assert_no_gene_leak(
+            [dict(gene_id=e[3], split=assign[e[3]]) for e in fold_entries],
+            gene_key="gene_id", split_key="split",
+        )
+        if not val_entries:
+            raise ValueError(f"--inner-val-frac {args.inner_val_frac} left fold {fold} no inner val set")
+    else:  # "held-out": the old, optimistic protocol, kept to reproduce old runs
+        train_entries, val_entries = fold_entries, test_entries
+
     # scaler is fit on unaugmented training-fold records only, then reused for
-    # the held-out fold -- fitting it on everything would leak fold statistics
+    # the held-out fold -- fitting it on everything would leak fold statistics.
+    # It is fit on the whole training fold, inner val included: that is still
+    # training-fold data, so nothing about the reported fold enters it.
     fit_ds = JunctionSetDataset(
-        train_entries, cfg=cfg, feature_subset=args.feature_subset, cache=not args.no_cache
+        fold_entries, cfg=cfg, feature_subset=args.feature_subset, cache=not args.no_cache
     )
     scaler = fit_ds.fit_scaler()
 
@@ -91,6 +137,10 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
         train_entries, cfg=cfg, augment=aug, scaler=scaler,
         feature_subset=args.feature_subset, cache=not args.no_cache, seed=args.seed,
     )
+    val_ds = JunctionSetDataset(
+        val_entries, cfg=cfg, scaler=scaler,
+        feature_subset=args.feature_subset, cache=not args.no_cache, seed=args.seed,
+    ) if args.select_on == "inner" else test_ds
     test_ds = JunctionSetDataset(
         test_entries, cfg=cfg, scaler=scaler,
         feature_subset=args.feature_subset, cache=not args.no_cache, seed=args.seed,
@@ -104,6 +154,10 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
         test_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate,
         num_workers=args.num_workers,
     )
+    val_loader = DataLoader(
+        val_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate,
+        num_workers=args.num_workers,
+    ) if args.select_on == "inner" else test_loader
 
     mcfg = ModelConfig(
         n_classes=len(CLASSES), d_model=args.d_model, n_heads=args.n_heads,
@@ -118,7 +172,7 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
 
-    best = {"macro_f1": -1.0, "epoch": -1, "state": None, "pred": None, "gold": None, "ids": None}
+    best = {"val_macro_f1": -1.0, "epoch": -1, "state": None}
     since_best = 0
 
     for epoch in range(args.epochs):
@@ -142,28 +196,74 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
             n_seen += len(batch["label"])
         sched.step()
 
-        pred, gold, ids = evaluate(model, test_loader, device)
-        f1 = macro_f1(pred, gold, len(CLASSES))
-        if f1 > best["macro_f1"]:
+        val_pred, val_gold, _ = evaluate(model, val_loader, device)
+        f1 = macro_f1(val_pred, val_gold, len(CLASSES))
+        if f1 > best["val_macro_f1"]:
             best = {
-                "macro_f1": f1, "epoch": epoch,
+                "val_macro_f1": f1, "epoch": epoch,
                 "state": {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
-                "pred": pred, "gold": gold, "ids": ids,
             }
             since_best = 0
         else:
             since_best += 1
 
         if args.verbose or epoch % 10 == 0:
+            which = "inner-val" if args.select_on == "inner" else "held-out"
             print(
                 f"  fold {fold} epoch {epoch:3d}  loss {total_loss / max(n_seen, 1):.4f}  "
-                f"held-out macro-F1 {f1:.3f}  (best {best['macro_f1']:.3f} @ {best['epoch']})",
+                f"{which} macro-F1 {f1:.3f}  (best {best['val_macro_f1']:.3f} @ {best['epoch']})",
                 file=sys.stderr,
             )
         if since_best >= args.patience:
             print(f"  fold {fold}: early stop at epoch {epoch} "
                   f"(no improvement for {args.patience} epochs)", file=sys.stderr)
             break
+
+    # --refit: keep the honest epoch choice but give the final model the whole
+    # training fold back, by retraining from scratch for exactly that many
+    # epochs. Selection still never sees the reported fold; what changes is only
+    # how much data the shipped weights saw. Without this, --select-on inner
+    # confounds "honest selection" with "15% less training data".
+    if args.select_on == "inner" and args.refit:
+        n_epochs = best["epoch"] + 1
+        print(f"  fold {fold}: refitting on the full training fold for {n_epochs} epochs",
+              file=sys.stderr)
+        full_ds = JunctionSetDataset(
+            fold_entries, cfg=cfg, augment=aug, scaler=scaler,
+            feature_subset=args.feature_subset, cache=not args.no_cache, seed=args.seed,
+        )
+        full_loader = DataLoader(
+            full_ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate,
+            num_workers=args.num_workers, drop_last=False,
+        )
+        model = JunctionSetTransformer(mcfg).to(device)
+        criterion = torch.nn.CrossEntropyLoss(weight=class_weights(full_ds.labels, CLASSES, device))
+        opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        # same schedule shape as the selection run, so epoch n means the same thing
+        sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
+        for epoch in range(n_epochs):
+            full_ds.set_epoch(epoch)
+            model.train()
+            for batch in full_loader:
+                opt.zero_grad(set_to_none=True)
+                logits, _ = model(
+                    batch["tokens"].to(device), batch["cls"].to(device),
+                    batch["s_rel"].to(device), batch["e_rel"].to(device),
+                    batch["pad_mask"].to(device),
+                )
+                loss = criterion(logits, batch["label"].to(device))
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+                opt.step()
+            sched.step()
+        best["state"] = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        train_entries = fold_entries  # the prior stored below is what this model saw
+
+    # the held-out fold is scored exactly once, with the epoch the inner split
+    # chose -- so this number is an estimate, not a maximum over epochs
+    model.load_state_dict(best["state"])
+    pred, gold, ids = evaluate(model, test_loader, device)
+    best.update(macro_f1=macro_f1(pred, gold, len(CLASSES)), pred=pred, gold=gold, ids=ids)
 
     if args.out_dir:
         os.makedirs(args.out_dir, exist_ok=True)
@@ -180,10 +280,16 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
                 "feature_subset": args.feature_subset,
                 "fold": fold,
                 "held_out_macro_f1": best["macro_f1"],
+                # which number chose the epoch -- under select_on="inner" the
+                # two are independent, under "held-out" they are the same set
+                "inner_val_macro_f1": best["val_macro_f1"],
+                "select_on": args.select_on,
+                "best_epoch": best["epoch"],
                 # training class prior, so inference-time prior correction
                 # (dsignal.predict.PriorCorrection) does not need the labels
                 # TSV. Checkpoints written before this field exist -- callers
-                # must tolerate its absence.
+                # must tolerate its absence. Under --select-on inner this counts
+                # the inner-train subset, i.e. exactly what the model saw.
                 "train_class_counts": {c: int(sum(1 for e in train_entries if e[2] == c)) for c in CLASSES},
             },
             pjoin(args.out_dir, f"fold{fold}.pt"),
@@ -256,6 +362,28 @@ def _build_argparser() -> argparse.ArgumentParser:
         "structurally cannot test what invariance protects against.",
     )
 
+    ap.add_argument(
+        "--select-on", choices=("inner", "held-out"), default="inner",
+        help="where the best epoch and early stopping are decided. 'inner' "
+        "(default since 2026-08-17) carves a gene-disjoint validation split out "
+        "of each training fold; the held-out fold is then scored exactly once, "
+        "with the chosen epoch. 'held-out' is the old protocol, which chose the "
+        "epoch on the fold it then reported -- a best-of-N maximum, not an "
+        "estimate. Every sim-CV number from before that date is on 'held-out' "
+        "and reads about 0.02 macro-F1 high; use this flag to reproduce one.",
+    )
+    ap.add_argument("--inner-val-frac", type=float, default=0.15,
+                    help="fraction of each training fold's genes held out for epoch selection")
+    ap.add_argument(
+        "--refit", action="store_true",
+        help="with --select-on inner: after choosing the epoch, retrain from "
+        "scratch on the *whole* training fold for that many epochs. Selection "
+        "still never sees the reported fold; the model just gets the inner-val "
+        "15%% back. Roughly doubles training time. Use it to tell 'honest "
+        "selection' apart from 'less training data' -- the two moved together "
+        "when the protocol changed and the transfer drop needed attributing.",
+    )
+
     ap.add_argument("--num-workers", type=int, default=0)
     ap.add_argument("--no-cache", action="store_true", help="do not hold normalized records in RAM")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -276,22 +404,27 @@ def main(argv=None) -> None:
     print(f"loaded {len(entries)} events", file=sys.stderr)
     print("class counts:", {c: labels.count(c) for c in CLASSES})
     print(f"augmentations: {args.augment or ['none (control)']}, feature subset: {args.feature_subset}, "
-          f"depth norm: {args.depth_norm}, subsample_low: {args.subsample_low}")
+          f"depth norm: {args.depth_norm}, subsample_low: {args.subsample_low}, "
+          f"epoch selection: {args.select_on}"
+          + (f" ({args.inner_val_frac:.0%} of each training fold)" if args.select_on == "inner" else ""))
 
     splits = grouped_folds(np.zeros(len(entries)), labels, gene_ids, args.folds)
 
     t0 = time.time()
     oof_pred = np.empty(len(entries), dtype=object)
     oof_gold = np.empty(len(entries), dtype=object)
-    fold_f1 = []
+    fold_f1, fold_val_f1 = [], []
     for fold, (train_idx, test_idx) in enumerate(splits):
         best = train_fold(args, entries, train_idx, test_idx, fold, device)
         fold_f1.append(best["macro_f1"])
+        fold_val_f1.append(best["val_macro_f1"])
         for pos, i in enumerate(test_idx):
             oof_pred[i] = CLASSES[best["pred"][pos]]
             oof_gold[i] = CLASSES[best["gold"][pos]]
-        print(f"fold {fold}: best held-out macro-F1 {best['macro_f1']:.3f} "
-              f"at epoch {best['epoch']}", file=sys.stderr)
+        sel = (f" (epoch chosen on inner val, macro-F1 {best['val_macro_f1']:.3f})"
+               if args.select_on == "inner" else " (epoch chosen on this same fold)")
+        print(f"fold {fold}: held-out macro-F1 {best['macro_f1']:.3f} "
+              f"at epoch {best['epoch']}{sel}", file=sys.stderr)
 
     elapsed = time.time() - t0
     print(f"\ntrained {args.folds} folds in {elapsed / 60:.1f} min "
@@ -310,7 +443,10 @@ def main(argv=None) -> None:
                     "augment": args.augment, "feature_subset": args.feature_subset,
                     "depth_norm": args.depth_norm, "subsample_low": args.subsample_low,
                     "folds": args.folds, "seed": args.seed,
-                    "per_fold_macro_f1": fold_f1, "elapsed_min": elapsed / 60,
+                    "select_on": args.select_on, "inner_val_frac": args.inner_val_frac,
+                    "per_fold_macro_f1": fold_f1,
+                    "per_fold_inner_val_macro_f1": fold_val_f1,
+                    "elapsed_min": elapsed / 60,
                     "result": result, "collapsed": collapsed,
                 },
                 f,

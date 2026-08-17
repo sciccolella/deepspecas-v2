@@ -77,12 +77,32 @@ on the 140 paired outcomes.
 |---|---|---|---|---|
 | *(control)* v3 windows | 4,800 | 0.867 | 78.6% | — |
 | `--feature-subset all` | 4,800 | 0.873 | 74.3% (dev) | p = 0.549 |
+| `--select-on inner` (protocol fix) | 4,800 | 0.854 | 68.6% (dev) | p = 0.065 |
 | `--depth-norm scale` | 4,800 | 0.868 | 77.9% | **p = 1.000** |
 | `--subsample-low 0.15` | 4,800 | 0.862 | 73.6% | — |
 | `--depth-norm drop` | 4,800 | 0.834 | 72.9% | — |
 | *(control)* uniform \|dPSI\| | 960 | 0.784 | 72.9% | — |
 | `--psi-dist beta` | 960 | 0.693 | 70.0% | p = 0.572 |
 | beta + depth scale | 960 | 0.689 | 72.1% | p = 1.000 |
+
+**Model selection was reading the fold it reported** (Stage 1.2). Until
+2026-08-17 `train.py` chose the best epoch — and early-stopped — on held-out
+fold macro-F1, then reported that same maximum. sim-CV is the steering signal
+for every experiment here, so it had to be an estimate, not a best-of-N. The
+default is now `--select-on inner`: a gene-disjoint 15% of each *training* fold
+picks the epoch, the held-out fold is scored once. `--select-on held-out`
+reproduces any older number.
+
+sim-CV 0.867 → **0.854**, so the old protocol inflated by ~0.013 (and was
+noisier fold to fold: spread 0.041 → 0.016). **Every sim-CV number on this
+branch predating today reads about 0.013 high.**
+
+The surprise: transfer fell as well, dev 55/70 → 48/70 collapsed (78.6% →
+68.6%, p = 0.065; 5-class p = 0.022). That is a real change in the model, not
+accounting — and it confounds two things the switch does at once, honest
+selection *and* 15% less training data per fold. `--refit` (added the same day)
+keeps the honest choice and retrains on the full fold for the chosen number of
+epochs, which separates them.
 
 **Window geometry as a feature** (Stage 1.1, dev half). The `no-geometry`
 default was set to suppress a v1-window artifact that v3 deliberately
