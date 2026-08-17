@@ -29,9 +29,38 @@ CC="cc -mavx2" pip install -U --force-reinstall pillow-simd
 |---|---|---|---|
 | local | `/datasets/deepSpecas-v2/envs/DSnet` | `DSnet` | all v2 training. **Never `pip install` into it.** |
 | local | `/datasets/deepSpecas-v2/envs/DSv1` | `DSv1` | running v1 (has torchvision + cv2) |
-| remote | `ssh pasteur`, `/data/conda/ciccolella/deepSpecas-v2` | `DSpoly2v2`, `DSsim` | simulation / polyester / STAR / extraction |
+| remote | `ssh pasteur`, `/data/conda/ciccolella/deepSpecas-v2` | `DSpoly2v2`, `DSsim`, `DSrender` | simulation / polyester / STAR / extraction; `DSrender` has matplotlib+PIL+torch for `plot2s.py` |
 
 Only `.npz` records, labels and TSVs come back from pasteur — never BAMs or FASTA. Pasteur's `dsignal/` holds only the modules shipped there; rsync a new one before running it.
+
+### Running jobs on pasteur — read before launching anything parallel
+
+**pasteur is a shared machine.** Other people's jobs run on it, and a careless
+launch takes it away from them. On 2026-08-17 an unthrottled 32-way render drove
+the load average to **230 on 64 cores** and made new login shells impossible for
+~40 minutes. `crash_pasteur.md` has the exact reproduction; the rules that follow
+come from it.
+
+1. **Always wrap remote jobs in `limitram`.** `limitram <LIMIT> <command> …` is
+   `/usr/bin/limitram`, a `systemd-run --user --scope -p MemoryMax=` wrapper:
+   ```bash
+   nohup limitram 32G bash sim/render2.sh squishstack 12 50000 > log 2>&1 &
+   ```
+2. **Cap the thread pools.** `limitram` bounds memory, not CPU, and memory was
+   never the binding constraint in that incident — runnable threads were. numpy
+   and torch each size a thread pool to the machine's core count, so N processes
+   silently become N×64 threads. Export all four, every time:
+   ```bash
+   export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
+   ```
+   Even then `plot2s.py` runs at ~174% CPU per process, so budget ~2 cores each.
+3. **`nice -n 19`** every background job, and keep the shard count modest
+   (≤12 for renders). Check `cat /proc/loadavg` before launching and a minute
+   after; if the 1-minute figure goes past ~50, throttle.
+4. **Measure throughput early** — sample the output twice a few minutes apart.
+   Both render failures showed up as *zero* rows produced while the CPU was busy.
+5. **Never `pkill -f <pattern>`** when the pattern also appears in the ssh
+   command line carrying it — it kills your own session. Use `pkill -f "[p]attern"`.
 
 There is no pytest suite, linter, or CI config, and no build step — scripts are run directly with `python`. The verification gates that stand in for tests are:
 
