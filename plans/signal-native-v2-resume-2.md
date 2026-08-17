@@ -211,7 +211,19 @@ The current best splits evenly by luck: 55/70 collapsed on each half, both
 
 ## Two open honesty caveats — settle before publishing
 
-1. **The prior strength is being chosen on the test set.** The sweep's 85.7%
+**(1) is settled as of Stage 1.5.** The deployment argument is written down in
+`dsignal/prior_sweep.py`'s docstring *before* any number: deepSpecas classifies
+candidate regions from an upstream differential-splicing caller, not the genome,
+so the 25% training NN fraction — a design variable, not an estimate — badly
+overstates the deploy prior; a consensus-of-two-callers filter leaves order 10%
+non-events. The pre-registered operating point is therefore `nn-weight` 0.1.
+On dev it gives 51/70 = 72.9% collapsed against 49/70 uncorrected, 7 false NN
+calls → 1, gaining 2 and losing 0 (p = 0.500). The oracle `nn_weight=0` reaches
+74.3%, so the committed point takes two thirds of what is available without
+being the argmax cell, and the curve never costs an event.
+
+1. **The prior strength is being chosen on the test set.** *(settled — see
+   above; kept for the record of what the problem was.)* The sweep's 85.7%
    collapsed at `nn_weight=0.05` (and 87.1% at the `nn_weight=0` oracle, vs
    v1's 87.9%) is selected by reading benchmark accuracy. There is a legitimate
    version of the argument — deployment inputs are pre-filtered rMATS/SUPPA
