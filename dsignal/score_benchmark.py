@@ -189,15 +189,19 @@ def main(argv=None) -> None:
     ap.add_argument("--min-mapq", type=int, default=0)
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument(
-        "--target-prior", choices=("none", "uniform", "benchmark"), default="none",
+        "--target-prior", choices=("none", "uniform", "benchmark", "nn-weight"), default="none",
         help="opt-in class-prior correction (dsignal.predict.PriorCorrection); "
         "'none' is the default and leaves inference exactly as it was. "
         "'benchmark' (NN excluded) is an oracle upper bound, not a deployable "
-        "setting -- see dsignal/prior_sweep.py",
+        "setting; 'nn-weight' with --nn-weight is the deployable one, and 0.1 is "
+        "the operating point pre-registered from the deployment argument in "
+        "dsignal/prior_sweep.py's docstring",
     )
     ap.add_argument("--train-labels", default=None,
                     help="labels TSV the checkpoints were trained on; required by --target-prior")
     ap.add_argument("--tau", type=float, default=1.0, help="prior-correction strength")
+    ap.add_argument("--nn-weight", type=float, default=None,
+                    help="NN prior weight for --target-prior nn-weight (pre-registered: 0.1)")
     ap.add_argument(
         "--half", choices=("both", "dev", "test"), default="both",
         help="score only one side of benchmark/split.tsv. Every tuning decision is "
@@ -228,7 +232,9 @@ def main(argv=None) -> None:
     if args.target_prior != "none":
         train_counts = class_counts_from_labels(args.train_labels, predictor.classes)
         correction = PriorCorrection(
-            train_counts, make_target_prior(predictor.classes, args.target_prior), args.tau
+            train_counts,
+            make_target_prior(predictor.classes, args.target_prior, nn_weight=args.nn_weight),
+            args.tau,
         )
         predictor.prior_correction = correction
         print(f"prior correction: {correction}", file=sys.stderr)
