@@ -79,6 +79,12 @@ on the 140 paired outcomes.
 | `--feature-subset all` | 4,800 | 0.873 | 74.3% (dev) | p = 0.549 |
 | `--select-on inner` (protocol fix) | 4,800 | 0.854 | 68.6% (dev) | p = 0.065 |
 | `--select-on inner --refit` | 4,800 | 0.853 | 70.0% (dev) | p = 0.109 |
+| `--inner-val-frac 0.30` | 4,800 | 0.862 | 72.9% (dev) | p = 0.727 |
+| condition-swap TTA | — | — | 72.9% (dev) | p = 0.625 |
+| pre-registered `nn_weight` 0.1 | — | — | 72.9% (dev) | p = 0.500 |
+| **all three stacked** | 4,800 | 0.862 | **75.7%** (dev) | p = 0.344 |
+| `--two-head` | 4,800 | 0.858 | 67.1% (dev) | p = 0.727 |
+| `--two-head` stacked | 4,800 | 0.858 | 75.7% (dev) | p = 1.000 vs stack |
 | `--depth-norm scale` | 4,800 | 0.868 | 77.9% | **p = 1.000** |
 | `--subsample-low 0.15` | 4,800 | 0.862 | 73.6% | — |
 | `--depth-norm drop` | 4,800 | 0.834 | 72.9% | — |
@@ -117,6 +123,28 @@ re-baseline is ~70% on dev.** Every Stage-1 comparison from here goes against
 Worth trying before accepting the loss: a larger `--inner-val-frac` (the
 selection signal is noisy at 576 events), or averaging the last k epochs instead
 of picking one.
+
+**The two-head model is a null, and hypothesis 1 is not supported** (Stage 1.3).
+Splitting the head into a 4-way structural type and a binary is-differential
+output was the plan's specific mechanism for the confident NN false positives:
+the simulation trains positives at |dPSI| ~ U(0.3, 0.8) against negatives pinned
+at exactly 0, 81.6% of real events sit below 0.30, so the boundary should be the
+thing that transfers badly. It isn't the head that fixes it. sim-CV 0.853 →
+0.858; dev uncorrected 49/70 → **47/70** with NN false positives going 7 → 13;
+dev with TTA and the pre-registered prior 53/70 → **53/70**, four events
+differing each way.
+
+What the factorization *does* change is responsiveness: uncorrected it calls NN
+about twice as often, and the prior then recovers 8 events (p = 0.016 against
+its own uncorrected run) where the single head recovers 4. "Did this change" is
+now one scalar a deployment argument can move — worth having, not an accuracy
+win. The evidence points at the training distribution (Stage 3.1: move
+positives and negatives together) rather than at another architecture.
+
+`nn_hard` negatives supervise the type head too — their event_id carries the
+SUPPA type, so a negative can teach "this is an A5 site" and "nothing changed"
+at once, which the 5-way head cannot express. That part worked as designed; it
+just did not buy transfer.
 
 **Window geometry as a feature** (Stage 1.1, dev half). The `no-geometry`
 default was set to suppress a v1-window artifact that v3 deliberately

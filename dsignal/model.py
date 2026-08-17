@@ -291,6 +291,29 @@ class JunctionSetTransformer(nn.Module):
         of real curated events sit below 0.30. Splitting them lets the NN
         operating point be set on the deployment argument (dsignal/prior_sweep)
         instead of being entangled with the type decision.
+
+        *Measured (2026-08-17, runs/geomwin_twohead.* vs runs/geomwin_innerval_refit.*,
+        same data, protocol and hyperparameters):* a null on transfer, and
+        hypothesis 1 is **not** supported by it.
+
+            sim-CV macro-F1     0.853 -> 0.858
+            dev, uncorrected    49/70 -> 47/70   (p = 0.727), NN false
+                                positives 7 -> 13
+            dev, +TTA +the pre-registered nn_weight 0.1
+                                53/70 -> 53/70   (p = 1.000), 4 events
+                                differ in each direction
+
+        So the factorization neither fixes the confident NN false positives nor
+        costs anything once the operating point is set. What it does change is
+        how the model *responds* to that operating point: uncorrected it calls
+        NN roughly twice as often, and the prior correction then buys 8 events
+        (65.7% -> 75.7%, McNemar p = 0.016 against its own uncorrected run)
+        where the single head buys 4. The decision "did this change" is now a
+        single scalar that a deployment argument can move, which is worth
+        having; it is just not, on this evidence, a better classifier. That
+        points back at the training distribution -- positives at |dPSI| ~
+        U(0.3, 0.8) against negatives pinned at exactly 0 -- rather than at the
+        head, i.e. plan Stage 3.1, not another architecture.
         """
         if not self.cfg.two_head:
             raise ValueError("forward_parts is only defined for two_head models")
