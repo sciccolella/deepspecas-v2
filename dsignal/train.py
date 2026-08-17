@@ -147,14 +147,15 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
         train_entries, cfg=cfg, augment=aug, scaler=scaler,
         feature_subset=args.feature_subset, cache=not args.no_cache, seed=args.seed,
     )
-    val_ds = JunctionSetDataset(
-        val_entries, cfg=cfg, scaler=scaler,
-        feature_subset=args.feature_subset, cache=not args.no_cache, seed=args.seed,
-    ) if args.select_on == "inner" else test_ds
     test_ds = JunctionSetDataset(
         test_entries, cfg=cfg, scaler=scaler,
         feature_subset=args.feature_subset, cache=not args.no_cache, seed=args.seed,
     )
+    # must come after test_ds: under "held-out" the val set *is* the test set
+    val_ds = JunctionSetDataset(
+        val_entries, cfg=cfg, scaler=scaler,
+        feature_subset=args.feature_subset, cache=not args.no_cache, seed=args.seed,
+    ) if args.select_on == "inner" else test_ds
 
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate,
@@ -251,6 +252,7 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
         opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         # same schedule shape as the selection run, so epoch n means the same thing
         sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
+        tail = []  # weights of the last --avg-last-k epochs, for tail averaging
         for epoch in range(n_epochs):
             full_ds.set_epoch(epoch)
             model.train()
@@ -266,7 +268,20 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
                 opt.step()
             sched.step()
-        best["state"] = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            if args.avg_last_k > 1 and epoch >= n_epochs - args.avg_last_k:
+                tail.append({k: v.detach().cpu().clone().float()
+                             for k, v in model.state_dict().items()})
+        if len(tail) > 1:
+            # Tail averaging (SWA without the extra schedule): the refit run
+            # stops at one arbitrary epoch, and 1.2 showed the transfer cost of
+            # this protocol lives in exactly that arbitrariness. Averaging the
+            # final weights over the last k epochs spends nothing extra and
+            # removes the dependence on the last epoch's noise.
+            avg = {k: sum(t[k] for t in tail) / len(tail) for k in tail[0]}
+            best["state"] = {k: v.to(dtype=tail[0][k].dtype) for k, v in avg.items()}
+            print(f"  fold {fold}: averaged the last {len(tail)} epochs' weights", file=sys.stderr)
+        else:
+            best["state"] = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
         train_entries = fold_entries  # the prior stored below is what this model saw
 
     # the held-out fold is scored exactly once, with the epoch the inner split
@@ -394,6 +409,15 @@ def _build_argparser() -> argparse.ArgumentParser:
         "when the protocol changed and the transfer drop needed attributing.",
     )
 
+    ap.add_argument(
+        "--avg-last-k", type=int, default=1,
+        help="with --refit: average the weights of the refit run's last k epochs "
+        "instead of taking the final ones. 1 disables it. Stage 1.2 located the "
+        "transfer cost of honest selection in the epoch choice itself, and this "
+        "is the cheap way to stop betting on a single epoch -- it costs nothing "
+        "beyond holding k state dicts in RAM.",
+    )
+
     ap.add_argument("--num-workers", type=int, default=0)
     ap.add_argument("--no-cache", action="store_true", help="do not hold normalized records in RAM")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -454,6 +478,7 @@ def main(argv=None) -> None:
                     "depth_norm": args.depth_norm, "subsample_low": args.subsample_low,
                     "folds": args.folds, "seed": args.seed,
                     "select_on": args.select_on, "inner_val_frac": args.inner_val_frac,
+                    "refit": args.refit, "avg_last_k": args.avg_last_k,
                     "per_fold_macro_f1": fold_f1,
                     "per_fold_inner_val_macro_f1": fold_val_f1,
                     "elapsed_min": elapsed / 60,
