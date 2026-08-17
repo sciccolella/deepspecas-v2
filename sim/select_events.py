@@ -90,9 +90,52 @@ def _load_excluded_genes(paths) -> set:
 DPSI_BETA = (1.781, 7.396)
 PSI_LEVEL_BETA = (0.981, 0.620)
 
+#: Null |dPSI| scale, **measured from the simulation's own replicate noise**
+#: (``python -m sim.null_dpsi_scale``, n=399 nn_hard events across b1-b5, whose
+#: two conditions share a PSI target exactly): median 0.0505, p90 0.133, max
+#: 0.279. A half-normal with this sigma has median ``0.6745 * sigma`` = 0.0506,
+#: i.e. it reproduces the measured null median by construction.
+#:
+#: This is the honest counterpart to DPSI_BETA: nothing here comes from the
+#: benchmark, so a batch drawn this way stays zero-shot along the effect-size
+#: axis. That matters because the alternative -- pulling positives down onto
+#: negatives still pinned at exactly 0 -- is what the beta batch did, and it
+#: collapsed sim-CV (0.784 -> 0.693) without helping transfer.
+NULL_DPSI_SIGMA = 0.075
+#: measured maximum; the clip keeps a negative from wandering into positive
+#: territory on a fat tail
+NULL_DPSI_MAX = 0.28
+
+#: Per-class positive |dPSI| ranges for ``--psi-dist paired`` (plan Stage 3.2).
+#: Two measurements set these, neither from the benchmark's marginals:
+#:
+#: * the null floor above -- a positive at |dPSI| = 0.05 is *by construction*
+#:   indistinguishable from a negative, so the positive floor sits at 0.10,
+#:   twice the null median;
+#: * the pooled beta batch traded per class rather than gaining, and RI was
+#:   where it hurt worst (82.4% -> 64.7%): a retained intron at |dPSI| ~ 0.1
+#:   carries almost no signal, because the intron's coverage barely moves. So
+#:   RI keeps a higher floor while the junction-defined classes go low.
+PAIRED_DPSI_RANGE = {
+    "A3": (0.10, 0.60),
+    "A5": (0.10, 0.60),
+    "CSE": (0.10, 0.60),
+    "RI": (0.25, 0.80),
+}
+
+
+def _null_dpsi(rng: np.random.Generator, sigma: float) -> float:
+    """Signed null effect for a hard negative: half-normal magnitude at the
+    measured replicate-noise scale, random direction, clipped at the measured
+    maximum. ``sigma = 0`` returns exactly 0, i.e. the original design."""
+    if sigma <= 0:
+        return 0.0
+    mag = min(abs(float(rng.normal(0.0, sigma))), NULL_DPSI_MAX)
+    return mag * float(rng.choice([-1.0, 1.0]))
+
 
 def _sample_psi_pair(rng: np.random.Generator, dpsi_lo: float, dpsi_hi: float,
-                     dist: str = "uniform"):
+                     dist: str = "uniform", label: str | None = None):
     """(psi1, psi2) for one simulated positive.
 
     ``dist="uniform"`` is the original draw: ``|dPSI| ~ U(dpsi_lo, dpsi_hi)``
@@ -104,10 +147,20 @@ def _sample_psi_pair(rng: np.random.Generator, dpsi_lo: float, dpsi_hi: float,
     while U(0.25, 0.75) is flat and central.
 
     ``dist="beta"`` draws both from the fitted marginals above.
+
+    ``dist="paired"`` (plan Stage 3.1/3.2) draws per class from
+    ``PAIRED_DPSI_RANGE`` and is meant to be used *together with* a non-zero
+    null for the hard negatives -- moving positives down while negatives stay
+    pinned at exactly 0 is what the beta batch did, and it collapsed the margin
+    without moving the boundary. Nothing in it is fitted to the benchmark.
     """
     if dist == "beta":
         dpsi = float(rng.beta(*DPSI_BETA))
         mid = float(rng.beta(*PSI_LEVEL_BETA))
+    elif dist == "paired":
+        lo, hi = PAIRED_DPSI_RANGE[label] if label in PAIRED_DPSI_RANGE else (dpsi_lo, dpsi_hi)
+        dpsi = float(rng.uniform(lo, hi))
+        mid = float(rng.uniform(0.25, 0.75))
     else:
         dpsi = float(rng.uniform(dpsi_lo, dpsi_hi))
         mid = float(rng.uniform(0.25, 0.75))
@@ -133,7 +186,7 @@ def select_positives(events, n_per_label, used_genes, rng, psi_dist: str = "unif
             if e.gene_id in used_genes:
                 continue
             used_genes.add(e.gene_id)
-            psi1, psi2 = _sample_psi_pair(rng, 0.3, 0.8, dist=psi_dist)
+            psi1, psi2 = _sample_psi_pair(rng, 0.3, 0.8, dist=psi_dist, label=label)
             rows.append(
                 dict(
                     event_id=e.event_id,
@@ -154,7 +207,17 @@ def select_positives(events, n_per_label, used_genes, rng, psi_dist: str = "unif
     return rows
 
 
-def select_hard_negatives(events, n, used_genes, rng):
+def select_hard_negatives(events, n, used_genes, rng, null_sigma: float = 0.0):
+    """Catalogued AS events used as negatives.
+
+    ``null_sigma = 0`` is the original behaviour: ``psi1 == psi2`` exactly, a
+    mathematically perfect non-event. With ``null_sigma > 0`` the two conditions
+    differ by ``|dPSI| ~ HalfNormal(null_sigma)`` clipped at NULL_DPSI_MAX --
+    the technical floor the simulation already produces between replicates
+    (sim/null_dpsi_scale.py). A negative is then "no *meaningful* change", which
+    is what a negative means in the deployment setting, rather than "no change
+    representable in floating point".
+    """
     idx = rng.permutation(len(events))
     rows = []
     for i in idx:
@@ -173,8 +236,8 @@ def select_hard_negatives(events, n, used_genes, rng):
                 strand=e.strand,
                 region_start=e.region_start,
                 region_end=e.region_end,
-                psi1=mid,
-                psi2=mid,
+                psi1=float(np.clip(mid - _null_dpsi(rng, null_sigma) / 2, 0.02, 0.98)),
+                psi2=float(np.clip(mid + _null_dpsi(rng, null_sigma) / 2, 0.02, 0.98)),
             )
         )
         if len(rows) >= n:
@@ -281,7 +344,7 @@ def main(argv=None) -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument(
-        "--psi-dist", choices=("uniform", "beta"), default="uniform",
+        "--psi-dist", choices=("uniform", "beta", "paired"), default="uniform",
         help="effect-size draw for positives. 'uniform' is |dPSI| ~ U(0.3, 0.8) "
         "with level U(0.25, 0.75) -- the original, whose floor excludes the 81.6%% "
         "of curated benchmark events below 0.30. 'beta' draws both from marginals "
@@ -290,7 +353,20 @@ def main(argv=None) -> None:
         "null on transfer (70.0%% vs 72.9%% at 960 events, McNemar p=0.572), "
         "trading A3/A5 gains against ES/IR losses, and it costs sim-CV "
         "(0.693 vs 0.784). The measurement stands; the fix on its own does not. "
-        "See plans/signal-native-v2-audit-geometry-results.md (addendum).",
+        "See plans/signal-native-v2-audit-geometry-results.md (addendum). "
+        "'paired' is the Stage 3 draw: per-class ranges (PAIRED_DPSI_RANGE), "
+        "floored at twice the measured null, and meant to be used with "
+        "--null-dpsi-sigma so positives and negatives move TOGETHER. Nothing "
+        "in it is fitted to the benchmark.",
+    )
+    ap.add_argument(
+        "--null-dpsi-sigma", type=float, default=0.0,
+        help="hard negatives get |dPSI| ~ HalfNormal(sigma) instead of exactly 0. "
+        f"0 keeps the original design; {NULL_DPSI_SIGMA} reproduces the null "
+        "median measured from this simulation's own replicate noise "
+        "(python -m sim.null_dpsi_scale). The point is that a negative should "
+        "mean 'no meaningful change', not 'no change representable in floating "
+        "point' -- see plan Stage 3.1.",
     )
     ap.add_argument(
         "--exclude-genes",
@@ -328,7 +404,8 @@ def main(argv=None) -> None:
     n_excluded = len(used_genes)
     rows = []
     rows += select_positives(events, args.n_per_label, used_genes, rng, args.psi_dist)
-    rows += select_hard_negatives(events, args.n_nn_hard, used_genes, rng)
+    rows += select_hard_negatives(events, args.n_nn_hard, used_genes, rng,
+                              null_sigma=args.null_dpsi_sigma)
     rows += select_plain_negatives(
         gene_spans, catalogue_genes, transcripts_by_gene, args.n_nn_plain, used_genes, rng
     )
