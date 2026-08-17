@@ -76,7 +76,10 @@ def collapse(label: str) -> str:
     return "A" if label in ("A3", "A5") else label
 
 
-def score(predictor: Predictor, csv_paths, verbose: bool = False):
+def score(predictor: Predictor, csv_paths, verbose: bool = False, keep=None):
+    """``keep``, when given, is a predicate on ``(csv_stem, region)`` -- used by
+    ``--half`` to score only one side of ``benchmark/split.tsv``. Filtering here
+    rather than after the fact means the skipped half is never extracted."""
     rows = []
     for path in csv_paths:
         stem = splitext(basename(path))[0]
@@ -84,6 +87,8 @@ def score(predictor: Predictor, csv_paths, verbose: bool = False):
             raise ValueError(f"{path}: no label mapping for {stem!r} (known: {sorted(CSV_LABEL)})")
         truth = CSV_LABEL[stem]
         for region, bam1, bam2 in read_prediction_csv(path):
+            if keep is not None and not keep(stem, region):
+                continue
             chrom, start, end = parse_region(region)
             pred, probs, _, timing = predictor.predict_region(region, bam1, bam2)
             rows.append(
@@ -115,9 +120,10 @@ def _confusion(rows, key_true, key_pred, labels):
     return cm
 
 
-def report(rows, predictor) -> None:
+def report(rows, predictor, half: str = "both") -> None:
     n = len(rows)
-    print(f"\n=== curated benchmark: {n} events ===")
+    which = "all 140" if half == "both" else f"{half} half"
+    print(f"\n=== curated benchmark ({which}): {n} events ===")
 
     print("\nper-CSV accuracy (5-class / A3+A5 collapsed):")
     for stem in ("A3", "A5", "ES", "IR"):
@@ -132,8 +138,9 @@ def report(rows, predictor) -> None:
     n_correct = sum(r["correct"] for r in rows)
     n_correct_c = sum(r["correct_collapsed"] for r in rows)
     print(f"\naggregate 5-class:  {n_correct}/{n} = {n_correct / n:.1%}")
-    print(f"aggregate collapsed: {n_correct_c}/{n} = {n_correct_c / n:.1%}   "
-          f"(this is the number comparable to v1's 123/140 = 87.9%)")
+    v1_note = ("(this is the number comparable to v1's 123/140 = 87.9%)" if half == "both"
+               else f"({half} half only -- v1's 123/140 = 87.9% is over all 140)")
+    print(f"aggregate collapsed: {n_correct_c}/{n} = {n_correct_c / n:.1%}   {v1_note}")
 
     labels = list(predictor.classes)
     print(f"\nconfusion matrix, 5-class (rows=truth, cols=pred): {labels}")
@@ -191,6 +198,13 @@ def main(argv=None) -> None:
     ap.add_argument("--train-labels", default=None,
                     help="labels TSV the checkpoints were trained on; required by --target-prior")
     ap.add_argument("--tau", type=float, default=1.0, help="prior-correction strength")
+    ap.add_argument(
+        "--half", choices=("both", "dev", "test"), default="both",
+        help="score only one side of benchmark/split.tsv. Every tuning decision is "
+        "read off 'dev'; 'test' is scored once per milestone and reported separately. "
+        "'both' reproduces the historical 140-event numbers",
+    )
+    ap.add_argument("--split", default="benchmark/split.tsv")
     args = ap.parse_args(argv)
 
     correction = None
@@ -213,8 +227,16 @@ def main(argv=None) -> None:
     print(f"loaded {len(predictor.models)} fold checkpoint(s), classes {predictor.classes}, "
           f"feature subset {predictor.feature_subset!r}", file=sys.stderr)
 
-    rows = score(predictor, args.csv, args.verbose)
-    report(rows, predictor)
+    keep = None
+    if args.half != "both":
+        from dsignal.benchmark_split import load_split  # local: benchmark_split imports us
+
+        split = load_split(args.split)
+        keep = lambda stem, region: split.get((stem, region)) == args.half  # noqa: E731
+        print(f"scoring the {args.half} half of {args.split}", file=sys.stderr)
+
+    rows = score(predictor, args.csv, args.verbose, keep=keep)
+    report(rows, predictor, args.half)
 
     if args.out:
         fields = list(rows[0].keys())

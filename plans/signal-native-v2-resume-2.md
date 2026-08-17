@@ -138,6 +138,32 @@ Reading 2 is what the plan assumed. Reading 1 now has the supporting evidence.
 
 Not recommended: more scale-up; more noise layers; Phase-4 fine-tuning.
 
+## The benchmark is now split (Stage 0, 2026-08-17)
+
+`benchmark/split.tsv` — 70 dev / 70 test, committed so it cannot drift.
+Stratified by truth class (dev A3=14 A5=15 CSE=33 RI=8, test A3=14 A5=15
+CSE=32 RI=9) and cluster-disjoint at 50 kb single linkage, which is a
+same-locus proxy for gene identity since the CSVs carry regions only and no
+usable annotation is in the repo. The sorted inter-event gaps jump 5.6 kb →
+67 kb, so the threshold is insensitive: 132 singletons + 4 pairs at anything in
+that decade. `python -m dsignal.benchmark_split make` regenerates it (seed 0).
+
+Both caveats below become dev-set choices under it. **Everything tuned is read
+off dev; test is scored once per milestone.** Cost, stated rather than hidden:
+McNemar at n=70 needs an 8–10 event swing where n=140 needed 5–6.
+
+Usage:
+
+```bash
+python -m dsignal.score_benchmark --net runs/<name>/fold*.pt --half dev \
+  --out runs/benchmark_events_<name>.tsv
+python -m dsignal.benchmark_split compare \
+  runs/benchmark_events_geomwin.tsv runs/benchmark_events_<name>.tsv --half dev
+```
+
+The current best splits evenly by luck: 55/70 collapsed on each half, both
+78.6%, identical per-event predictions to the cached 140-event run.
+
 ## Two open honesty caveats — settle before publishing
 
 1. **The prior strength is being chosen on the test set.** The sweep's 85.7%
