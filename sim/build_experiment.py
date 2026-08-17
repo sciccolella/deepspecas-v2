@@ -121,6 +121,21 @@ def main(argv=None) -> None:
     ap.add_argument("--out-transcripts", required=True)
     ap.add_argument("--out-psi-check", required=True)
     ap.add_argument("--gene-mean-depth", type=float, default=2000.0)
+    ap.add_argument(
+        "--cooc-frac", type=float, default=0.0,
+        help="fraction of the gene's OTHER catalogued events that also change "
+        "between conditions (plan Stage 3.3). 0 keeps the current design, in "
+        "which exactly one event per window is differential and every other "
+        "event in the gene is perfectly static -- something real windows never "
+        "say. Curated ES windows carry a mean of 2.4 catalogued CSE and 0.7 "
+        "catalogued A5 events, and the ES windows this model calls A5 contain "
+        "2.2 catalogued A5 events against 0.7 for those it calls CSE. The count "
+        "per window is Binomial(n_other, this).",
+    )
+    ap.add_argument(
+        "--cooc-dpsi", type=float, nargs=2, default=(0.10, 0.60), metavar=("LO", "HI"),
+        help="|dPSI| range for those co-occurring events",
+    )
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument(
         "--no-premrna",
@@ -172,16 +187,26 @@ def main(argv=None) -> None:
     rng_design, rng_premrna, rng_neighbor_base, rng_novel = (
         np.random.default_rng(s) for s in seed_seq.spawn(4)
     )
-    config = AbundanceConfig(gene_mean_depth=args.gene_mean_depth)
+    config = AbundanceConfig(gene_mean_depth=args.gene_mean_depth,
+                             cooc_dpsi_range=tuple(args.cooc_dpsi))
 
     design_rows = _load_design(args.design)
-    events_by_id = {e.event_id: e for e in build_catalogue(args.events_dir)}
+    catalogue = build_catalogue(args.events_dir)
+    events_by_id = {e.event_id: e for e in catalogue}
+    # gene -> its other catalogued events, for the co-occurrence axis. Built
+    # once; the per-event subset is drawn below so the RNG stream stays
+    # independent of catalogue order.
+    events_by_gene = {}
+    if args.cooc_frac > 0:
+        for e in catalogue:
+            events_by_gene.setdefault(e.gene_id, []).append(e)
     transcripts_by_gene = load_transcript_lengths(args.transcript_lengths)
     novel_by_gene = _load_novel_junctions(args.novel_junctions) if args.novel_junctions else {}
 
     matrices = []
     psi_check_rows = []
     n_missing_gene = 0
+    n_cooc_total = 0
     n_novel_nn_missing_variant = 0
     for row in design_rows:
         gene_id = row["gene_id"]
@@ -195,7 +220,18 @@ def main(argv=None) -> None:
         else:
             event = events_by_id[row["event_id"]]
             psi1, psi2 = float(row["psi1"]), float(row["psi2"])
-            df = build_count_matrix(event, transcripts_by_gene, psi1, psi2, config, rng_design)
+            cooc = ()
+            if args.cooc_frac > 0:
+                others = [e for e in events_by_gene.get(gene_id, ())
+                          if e.event_id != event.event_id]
+                if others:
+                    k = rng_design.binomial(len(others), args.cooc_frac)
+                    if k:
+                        pick = rng_design.choice(len(others), size=int(k), replace=False)
+                        cooc = [others[int(i)] for i in np.atleast_1d(pick)]
+            df = build_count_matrix(event, transcripts_by_gene, psi1, psi2, config,
+                                    rng_design, cooccurring=cooc)
+            n_cooc_total += len(cooc)
             c1_cols = [c for c in df.columns if c.startswith("cond1")]
             c2_cols = [c for c in df.columns if c.startswith("cond2")]
             obs1 = empirical_psi(df, event, c1_cols)
@@ -303,6 +339,11 @@ def main(argv=None) -> None:
             file=sys.stderr,
         )
     print(f"transcripts: {full.shape[0]}, samples: {full.shape[1]}", file=sys.stderr)
+    if args.cooc_frac > 0:
+        n_lab = sum(1 for r in design_rows if r["kind"] not in ("nn_plain", "nn_novel"))
+        print(f"co-occurrence: {n_cooc_total} neighbouring events perturbed across "
+              f"{n_lab} labelled windows ({n_cooc_total / max(n_lab, 1):.2f} per window) "
+              f"at |dPSI| ~ U{config.cooc_dpsi_range}", file=sys.stderr)
     print(f"total simulated fragments: {full.to_numpy().sum():,}", file=sys.stderr)
     print(f"wrote {out_matrix}, {args.out_transcripts}, {args.out_psi_check}", file=sys.stderr)
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Sequence
 
 import numpy as np
 import pandas as pd
@@ -34,6 +34,9 @@ class AbundanceConfig:
     gene_depth_dispersion: float = 4.0  # NB size, gene-level depth across replicates
     transcript_dispersion: float = 10.0  # NB size, per-transcript counts
     dirichlet_alpha: float = 0.5  # baseline isoform-proportion concentration
+    #: |dPSI| range for co-occurring (unlabelled) events of the same gene when
+    #: build_experiment passes any -- see build_count_matrix's `cooccurring`
+    cooc_dpsi_range: tuple = (0.10, 0.60)
 
 
 def load_transcript_lengths(path: str) -> Dict[str, List[str]]:
@@ -102,14 +105,47 @@ def build_count_matrix(
     target_psi_c2: float,
     config: AbundanceConfig,
     rng: np.random.Generator,
+    cooccurring: Sequence[Event] = (),
 ) -> pd.DataFrame:
     """Returns transcript_id x sample count matrix, columns
-    cond{1,2}_rep{1..n_replicates}, for every transcript of event.gene_id."""
+    cond{1,2}_rep{1..n_replicates}, for every transcript of event.gene_id.
+
+    ``cooccurring`` (plan Stage 3.3) are *other* catalogued events of the same
+    gene that should also change between conditions. Without them the design
+    says something real windows never say: exactly one event per window is
+    differential and every other event in the gene is perfectly
+    non-differential. Curated ES windows carry a mean of 2.4 catalogued CSE and
+    0.7 catalogued A5 events, and the ES windows this model calls A5 contain
+    2.2 catalogued A5 events against 0.7 for those it calls CSE
+    (``runs/cse_a3_diagnosis.log``) -- i.e. the model is reading co-occurring
+    structure that the simulation always presents as static.
+
+    Order matters and is not incidental: the co-occurring perturbations are
+    applied to the baseline *first*, and the labelled event's targeting last,
+    so the labelled event still hits ``target_psi_c1``/``c2`` exactly. Applied
+    the other way round, an overlapping neighbour would silently move the
+    label's own PSI and ``empirical_psi`` would disagree with the design.
+    """
     transcripts = transcripts_by_gene[event.gene_id]
     baseline = sample_baseline_weights(transcripts, rng, config.dirichlet_alpha)
+
+    base_by_cond = {1: baseline, 2: baseline}
+    if cooccurring:
+        b1, b2 = dict(baseline), dict(baseline)
+        for other in cooccurring:
+            # each neighbour gets its own level and its own effect, drawn the
+            # same way a positive is -- these are real events, not noise
+            mid = float(rng.uniform(0.25, 0.75))
+            dpsi = float(rng.uniform(*config.cooc_dpsi_range)) * float(rng.choice([-1.0, 1.0]))
+            p1 = float(np.clip(mid - dpsi / 2, 0.02, 0.98))
+            p2 = float(np.clip(mid + dpsi / 2, 0.02, 0.98))
+            b1 = targeted_weights(b1, other, p1)
+            b2 = targeted_weights(b2, other, p2)
+        base_by_cond = {1: b1, 2: b2}
+
     weights_by_cond = {
-        1: targeted_weights(baseline, event, target_psi_c1),
-        2: targeted_weights(baseline, event, target_psi_c2),
+        1: targeted_weights(base_by_cond[1], event, target_psi_c1),
+        2: targeted_weights(base_by_cond[2], event, target_psi_c2),
     }
 
     columns = {}
