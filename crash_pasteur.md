@@ -135,6 +135,40 @@ the tail stalls for hours. Two fixes, both now in `sim/render2.sh`: cap width
 round-robin **after sorting by width** (`split -n r/N`), so every shard gets a
 comparable mix. With that, throughput went from ~0 to **26,490 events/hour**.
 
+## 5b. A third failure mode: narrow windows crash the shard outright
+
+With width capped and shards balanced, 6 of 12 shards still died — this time on
+a real bug, not resources. Very narrow windows strip to a **zero-column image**,
+and PIL then raises from `Image.resize`:
+
+```
+File "plot2s.py", line 328, in plot
+File ".../PIL/Image.py", line 2433, in resize
+ValueError: height and width must be > 0
+```
+
+Reproducer (180 bp window, `sim/batches/b3`):
+
+```bash
+echo '7:129471130-129471310,/data/conda/ciccolella/deepSpecas-v2/sim/batches/b3/aligned/c1.bam,/data/conda/ciccolella/deepSpecas-v2/sim/batches/b3/aligned/c2.bam,NN' > /tmp/bad.csv
+ssh pasteur 'cd /data/conda/ciccolella/deepSpecas-v2 && \
+  /data/conda/ciccolella/envs/DSrender/bin/python plot2s.py -i /tmp/bad.csv \
+    -o /tmp/badimg --outcsv /tmp/bad.out.csv -m squishstack --zoom -1 --resize'
+```
+
+It is not purely a width threshold — other windows of the same size render
+fine — so it depends on what survives `strip()`. One bad event kills the whole
+shard and everything after it, which is why the six survivors looked "done"
+while four fifths of the work was missing.
+
+Handled in `sim/render_resume.sh` without touching published v1 rendering code:
+plot2s writes its outcsv incrementally at 4 rows per event, so on a crash the
+driver knows the failing event is at index `rows/4`, records it in
+`partNN.skipped`, and restarts past it. Dropping the narrow tail instead would
+have cost 689 events (14%) biased toward exactly the classes whose windows are
+narrow (A3/A5/RI), which would have distorted the comparison this render exists
+to make.
+
 ## 6. What should have been done, and now is
 
 ```bash
