@@ -15,12 +15,34 @@ that session; this file is the short version plus direction.
 
 ---
 
+## The headline number, as of the end of Stage 1 (2026-08-17)
+
+**58/70 = 82.9% collapsed on the held-out test half**, scored once, with every
+choice in the configuration made on dev: `runs/geomwin_iv30_refit` (5 folds,
+honest epoch selection, refit on the full fold) + condition-swap TTA + the
+pre-registered `nn_weight` 0.1. Dev, the half that was looked at, gives 53/70 =
+75.7% — the 7-point spread between halves is what n=70 noise looks like and is
+the reason both are reported. Command:
+
+```bash
+python -m dsignal.score_benchmark --net runs/geomwin_iv30_refit/fold*.pt \
+  --half test --tta-condition-swap --target-prior nn-weight --nn-weight 0.1 \
+  --train-labels sim/experiment/labels_geomwin.tsv
+```
+
+**The old 78.6% is not comparable and should not be quoted.** Its epoch was
+chosen by peeking at the fold it then reported (Stage 1.2), so it was selected
+optimistically; the honest re-baseline of that same model is 49/70 on dev.
+
 ## The one thing to know
 
 **Zero-shot transfer went 62.1% → 78.6% collapsed, and the cause was the
 extraction window, not the noise model.** Same simulated reads, same
 alignments, same 4,800 events and genes, same model and hyperparameters — only
-the window definition changed. No re-simulation.
+the window definition changed. No re-simulation. *(The 78.6% here is the
+optimistically-selected number; the finding — that the window, not the noise
+model, is what moved transfer — stands, and the ~16-point size of it is far
+larger than the ~2-4 points the selection protocol is worth.)*
 
 | | v1 | v2 before | v2 now |
 |---|---|---|---|
