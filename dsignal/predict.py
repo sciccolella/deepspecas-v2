@@ -13,6 +13,13 @@ Several checkpoints can be given at once (e.g. all five GroupKFold folds), in
 which case their softmax outputs are averaged -- the same ensembling idea as
 ``dsEnsemble.py``, over folds rather than over image representations.
 
+``--tta-condition-swap`` additionally averages each fold over both condition
+orientations. The swap is exactly label-invariant, so it is free test-time
+augmentation rather than a guess. Measured on the dev half of the benchmark
+(2026-08-17, runs/benchmark_events_tta_dev.tsv vs ..._innerval_refit_dev.tsv):
+49/70 -> 51/70 collapsed, 3 gained / 1 lost, McNemar p = 0.625 -- the right
+sign, not significant at n=70, and it doubles inference time. Opt-in.
+
 Usage:
     python -m dsignal.predict --csv benchmark/A3.csv --net runs/control/fold*.pt
 """
@@ -27,9 +34,15 @@ import time
 import numpy as np
 import torch
 
-from dsignal.dataset import apply_feature_subset, apply_feature_subset_meta, collate, FeatureScaler
+from dsignal.dataset import (
+    apply_feature_subset,
+    apply_feature_subset_meta,
+    augment_condition_swap,
+    collate,
+    FeatureScaler,
+)
 from dsignal.extract import ReadFilters, extract_event, parse_region
-from dsignal.features import FeatureConfig, build_features
+from dsignal.features import FeatureConfig, build_features, normalize_record
 from dsignal.model import JunctionSetTransformer, ModelConfig
 
 
@@ -135,11 +148,14 @@ class Predictor:
     """
 
     def __init__(self, checkpoint_paths, device=None, filters: ReadFilters | None = None,
-                 prior_correction: "PriorCorrection | None" = None):
+                 prior_correction: "PriorCorrection | None" = None,
+                 tta_condition_swap: bool = False):
         if not checkpoint_paths:
             raise ValueError("no checkpoints given")
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.filters = filters or ReadFilters()
+        #: average the two condition orientations at inference (see _views)
+        self.tta_condition_swap = bool(tta_condition_swap)
         #: optional train/deploy prior adjustment, applied per fold (see PriorCorrection)
         self.prior_correction = prior_correction
         self.models, self.scalers = [], []
@@ -166,48 +182,75 @@ class Predictor:
                     f"feature subset {subset!r} vs {self.feature_subset!r}"
                 )
 
+    def _views(self, record: dict):
+        """Feature views of one record: the record itself, plus -- when
+        ``tta_condition_swap`` is on -- the same record with the two conditions
+        exchanged. That transform is exactly label-invariant (the label is the
+        event *type*, not the direction of the PSI change; see
+        ``dsignal.dataset.augment_condition_swap``), so averaging the two
+        orientations is free test-time augmentation, not a guess."""
+        norm = normalize_record(record, self.cfg)
+        norms = [norm]
+        if self.tta_condition_swap:
+            norms.append(augment_condition_swap(norm))
+        out = []
+        for n in norms:
+            tokens_raw, cls_raw, meta = build_features(norm=n, cfg=self.cfg)
+            out.append((tokens_raw, cls_raw, apply_feature_subset_meta(meta, self.feature_subset)))
+        return out
+
     def fold_probs(self, record: dict, need_weights: bool = False):
         """``([F, C] per-fold softmax, attention or None)`` -- uncorrected.
 
         Kept separate from `predict_record` so a prior sweep can extract and
         run each event once and then evaluate many corrections analytically:
         the correction is a function of these per-fold posteriors alone.
+
+        Under TTA the views are averaged *within* each fold, so what this
+        returns is still one posterior per fold and everything downstream --
+        prior correction, fold averaging -- is unchanged.
         """
-        tokens_raw, cls_raw, meta = build_features(record, self.cfg)
-        meta = apply_feature_subset_meta(meta, self.feature_subset)
+        views = self._views(record)
         per_fold = np.zeros((len(self.models), len(self.classes)), dtype=np.float64)
         attn_out = None
 
         for f, (model, scaler) in enumerate(zip(self.models, self.scalers)):
-            tokens, cls = apply_feature_subset(tokens_raw, cls_raw, self.feature_subset)
-            tokens, cls = scaler.transform(tokens, cls)
-            batch = collate(
-                [
-                    {
-                        "tokens": torch.from_numpy(np.ascontiguousarray(tokens, dtype=np.float32)),
-                        "cls": torch.from_numpy(np.ascontiguousarray(cls, dtype=np.float32)),
-                        "s_rel": torch.from_numpy(meta["s_rel"]),
-                        "e_rel": torch.from_numpy(meta["e_rel"]),
-                        "label": -1,
-                        "event_id": "",
-                        "ix": "",
-                    }
-                ]
-            )
-            with torch.no_grad():
-                logits, attn = model(
-                    batch["tokens"].to(self.device),
-                    batch["cls"].to(self.device),
-                    batch["s_rel"].to(self.device),
-                    batch["e_rel"].to(self.device),
-                    batch["pad_mask"].to(self.device),
-                    need_weights=need_weights,
-                )
-            per_fold[f] = logits.softmax(dim=1)[0].cpu().numpy()
-            if need_weights and attn is not None and attn_out is None:
-                attn_out = attn[0].cpu().numpy()
+            for tokens_raw, cls_raw, meta in views:
+                probs, attn = self._forward(model, scaler, tokens_raw, cls_raw, meta, need_weights)
+                per_fold[f] += probs / len(views)
+                if need_weights and attn is not None and attn_out is None:
+                    attn_out = attn
 
         return per_fold, attn_out
+
+    def _forward(self, model, scaler, tokens_raw, cls_raw, meta, need_weights: bool):
+        """One (fold, view) forward pass -> (softmax [C], attention or None)."""
+        tokens, cls = apply_feature_subset(tokens_raw, cls_raw, self.feature_subset)
+        tokens, cls = scaler.transform(tokens, cls)
+        batch = collate(
+            [
+                {
+                    "tokens": torch.from_numpy(np.ascontiguousarray(tokens, dtype=np.float32)),
+                    "cls": torch.from_numpy(np.ascontiguousarray(cls, dtype=np.float32)),
+                    "s_rel": torch.from_numpy(meta["s_rel"]),
+                    "e_rel": torch.from_numpy(meta["e_rel"]),
+                    "label": -1,
+                    "event_id": "",
+                    "ix": "",
+                }
+            ]
+        )
+        with torch.no_grad():
+            logits, attn = model(
+                batch["tokens"].to(self.device),
+                batch["cls"].to(self.device),
+                batch["s_rel"].to(self.device),
+                batch["e_rel"].to(self.device),
+                batch["pad_mask"].to(self.device),
+                need_weights=need_weights,
+            )
+        return (logits.softmax(dim=1)[0].cpu().numpy(),
+                attn[0].cpu().numpy() if (need_weights and attn is not None) else None)
 
     def combine(self, per_fold: np.ndarray):
         """Per-fold posteriors -> (label, averaged probability vector).
@@ -253,6 +296,13 @@ def main(argv=None) -> None:
     ap.add_argument("--device", default=None)
     ap.add_argument("--min-anchor", type=int, default=5)
     ap.add_argument("--max-nh", type=int, default=10)
+    ap.add_argument(
+        "--tta-condition-swap", action="store_true",
+        help="average the prediction over both condition orientations. The swap "
+        "is exactly label-invariant (the label is the event type, not the "
+        "direction of the change), so this is free test-time augmentation; it "
+        "doubles inference time and leaves extraction untouched",
+    )
     ap.add_argument("--min-mapq", type=int, default=0)
     args = ap.parse_args(argv)
 
@@ -260,6 +310,7 @@ def main(argv=None) -> None:
         args.net,
         device=args.device,
         filters=ReadFilters(min_anchor=args.min_anchor, max_nh=args.max_nh, min_mapq=args.min_mapq),
+        tta_condition_swap=args.tta_condition_swap,
     )
     print(f"loaded {len(predictor.models)} fold checkpoint(s), classes {predictor.classes}, "
           f"feature subset {predictor.feature_subset!r}", file=sys.stderr)

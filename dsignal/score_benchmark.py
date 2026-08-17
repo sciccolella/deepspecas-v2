@@ -204,6 +204,13 @@ def main(argv=None) -> None:
         "read off 'dev'; 'test' is scored once per milestone and reported separately. "
         "'both' reproduces the historical 140-event numbers",
     )
+    ap.add_argument(
+        "--tta-condition-swap", action="store_true",
+        help="average the prediction over both condition orientations. The swap "
+        "is exactly label-invariant (the label is the event type, not the "
+        "direction of the change), so this is free test-time augmentation; it "
+        "doubles inference time and leaves extraction untouched",
+    )
     ap.add_argument("--split", default="benchmark/split.tsv")
     args = ap.parse_args(argv)
 
@@ -216,6 +223,7 @@ def main(argv=None) -> None:
         args.net,
         device=args.device,
         filters=ReadFilters(min_anchor=args.min_anchor, max_nh=args.max_nh, min_mapq=args.min_mapq),
+        tta_condition_swap=args.tta_condition_swap,
     )
     if args.target_prior != "none":
         train_counts = class_counts_from_labels(args.train_labels, predictor.classes)
