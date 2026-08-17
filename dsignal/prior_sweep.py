@@ -182,12 +182,16 @@ def main(argv=None) -> None:
                     help="restrict to one side of benchmark/split.tsv; the operating "
                     "point is chosen on 'dev'")
     ap.add_argument("--split", default="benchmark/split.tsv")
+    ap.add_argument("--tta-condition-swap", action="store_true",
+                    help="average both condition orientations, as in "
+                    "dsignal.predict -- lets the sweep report the stacked setting")
     args = ap.parse_args(argv)
 
     predictor = Predictor(
         args.net,
         device=args.device,
         filters=ReadFilters(min_anchor=args.min_anchor, max_nh=args.max_nh, min_mapq=args.min_mapq),
+        tta_condition_swap=args.tta_condition_swap,
     )
     classes = list(predictor.classes)
     train_counts = class_counts_from_labels(args.train_labels, classes)
