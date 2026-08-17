@@ -285,7 +285,12 @@ def main(argv=None) -> None:
         help="effect-size draw for positives. 'uniform' is |dPSI| ~ U(0.3, 0.8) "
         "with level U(0.25, 0.75) -- the original, whose floor excludes the 81.6%% "
         "of curated benchmark events below 0.30. 'beta' draws both from marginals "
-        "fitted to the benchmark (see DPSI_BETA; note the calibration caveat).",
+        "fitted to the benchmark (see DPSI_BETA; note the calibration caveat). "
+        "'uniform' remains the DEFAULT despite that: 'beta' was tried and was a "
+        "null on transfer (70.0%% vs 72.9%% at 960 events, McNemar p=0.572), "
+        "trading A3/A5 gains against ES/IR losses, and it costs sim-CV "
+        "(0.693 vs 0.784). The measurement stands; the fix on its own does not. "
+        "See plans/signal-native-v2-audit-geometry-results.md (addendum).",
     )
     ap.add_argument(
         "--exclude-genes",

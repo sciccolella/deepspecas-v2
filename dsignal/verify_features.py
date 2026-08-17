@@ -17,7 +17,7 @@ Four independent checks, per plans/signal-native-v2-phase3-model.md:
    means must equal the manual slices immediately outside it.
 
 Usage:
-    python -m dsignal.verify_features [--npz-dir sim/experiment/npz_scale1260]
+    python -m dsignal.verify_features [--npz-dir sim/experiment/npz_geomwin]
 """
 
 from __future__ import annotations
@@ -297,7 +297,7 @@ def check_coverage_signal(npz_dir: str, n_records: int, verbose: bool) -> int:
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--npz-dir", default="sim/experiment/npz_scale1260")
+    ap.add_argument("--npz-dir", default="sim/experiment/npz_geomwin")
     ap.add_argument("--n-records", type=int, default=25)
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)

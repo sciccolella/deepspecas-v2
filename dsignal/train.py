@@ -217,9 +217,13 @@ def _build_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--max-junctions", type=int, default=256)
     ap.add_argument(
         "--feature-subset", choices=("all", "geometry", "no-geometry"), default="no-geometry",
-        help="see dsignal/baseline_gbm.py -- window geometry is a Phase-2 "
-        "simulation artifact and is excluded by default; 'geometry' is the "
-        "plan's geometry-only control, which must score at chance",
+        help="see dsignal/baseline_gbm.py for the full note. Window geometry is "
+        "excluded by default -- originally because the v1 window sampler made it "
+        "a pure simulation artifact. Under window sampler v3 the coupling is "
+        "partly real (geometry alone recovers 13/17 curated IR events on the "
+        "benchmark), so the default is now conservative rather than a fix, and "
+        "'all' has not been benchmark-scored under v3. 'geometry' is the "
+        "geometry-only control.",
     )
     ap.add_argument(
         "--augment", nargs="*", default=[],
@@ -232,7 +236,9 @@ def _build_argparser() -> argparse.ArgumentParser:
         help="subsample augmentation retains p ~ U(this, 1) of the reads. The "
         "default 0.3 never reaches the depth the curated benchmark actually "
         "sits at -- dsignal/audit_noise.py measures the simulation as 5.2x "
-        "deeper, i.e. real data lives near 0.19.",
+        "deeper, i.e. real data lives near 0.19. Widening it to 0.15 to close "
+        "that gap was TRIED AND HURT: 73.6%% benchmark collapsed vs 78.6%% for "
+        "the 0.3 control, and sim-CV 0.862 vs 0.867. The default stays at 0.3.",
     )
     ap.add_argument(
         "--depth-norm", choices=("none", "scale", "drop"), default="none",
@@ -240,7 +246,13 @@ def _build_argparser() -> argparse.ArgumentParser:
         "rescale_depth). 'scale' maps every record onto a reference spliced "
         "depth, making the features invariant to how deeply the locus was "
         "sequenced; 'drop' zeroes the depth-absolute columns instead. "
-        "Default 'none' is the historical behaviour.",
+        "Default 'none' is the historical behaviour. MEASURED: 'scale' is exact "
+        "(max feature change 0.0 under 0.2x/5x rescaling) and changes nothing on "
+        "the benchmark (77.9%% vs 78.6%%, McNemar p=1.000, +2 of 35 even on the "
+        "shallowest depth quartile); 'drop' costs both sim-CV and transfer, so "
+        "the model does use magnitude productively. The case for 'scale' is "
+        "design, not evidence -- the benchmark is one dataset at one depth and "
+        "structurally cannot test what invariance protects against.",
     )
 
     ap.add_argument("--num-workers", type=int, default=0)

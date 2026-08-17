@@ -4,11 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`deepSpecas` is a research tool for classifying alternative splicing (AS) events from RNA-seq BAM files using image-based deep learning: pileup/coverage data from paired BAM files is rendered into one of several image representations, and a CNN (ResNet50) classifies the image into a splicing event type (`A3`, `A5`, `CE`/`SE` or collapsed `CSE`, `RI`, `NN`, optionally collapsed `A3`+`A5` → `A`).
+`deepSpecas` classifies alternative splicing (AS) events from RNA-seq BAM files. There are **two lines of work in this repository**, and which one you are touching determines almost everything else:
+
+- **v1 — image-based** (`master`, published). Pileup/coverage data from paired BAM files is rendered into one of six image representations, and a CNN (ResNet50) classifies the image into a splicing event type (`A3`, `A5`, `CE`/`SE` or collapsed `CSE`, `RI`, `NN`, optionally collapsed `A3`+`A5` → `A`). Root-level modules: `deepSpecas.py`, `dsEnsemble.py`, `plot2s.py`, `plot.py`, `DSutils.py`, `mc_mplp.py`, `jitimg.py`.
+- **v2 — signal-native** (branch `signal-native-v2`, in development, unpublished). **No image rendering at all**: junctions and base-resolution coverage are extracted straight from the BAMs and classified by a junction-set Transformer. Training data is simulated end-to-end (SUPPA event catalogue → PSI-targeted abundances → polyester reads → STAR). Lives entirely in `dsignal/` and `sim/`.
+
+**Branch `signal-native-v2` is the active line of work.** It was branched from `master` at `379cbba`, so it contains all of v1 too. If you are resuming v2 work, read **`plans/signal-native-v2-resume-2.md` first** — it is the current state-of-play document; `plans/README.md` indexes the rest.
 
 ## Environment setup
 
-No requirements.txt/pyproject — dependencies are installed via conda/mamba:
+No requirements.txt/pyproject — dependencies are installed via conda/mamba.
+
+**v1** (the published env recipe; note it is not what current work runs in):
 
 ```bash
 mamba create -n DSpoly2 -c bioconda -c conda-forge -c pytorch -c nvidia pysam snakemake matplotlib rich pytorch torchvision torchaudio pytorch-cuda=11.8 scikit-learn pandas seaborn opencv
@@ -16,9 +23,24 @@ conda activate DSpoly2
 CC="cc -mavx2" pip install -U --force-reinstall pillow-simd
 ```
 
-There is no test suite, linter, or CI config in this repo. There are no build steps — scripts are run directly with `python`.
+**v2 compute split.** Training is local (RTX 4080); simulation, alignment and extraction run on the remote machine `pasteur`, which has no GPU.
 
-## Core pipeline / data flow
+| where | path | envs | notes |
+|---|---|---|---|
+| local | `/datasets/deepSpecas-v2/envs/DSnet` | `DSnet` | all v2 training. **Never `pip install` into it.** |
+| local | `/datasets/deepSpecas-v2/envs/DSv1` | `DSv1` | running v1 (has torchvision + cv2) |
+| remote | `ssh pasteur`, `/data/conda/ciccolella/deepSpecas-v2` | `DSpoly2v2`, `DSsim` | simulation / polyester / STAR / extraction |
+
+Only `.npz` records, labels and TSVs come back from pasteur — never BAMs or FASTA. Pasteur's `dsignal/` holds only the modules shipped there; rsync a new one before running it.
+
+There is no pytest suite, linter, or CI config, and no build step — scripts are run directly with `python`. The verification gates that stand in for tests are:
+
+- `python -m dsignal.verify` — extractor coverage/junction parity against `plot2s.get_coords_from_bam`
+- `python -m dsignal.verify_features` — canonicalization involution, exact A3↔A5 flip, coverage off-by-one
+- `python -m sim.width_leak_check`, `python -m sim.psi_recovery_check` — simulation-design gates
+- `python -m dsignal.audit_noise compare` — **the acceptance test after any re-simulation**: annotation-free, runs the identical code path on real and simulated BAMs
+
+## v1 pipeline / data flow
 
 1. **`plot2s.py`** — turns a genomic region + two BAM files (two experimental conditions) into an image representation. Defines the `Event2sample` / `Event2sampleReads` / `Event2sampleComb` classes (each implementing `EventAbstract`: `build_zoom`, `strip`, `plot`), one per image-representation "mode": `pyplot2s`, `colmplp2s`, `squishstack`, `squish4d`, `comb`, `comb4d`. Also runnable standalone as a CLI to batch-render a CSV of events into an image directory (used by the `make_plots` Snakemake rule).
 2. **`plot.py`** — an earlier/parallel single-sample (not two-condition) plotting module with its own `Event`/`Event2sample`/`Event2sampleReads` classes and `pyplot_plt`/`colmplp_plt` renderers. `jitimg.py` is a small ad-hoc/debug driver built on `plot.py` + `DSutils.py` (not part of the Snakemake pipeline).
@@ -28,13 +50,61 @@ There is no test suite, linter, or CI config in this repo. There are no build st
    - `train` — trains a net on a CSV of (image path, label), writes weights (`-o/--net-out`) and a confusion-matrix heatmap (`--hm`).
    - `validate` — loads a trained net, runs it against a validation CSV, reports precision/recall/fscore and a heatmap.
    - `predict` — given a CSV of `region,BAM_path1,BAM_path2`, renders images on the fly (via `plot2s.py`) and classifies them (no train/val CSV of pre-rendered images needed).
-6. **`dsEnsemble.py`** — loads up to 6 trained nets (one per image representation, each passed as a separate `--<mode>` flag pointing at a `.pth` file), reuses `deepSpecas._build_model`/`_build_transformer`, renders each representation on the fly per event, sums softmax outputs across nets, and prints the ensemble prediction. This is the recommended way to run inference with the released pretrained models (see README).
+6. **`dsEnsemble.py`** — loads up to 6 trained nets (one per image representation, each passed as a separate `--<mode>` flag pointing at a `.pth` file), reuses `deepSpecas._build_model`/`_build_transformer`, renders each representation on the fly per event, combines their outputs and prints the ensemble prediction. This is the recommended way to run inference with the released pretrained models (see README). It also carries `--shard i/N` (event-level parallelism; every CSV line is independent and reassemblable by its `ix` prefix) and `--gpu-render` (opt-in device-side render path, **not** bit-exact with the default PIL path).
+   - **How the ensemble actually combines:** it sums the six nets' **raw logits** and softmaxes once (`allout = sum(outs)`; `probs = F.softmax(allout, dim=1)`), *not* their softmax outputs. A net with larger logit magnitude therefore dominates regardless of calibration. This is a known open issue, recorded in `report.md`.
 
 Six image "plot modes" are used consistently as an enum-like string across the whole codebase: `pyplot2s`, `colmplp2s`, `squishstack`, `squish4d`, `comb`, `comb4d`. 3-channel modes (`pyplot2s`, `squishstack`, `comb`) load as RGB; 4-channel modes (`colmplp2s`, `squish4d`, `comb4d`) load as CMYK. Each mode has a fixed `RESIZE_SIZE` (duplicated as a dict in both `DSutils`-adjacent `deepSpecas.py` and `plot2s.py`) that images are resized to before being fed to the net — scaled by `--resizescale` when given.
 
 ### Full experiment pipeline
 
 `runDS.smk` is the Snakemake file that reproduces the paper's experiments end-to-end: `make_plots` → `train_test_split_data` → `train_net`/`crossvalidate_net` → `validate_net` → `predict_benchmark`/`ensemble_benchmark`. It hardcodes absolute data paths (`/data/deepSpecas/...`) that only exist on the original compute environment — treat it as documentation of the pipeline shape and wildcard/filename conventions (e.g. `{net}.cse{cse}.a{a}.e{epochs}.resize{size}.nocf{nocf}.sf{samplefrac}.pth`) rather than something runnable as-is.
+
+## v2 pipeline / data flow (`dsignal/` + `sim/`)
+
+Two halves: `sim/` manufactures labelled training data, `dsignal/` extracts features from BAMs and trains/runs the model. The five classes are `("A3", "A5", "CSE", "NN", "RI")` — fixed order, defined once in `dsignal/dataset.py`.
+
+### `dsignal/` — extraction → features → model → evaluation
+
+1. **`extract.py`** — the signal extractor. Junction set + base-resolution coverage per `region,bam1,bam2` row, straight from the BAMs. **Never reads a GTF**: strand comes from STAR's `jM` tag (with the `+20` annotated bit masked off via `% 20`) or a reference-dinucleotide fallback. Writes one `.npz` per event.
+2. **`features.py`** — the single source of truth for the representation, consumed by *both* the GBM baseline and the Transformer so they are compared on identical information. Produces a per-junction token matrix `[J, 48]` and an event-level vector `[32]` (window geometry, coverage moments, pooled topology summaries, the dropped-junction tail). Minus-strand records are canonicalized by mirroring within the window, so "donor" always means the transcription-direction donor and the left-right flip is an exact A3↔A5 map.
+3. **`dataset.py`** — torch `Dataset`, the five augmentations (`flip`, `condition_swap`, `subsample`, `junction_dropout`, `jitter`, all off by default), `FeatureScaler` (fit on the training fold only, stored in the checkpoint), and `collate`.
+4. **`model.py`** — `JunctionSetTransformer`. A junction set is a *set*, not a sequence, so this is a pre-norm encoder with two learned additive attention biases carrying the structure that matters: bucketized signed log-distance between junction midpoints, and a per-head scalar for each discrete pairwise relation (`identical`/`shares_donor`/`shares_acceptor`/`nested`/`overlapping`/`disjoint`). The CLS token is *projected from the event-level vector* rather than being a free parameter, and is never masked — so a zero-junction event is a valid CLS-only forward pass.
+5. **`train.py`** — 5-fold `GroupKFold` **grouped by gene**, with an explicit no-leak assertion; out-of-fold predictions pooled into one report. Writes one checkpoint per fold.
+6. **`predict.py`** — inference. Feature config, scaler, classes and feature subset all come from the checkpoint, never from CLI defaults. Several fold checkpoints are averaged. Also holds `PriorCorrection` for a train/deploy class-prior mismatch — **applied per fold before the folds are averaged**; correcting the averaged posterior is a different and wrong estimator.
+7. **`score_benchmark.py`** — scores checkpoints against the 140-event curated benchmark (see below). Reports 5-class and A3+A5→A collapsed accuracy, both confusion matrices, accuracy vs region width, and wall clock.
+8. **`baseline_gbm.py`** — the LightGBM baseline, and (importantly) the **shared evaluation harness**: `grouped_folds`, `report`, `report_collapsed`, `print_vs_reference`. Route any new model through these rather than reimplementing, or the numbers stop being comparable to the layer-by-layer history.
+9. **`audit_noise.py`** — noise-calibration audit, subcommands `measure` / `compare` / `padding`. Annotation-free and window-local, so the identical code path runs on real and simulated BAMs.
+10. **`prior_sweep.py`** — one benchmark extraction pass, N prior settings evaluated analytically from cached per-fold posteriors. **`verify.py` / `verify_features.py`** — the gates listed above. **`diagnose_cse_a3.py`** — annotation-free structural motif scoring. **`tabulate_runs.py`** — side-by-side table of `train.py --json-out` files.
+
+### `sim/` — the simulator
+
+Pipeline order:
+
+```
+gtf_gene_spans / gtf_transcript_lengths / gtf_exon_structure   (GTF-derived tables)
+  → catalogue.py            SUPPA .ioe files → Event objects (SE→CSE; MX/AF/AL excluded)
+  → select_events.py        balanced design: positives + nn_plain / nn_hard / nn_novel
+    + window.py             the extraction window around each event span
+  → gene_neighbors, novel_junctions, build_premrna_fasta      (noise layers 2-4 inputs)
+  → build_experiment.py     transcript × sample count matrix + the noise-layer knob panel
+  → order_fasta.py          polyester matches matrix to FASTA by row index, not by name
+  → run_polyester.R → align_reads.sh (STAR)      [run_batch.sh drives a whole batch]
+  → build_extract_csv.py → dsignal.extract → merge_batches.py → training
+```
+
+Things that are easy to get wrong here:
+
+- **One gene per event, and gene-disjointness across batches.** `select_events.py --exclude-genes` prevents cross-batch leakage that `GroupKFold` cannot see, because it groups within one labels file.
+- **Independent RNG streams** per window draw, negative-span draw and noise layer, so adding a layer does not perturb earlier ones.
+- **Window geometry is load-bearing.** `sim/window.py` is on its *third* sampler; its docstring deliberately retains all three as a decision record. Only v3 is live: `window = event span + U[0, 100] bp per edge`, label-independently. Switching this was worth +16.5 points of zero-shot transfer.
+
+### The benchmark, and what "zero-shot" means here
+
+`benchmark/{A3,A5,ES,IR}.csv` — 140 manually-curated real events over `benchmark/c1.bam`/`c2.bam`. **It contains no NN events**, so every NN prediction is a false positive and NN recall is unmeasurable. The v2 model is trained purely on simulation and scored here with no fine-tuning, which is the point of the comparison: v1 reaches **87.9% collapsed** (123/140, reproduced locally in `runs/v1/`); v2 currently reaches **78.6%** (`runs/benchmark_geomwin.log`).
+
+Two honesty caveats, both open and both documented in `plans/signal-native-v2-resume-2.md`: the NN prior strength has been chosen by reading benchmark accuracy, and `DPSI_BETA`/`PSI_LEVEL_BETA` in `sim/select_events.py` are fitted on the benchmark's own events (so anything using `--psi-dist beta` is domain-calibrated along that axis, not zero-shot).
+
+Every benchmark number this branch has produced is in `runs/benchmark_*.log`; grep `aggregate collapsed`.
 
 ## Running with pretrained models
 
@@ -60,6 +130,32 @@ python deepSpecas.py predict --csv benchmark/IR.csv --zoom -1 -n data/trained_ne
 
 Input CSVs for both are `region,BAM_path_condition1,BAM_path_condition2` (no header).
 
+Add `--shard i/N` to split a CSV across parallel processes, and `--gpu-render` for the device-side render path (faster, not bit-exact).
+
+## Running v2
+
+Reproducing the current best (78.6% collapsed), in the local `DSnet` env:
+
+```bash
+# train (5 folds, grouped by gene) -- ~4,800 simulated events under v3 windows
+python -m dsignal.train \
+  --npz-dir sim/experiment/npz_geomwin --labels sim/experiment/labels_geomwin.tsv \
+  --augment all --feature-subset no-geometry \
+  --out-dir runs/geomwin_allaug --json-out runs/geomwin_allaug.json
+
+# score zero-shot against the 140 curated real events
+python -m dsignal.score_benchmark \
+  --net runs/geomwin_allaug/fold*.pt --out runs/benchmark_events_geomwin.tsv
+```
+
+Inference on an arbitrary `region,bam1,bam2` CSV — same input format as v1, so the two are a drop-in comparison:
+
+```bash
+python -m dsignal.predict --csv benchmark/A3.csv --net runs/geomwin_allaug/fold*.pt
+```
+
+`--feature-subset` defaults to `no-geometry`. The other two values are `all` and `geometry` (the geometry-only control).
+
 ## Workflow conventions (how to collaborate on this repo)
 
 ### Git
@@ -80,6 +176,17 @@ Once a plan has been implemented (in the later session that does the actual work
 - Commit the work (no push, per above).
 
 ## Conventions worth knowing before editing
+
+### v2 (`dsignal/`, `sim/`)
+
+- **Every comparison on the 140-event benchmark needs a significance test.** Differences of 4–6 events are noise at this size; several past runs differ by exactly that much. McNemar on the paired per-event outcomes is what the branch uses throughout.
+- **Never delete a measured number from a docstring or plan doc.** Retracted findings stay, with the retraction next to them. That is what makes the plan chain readable, and two findings have already been retracted.
+- Build → verify → commit each step before starting the next.
+- `--a`/`--cse`-style class collapsing does not exist in v2; the five classes are fixed and `score_benchmark.py` reports the A3+A5→A collapse as a derived number so it stays comparable to v1's 123/140.
+- Feature-subset changes touch **three** call sites: `baseline_gbm.apply_feature_subset`, `dataset.apply_feature_subset`, and `dataset.apply_feature_subset_meta` (the last is the easy one to forget — it keeps `s_rel`/`e_rel` consistent with the dummy token count under the geometry control). The geometry group itself lives as private names in `baseline_gbm.py` and is imported by `dataset.py`.
+- `N_TOKEN_FEATURES`/`N_EVENT_FEATURES` are baked into `ModelConfig` defaults and into every saved checkpoint. Adding a feature does not break loading (config comes from the checkpoint) but will mismatch the stored scaler.
+
+### v1 (root-level modules)
 
 - `--a` collapses classes `A3`+`A5` into `A`; `--cse` collapses `CE`+`SE` into `CSE`. Both flags must match between how a net was trained and how it's used for validate/predict — `EventDataset._build_classes` and the hardcoded `classes` list in `deepSpecas.main`/`dsEnsemble.main` must be built identically or the loaded `state_dict`'s final `fc` layer shape (and label order, since `classes` is always `sorted()`) will mismatch.
 - `--zoom -1` means "no zoom" (use the full region); positive integers are flanking-region-trim widths applied around a coverage gap (see `build_zoom` in `plot2s.py`).

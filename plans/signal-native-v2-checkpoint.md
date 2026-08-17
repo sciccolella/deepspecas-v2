@@ -1,12 +1,22 @@
 # signal-native-v2 — checkpoint (2026-08-14 .. 2026-08-16)
 
-> **Resuming? Read `plans/signal-native-v2-resume.md` first.**
+> **Resuming? Read `plans/signal-native-v2-resume-2.md` first** (2026-08-17), then
+> `plans/signal-native-v2-audit-geometry-results.md` for the detail.
+>
 > This file is the chronological build log — accurate on *how* each piece was
-> built and verified, and still the reference for that. But its framing up to
-> the final section assumes a premise the 2026-08-16 scale-up disproved: v2
-> transfers to real data far worse than v1 (62.1% vs a locally reproduced
-> 87.9%), and more simulated data makes transfer *worse*, not better. Read this
-> file for mechanism, not for direction.
+> built and verified, and still the reference for that. **Read it for mechanism,
+> not for direction:** its framing throughout assumes a premise that has since
+> been disproved. Specifically, two headline claims that appear here as
+> established are not:
+>
+> - "v2 transfers at 62.1% collapsed against v1's 87.9%" — the gap was mostly an
+>   extraction-window artifact. Transfer is **78.6%** under the v3 window sampler,
+>   with no re-simulation.
+> - "more simulated data makes transfer worse" — the sign flipped once the windows
+>   were fixed; 4,800 events now beat 960.
+>
+> Both were measured under the broken windows. The numbers below are kept as
+> recorded, because they are what was measured at the time.
 
 Status snapshot for resuming work on `plans/signal-native-v2.md` in a new
 session. Branch: `signal-native-v2` (created from `master`, not `ensemble-perf`).

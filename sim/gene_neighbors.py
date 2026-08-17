@@ -2,9 +2,19 @@
 (noise layer 3: neighbouring/antisense genes).
 
 The window is `win_start`/`win_end` from `sim/design.tsv` (plan Phase 2
-step 5's per-row jittered window, see `sim/window.py`/
-`sim/select_events.py`), optionally padded by a flat `--flank` on top
-(default 0 -- the window itself already varies 0.1x-10x the event span).
+step 5's per-row window, see `sim/window.py`/`sim/select_events.py`),
+optionally padded by a flat `--flank` on top.
+
+**`--flank` defaults to 0, and that default predates window sampler v3.** It
+was justified by the v1 sampler, whose window varied 0.1x-10x the event span
+and so already reached well beyond the event on its own. Under v3 the window is
+the event span plus at most 100 bp per edge, so a design row's window is far
+tighter and genuinely neighbouring genes just outside it are no longer picked
+up. Neighbour detection may therefore now be under-scoped relative to what
+noise layer 3 was calibrated for. The default is left unchanged so existing
+batches stay reproducible -- but if layer 3 is revisited, widening `--flank` is
+the first thing to try, and the audit (`dsignal.audit_noise compare`, rows
+`antisense_frac` / `background_frac`) is where the effect would show up.
 
 For every design row, finds every other gene on the same chromosome whose
 span overlaps the (possibly padded) window, excluding the row's own gene and

@@ -15,9 +15,15 @@ from os.path import basename, splitext
 
 CLASSES = ("A3", "A5", "CSE", "NN", "RI")
 
-#: standing reference rows, so the table never has to be read against memory
+#: Standing reference row, so the table never has to be read against memory.
+#: Provenance: sim/baseline_model.py's 24 crude features on npz_scale1260 --
+#: 1,260 events, window sampler v1, 43% NN. It is the fixed yardstick the whole
+#: layer-by-layer history was measured against, NOT a like-for-like control for
+#: anything trained on npz_geomwin (4,800 events, v3 windows, 25% NN), which is
+#: a different data distribution with a different majority-class floor.
 REFERENCE_ROWS = [
-    ("RF hand-features", 0.488, 0.325, {"A3": 0.108, "A5": 0.160, "CSE": 0.132, "NN": 0.657, "RI": 0.568}),
+    ("RF hand-features [npz_scale1260, v1 windows]", 0.488, 0.325,
+     {"A3": 0.108, "A5": 0.160, "CSE": 0.132, "NN": 0.657, "RI": 0.568}),
 ]
 
 

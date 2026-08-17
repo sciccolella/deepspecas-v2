@@ -189,9 +189,18 @@ DEPTH_ABSOLUTE_EVENT_FEATURES = (
 # whole signal -- and at low depth the pseudocount compresses it toward zero.
 # The curated benchmark sits at ~1/5 of the simulation's depth, so real events
 # arrive with their apparent differential systematically damped, on top of the
-# genuine shortfall the audit measured. "scale" fixes it for free by mapping
-# every record onto the reference depth before the pseudocount applies;
-# "drop" does not, which is why "drop" is only an ablation.
+# genuine shortfall the audit measured. "scale" addresses it by mapping every
+# record onto the reference depth before the pseudocount applies; "drop" does
+# not, which is why "drop" is only an ablation.
+#
+# **Measured, and it is a null.** The mechanism above is real and the fix is
+# exact (max feature change 0.0 under 0.2x/5x rescaling), but on the benchmark
+# "scale" changes nothing: 77.9% vs 78.6% collapsed, McNemar p = 1.000, and
+# +2 of 35 even on the shallowest depth quartile where this predicted the gain.
+# "drop" costs both sim-CV and transfer, so the model does use depth magnitude
+# productively. `depth_norm` therefore defaults to "none". The argument for
+# adopting "scale" is design, not evidence -- the benchmark is one dataset at
+# one depth and structurally cannot test what invariance protects against.
 
 
 def depth_absolute_masks() -> tuple:
@@ -361,13 +370,21 @@ def rescale_depth(norm: NormalizedRecord, cfg: FeatureConfig) -> NormalizedRecor
     comes out unchanged. The differential signal survives untouched, because
     both conditions are scaled identically.
 
-    This is a *representation* fix, not a robustness trick. Depth is not a
-    property of an event: the same A3 event is an A3 event at 5x and at 300x.
-    Training on a simulation whose depth is miscalibrated (measured: 5.2x the
-    curated benchmark, `dsignal/audit_noise.py`) puts every depth-absolute
-    feature in the wrong place at inference, and no amount of subsample
-    augmentation fixes a feature that should not carry scale in the first
-    place.
+    The argument for it is a *representation* argument, not a robustness trick.
+    Depth is not a property of an event: the same A3 event is an A3 event at 5x
+    and at 300x. Training on a simulation whose depth is miscalibrated
+    (measured: 5.2x the curated benchmark, `dsignal/audit_noise.py`) puts every
+    depth-absolute feature in the wrong place at inference, and no amount of
+    subsample augmentation fixes a feature that should not carry scale in the
+    first place.
+
+    **That argument has been tested and it did not pay.** On the benchmark this
+    is a null (77.9% vs 78.6% collapsed, McNemar p = 1.000; +2 of 35 on the
+    shallowest depth quartile). It is kept, and `depth_norm` defaults to
+    "none" -- the benchmark is one dataset at one depth, so it structurally
+    cannot test what invariance protects against, and the null is therefore
+    weak evidence rather than a refutation. Adopt it on design grounds if at
+    all, not by pointing at a number.
 
     A no-op when ``cfg.depth_norm != "scale"``, or when the record is empty.
     """

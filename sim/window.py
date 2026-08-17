@@ -42,8 +42,7 @@ coming back: window width is again ~ the event span, so width again carries
 label information. The difference is that *the deployment distribution has the
 same coupling* -- the curator's window is the event span too. A model using it
 is using something genuinely available at inference, not a simulation artifact.
-That
-claim is not assumed: the geometry-only control is scored on the **benchmark**,
+That claim is not assumed: the geometry-only control is scored on the **benchmark**,
 not only on sim CV, and `sim/width_leak_check.py` is expected to rise. Both
 numbers get reported rather than suppressed. See
 `plans/signal-native-v2-audit-geometry.md` (Track B).
@@ -76,11 +75,11 @@ def sample_window_detail(
     """Returns (win_start, win_end, clamped), coordinates 1-based inclusive like
     the region_start/region_end convention already used in design.tsv.
 
-    ``clamped`` is retained for the caller's reporting and is now True only when
-    the chromosome edge forced the window to lose part of its drawn flank. Under
-    v2 it flagged the far more common case of a drawn width narrower than the
-    event span, which cannot arise here -- the window is built outward from the
-    span rather than drawn independently of it.
+    ``clamped`` is retained for the caller's reporting and is True only when the
+    chromosome edge forced the window to lose part of its drawn flank. (It used
+    to also flag a drawn width narrower than the event span -- the far more
+    common case under the superseded v2 sampler. That cannot arise here: the
+    window is built outward from the span rather than drawn independently of it.)
     """
     left = int(rng.integers(0, max_flank + 1))
     right = int(rng.integers(0, max_flank + 1))

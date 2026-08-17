@@ -1,4 +1,8 @@
-"""Rigorous input-PSI vs. post-STAR-observed-PSI check for the pilot design.
+"""Rigorous input-PSI vs. post-STAR-observed-PSI check for a simulated design.
+
+Written for the pilot, but it is now run on **every** batch -- see the
+`sim/psi_recovery_*.tsv` outputs, one per noise layer and per scale-up. It is
+one of the standing simulation-design gates.
 
 Unlike the earlier "top junction share" proxy used during the pilot smoke
 test, this uses each event's *real* junction identity, derived directly

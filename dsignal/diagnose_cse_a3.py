@@ -189,7 +189,7 @@ def main(argv=None) -> None:
     ap.add_argument("--benchmark-dir", default="benchmark")
     ap.add_argument(
         "--predictions",
-        default="runs/benchmark_events_windowfix.tsv",
+        default="runs/benchmark_events_geomwin.tsv",
         help="score_benchmark.py per-event TSV to cross-tabulate against",
     )
     ap.add_argument("--out", default="runs/cse_a3_diagnosis.tsv")

@@ -436,7 +436,7 @@ METRICS = [
     ("cov_median", "level", "--gene-mean-depth 2000"),
     ("top_junction_count", "level", "--gene-mean-depth 2000"),
     ("n_supported", "level", "-"),
-    ("a3_minor_count", "level", "_sample_psi_pair: |dPSI| ~ U(0.3, 0.8)"),
+    ("a3_minor_count", "level", "_sample_psi_pair: --psi-dist {uniform,beta}"),
     ("a3_delta", "level", "_sample_psi_pair"),
     ("se_minor_count", "level", "_sample_psi_pair"),
     ("se_delta", "level", "_sample_psi_pair"),
@@ -604,11 +604,13 @@ def padding_report(benchmark_dir: str, ioe_dir: str) -> None:
     print(f"  event span / window width: median {np.median(F):.3f}")
     print(f"  pooled padding: left median {np.median(L):.0f}, right median {np.median(R):.0f}, "
           f"max |pad| {max(np.abs(L).max(), np.abs(R).max()):.0f}")
-    print("\nRead this as the specification for sim/window.py: the curated window is\n"
-          "the event span plus a small constant (per type: ES +100 bp on each edge,\n"
-          "IR exactly 0, A3/A5 -1 -- an off-by-one coordinate convention). Drawing a\n"
-          "label-independent flank of the same magnitude reproduces the geometry\n"
-          "without hard-coding a per-class constant, which would be pure leakage.")
+    print("\nThis was the specification for sim/window.py v3, and is IMPLEMENTED: the\n"
+          "curated window is the event span plus a small constant (per type: ES +100 bp\n"
+          "on each edge, IR exactly 0, A3/A5 -1 -- an off-by-one coordinate convention).\n"
+          "sim/window.py draws a label-independent flank of the same magnitude, which\n"
+          "reproduces the geometry without hard-coding a per-class constant (that would\n"
+          "be pure leakage). Re-run this if the benchmark or the SUPPA catalogue change;\n"
+          "the numbers above are the acceptance criterion the sampler is built against.")
 
 
 def _read_tsv(path: str) -> list:

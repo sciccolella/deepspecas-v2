@@ -16,22 +16,39 @@ reported as they come out:
   capacity -- is the missing ingredient, which is the paper's central claim;
 * if this baseline approaches the eventual Transformer, that has to be said.
 
-**Window geometry is a simulation artifact and is excluded by default.** The
-plan's geometry-only control (``--feature-subset geometry``) was supposed to
-score at chance; it does not -- window geometry alone reaches 46.5% accuracy /
-0.369 macro-F1 on npz_scale1260, because ``sim/window.py`` draws each window's
-flank log-uniform in [0.1x, 10x] the *event span*, leaving median window width
-running 1,452bp (RI) to 22,734bp (NN), a 15x spread that tracks the label. That
-is a Phase-2 bug, not a Phase-3 one, and it would not transfer to the real
-benchmark, whose windows come from a different process entirely. So
-``--feature-subset`` defaults to ``no-geometry``: it is the number that is safe
-to report. The topology result survives the exclusion nearly intact (macro-F1
-0.621 without geometry vs 0.640 with), which is itself the evidence that
-topology, not geometry, is doing the work.
+**Window geometry is excluded by default -- but the reason has changed, and the
+default has not been revisited since.** Read this whole note before touching
+``--feature-subset``.
+
+*Originally (window sampler v1, ``npz_scale1260``):* the plan's geometry-only
+control was supposed to score at chance and did not -- window geometry alone
+reached 46.5% accuracy / 0.369 macro-F1, because ``sim/window.py`` then drew
+each window's flank log-uniform in [0.1x, 10x] the *event span*, leaving median
+window width running 1,452bp (RI) to 22,734bp (NN), a 15x spread tracking the
+label. That was a pure simulation artifact with no counterpart at inference, so
+``--feature-subset`` defaulted to ``no-geometry`` as the number safe to report.
+The topology result survived the exclusion nearly intact (macro-F1 0.621
+without geometry vs 0.640 with), which was itself the evidence that topology,
+not geometry, was doing the work.
+
+*Now (window sampler v3):* the window is the event span plus U[0, 100] bp per
+edge, because that is measurably what the curated benchmark's own windows are
+(``python -m dsignal.audit_noise padding``; see ``sim/window.py``). This
+knowingly reintroduces a width->label coupling -- geometry-only sim-CV rose to
+0.446 here and 0.486 for the Transformer -- **but the coupling is now partly
+shared with the deployment distribution rather than being an artifact**. Scored
+on the *real* benchmark, the geometry-only control reaches 31.4% 5-class / 35.0%
+collapsed (above a ~20% random floor, below the 46.4% always-CSE baseline), and
+recovers 13 of 17 curated IR events from geometry alone. So: not a strong
+general signal, but a real RI one.
+
+The default is still ``no-geometry``, which zeroes those columns outright. That
+is now a conservative choice rather than a correctness fix, and
+``--feature-subset all`` under v3 windows has **not** been benchmark-scored.
 
 Usage:
-    python -m dsignal.baseline_gbm --npz-dir sim/experiment/npz_scale1260 \
-        --labels sim/experiment/labels_scale1260.tsv
+    python -m dsignal.baseline_gbm --npz-dir sim/experiment/npz_geomwin \
+        --labels sim/experiment/labels_geomwin.tsv
 """
 
 from __future__ import annotations
@@ -48,8 +65,15 @@ from dsignal.extract import load_record
 from dsignal.features import FeatureConfig, build_all, gbm_feature_names
 from sim.gene_split import assert_no_gene_leak, gene_id_of
 
-#: standing reference from sim/baseline_model.py on npz_scale1260, printed
-#: alongside every run so the comparison is never done from memory
+#: Standing reference from sim/baseline_model.py, printed alongside every run so
+#: the comparison is never done from memory.
+#:
+#: **Provenance matters here:** these numbers are from npz_scale1260 -- 1,260
+#: events under window sampler *v1*. They are kept as the fixed yardstick the
+#: whole layer-by-layer history was measured against, not as a current baseline.
+#: Anything trained on npz_geomwin is a different data distribution, so treat
+#: this as "the crude-feature floor as of the pilot", not as a like-for-like
+#: control.
 REFERENCE_RF = {
     "accuracy": 0.488,
     "macro_f1": 0.325,
@@ -58,14 +82,13 @@ REFERENCE_RF = {
 
 
 #: Window-geometry columns -- where the event sits in its extraction window and
-#: how wide that window is. sim/window.py draws each window's flank log-uniform
-#: in [0.1x, 10x] the *event span*, so window width is correlated with event
-#: span, which is correlated with label (RI introns are short, CSE spans are
-#: not). That makes geometry a potential simulation-artifact shortcut which
-#: would not transfer to the real benchmark. The top-level plan's Verification
-#: section calls for the geometry-only control; --feature-subset runs it, and
-#: `no-geometry` runs the complement (the number that is actually safe to
-#: report as the topology result).
+#: how wide that window is. Under window sampler v3 these are correlated with
+#: the label because the window *is* the event span plus a small flank, and
+#: event span tracks the label (RI introns are short, CSE spans are not).
+#: See the module docstring: that coupling is now partly real rather than
+#: purely artifactual, so `--feature-subset geometry` is a measurement of how
+#: much of the task geometry alone can do, not a bug detector any more.
+#: `no-geometry` runs the complement and remains the default.
 _GEOMETRY_EVENT_FEATURES = ("log10_window_width", "frac_junctions_out_of_window")
 _GEOMETRY_TOKEN_FEATURES = ("rel_start", "rel_end", "rel_mid", "in_window")
 

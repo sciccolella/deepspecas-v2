@@ -8,11 +8,12 @@ biases are computed from. Augmentations act on the *normalized record* (see
 an augmentation is never a post-hoc edit of already-derived features -- flipping
 a record really does recompute donor/acceptor groups from mirrored coordinates.
 
-Junction counts are heavy-tailed (median 12, p99 ~131, max 480 on the 1260-event
-set), so ``--max-junctions`` caps the token count keeping the highest-count
-junctions; the discarded tail is summarized into the CLS vector by
-``features.build_features`` rather than dropped silently. Events with zero
-junctions exist (9/1260) and must work: they produce a CLS-only forward pass.
+Junction counts are heavy-tailed (median 12, p99 ~131, max 480, measured on the
+1,260-event ``npz_scale1260`` set), so ``--max-junctions`` caps the token count
+keeping the highest-count junctions; the discarded tail is summarized into the
+CLS vector by ``features.build_features`` rather than dropped silently. Events
+with zero junctions exist (9 of those 1,260) and must work: they produce a
+CLS-only forward pass.
 """
 
 from __future__ import annotations
@@ -257,9 +258,11 @@ GEOMETRY_N_TOKENS = 4
 
 
 def apply_feature_subset(tokens: np.ndarray, cls: np.ndarray, subset: str):
-    """'geometry' keeps window geometry and nothing else (the control that must
-    score at chance); 'no-geometry' zeroes the geometry columns, which carry a
-    Phase-2 simulation artifact -- see dsignal/baseline_gbm.py.
+    """'geometry' keeps window geometry and nothing else (the geometry-only
+    control); 'no-geometry' zeroes the geometry columns and is the default.
+    See dsignal/baseline_gbm.py for why -- and for why that reason changed with
+    window sampler v3, under which the control is a measurement rather than a
+    bug detector and is no longer expected to score at chance.
 
     The geometry control **replaces the token set** with a fixed number of
     identical zero tokens rather than zeroing token columns in place. Zeroing

@@ -1,56 +1,63 @@
+# deepSpecas
+
+`deepSpecas` classifies alternative splicing (AS) events from RNA-seq BAM files. Coverage
+and read data from two experimental conditions are rendered into an image representation,
+and a ResNet50 classifies that image into a splicing event type (`A3`, `A5`, `CE`/`SE`,
+`RI`, `NN`; `A3`+`A5` can be collapsed into `A` and `CE`+`SE` into `CSE`).
+
+Six image representations are supported, and are named consistently across every tool:
+`pyplot2s`, `colmplp2s`, `squishstack`, `squish4d`, `comb`, `comb4d`.
+
+> This README documents the released tool. Every command below accepts `--help`; the
+> option lists here are summaries, not verbatim help output.
+
 # Build env
 
 ```bash
-mamba create -n DSpoly2 -c bioconda -c conda-forge -c pytorch -c nvidia pysam snakemake matplotlib rich pytorch torchvision  torchaudio pytorch-cuda=11.8 scikit-learn pandas seaborn opencv
+mamba create -n DSpoly2 -c bioconda -c conda-forge -c pytorch -c nvidia pysam snakemake matplotlib rich pytorch torchvision torchaudio pytorch-cuda=11.8 scikit-learn pandas seaborn opencv
 conda activate DSpoly2
 CC="cc -mavx2" pip install -U --force-reinstall pillow-simd
 ```
 
+# Input format
+
+Both inference tools take a headerless CSV, one event per line, with **two BAM files —
+one per experimental condition**:
+
+```
+Genomic_position,Path_to_BAM_for_condition1,Path_to_BAM_for_condition2
+```
+
+Example files for the manually-curated benchmark dataset ship in
+`benchmark/[A3|A5|ES|IR].csv`; see [`benchmark/README.md`](benchmark/README.md) for how
+that truth set was built.
 
 # Run `deepSpecas` using trained nets
 
-Alongside the tool we also release the trained networks that we used in the manuscript, therefore allowing the use to use `deepSpecas` directly without the need of retrain all the different implementations.
+Alongside the tool we release the trained networks used in the manuscript, so
+`deepSpecas` can be used directly without retraining all the different representations.
+Weights ship in `data/trained_nets/<mode>/trained.pth` for all six modes.
 
 ## Ensemble
-The help of the tool:
-```
-usage: dsEnsemble.py [-h] [--zoom ZOOM [ZOOM ...]] [--version VERSION] --csv CSV [--explain] [--imgout IMGOUT] [--mincov MINCOV] [--pyplot2s PYPLOT2S] [--colmplp2s COLMPLP2S] [--squishstack SQUISHSTACK] [--squish4d SQUISH4D] [--comb COMB] [--comb4d COMB4D] [--a] [--cse]
 
-Predict using ensemble of nets
+`dsEnsemble.py` loads one trained net per image representation, renders each
+representation on the fly per event, and prints the ensemble prediction.
 
-options:
-usage: dsEnsemble.py [-h] [--zoom ZOOM] [--version VERSION] --csv CSV [--explain] [--imgout IMGOUT] [--mincov MINCOV] [--pyplot2s PYPLOT2S] [--colmplp2s COLMPLP2S] [--squishstack SQUISHSTACK] [--squish4d SQUISH4D] [--comb COMB] [--comb4d COMB4D] [--a] [--cse]
+Key options:
 
-Predict using ensemble fo nets
+| option | meaning |
+|---|---|
+| `--csv CSV` | events to predict (format above) |
+| `--zoom ZOOM` | **required**; `-1` means no zoom (use the full region) |
+| `--pyplot2s`, `--colmplp2s`, `--squishstack`, `--squish4d`, `--comb`, `--comb4d` | trained `.pth` for that representation; pass as many as you want to ensemble |
+| `--a` / `--cse` | collapse `A3`+`A5` → `A` / `CE`+`SE` → `CSE`. Must match how the nets were trained |
+| `--mincov MINCOV` | minimum coverage to plot |
+| `--imgout DIR` | save the rendered images |
+| `--shard i/N` | process only shard `i` of `N`; every CSV line is independent, so shards can run in parallel and be concatenated |
+| `--gpu-render` | opt-in device-side render path. Much faster, but **not bit-exact** with the default PIL path — borderline predictions can flip |
 
-options:
-  -h, --help            show this help message and exit
-  --zoom ZOOM           zoom
-  --version VERSION     Plotting version for each mode [default=1]
-  --csv CSV             CSV to predict [region,BAM_path,GTF_path]
-  --explain             Produce CAM on classification [DEFAULT: False]
-  --imgout IMGOUT       Output dir for saving images [DEFAULT: False]
-  --mincov MINCOV       minimum covarege to be plot [default=0]
-  --pyplot2s PYPLOT2S   Trained model on pyplot2s
-  --colmplp2s COLMPLP2S
-                        Trained model on colmplp2s
-  --squishstack SQUISHSTACK
-                        Trained model on squishstack
-  --squish4d SQUISH4D   Trained model on squish4d
-  --comb COMB           Trained model on comb
-  --comb4d COMB4D       Trained model on comb4d
-  --a                   Collapse A3 and A5 into A. [DEFAULT: False]
-  --cse                 Collapse CE and SE into CSE. [DEFAULT: False]
-```
+Example run on A3 for the benchmark dataset:
 
-Run example, the CSV file one whishes to use needs to be of the following format:
-
-```
-Genomic_Postions,Path_to_BAM_for_condition1,Path_to_BAM_for_condition2
-```
-We leave as example the files in `benchmark/[A3|A5|ES|IR].csv`
-
-Example run on A3 for benchmark dataset:
 ```bash
 python dsEnsemble.py \
 --csv benchmark/A3.csv \
@@ -63,34 +70,25 @@ python dsEnsemble.py \
 --zoom -1 --a --cse
 ```
 
+`--explain` and `--version` are accepted but currently ignored.
+
 ## Single representation
 
-To run on a single image representation it is necessary to run the tool `deepSpecas.py` in `predict` mode, of which the help is shown here:
-```
-usage: deepSpecas.py predict [-h] --csv CSV [--explain] [--imgout IMGOUT] --zoom ZOOM [--mincov MINCOV] -n NET [-m {rs50}] [--wd WD] [--a] [--cse] [--resizescale RESIZESCALE] -p {pyplot2s,colmplp2s,squishstack,squish4d,comb,comb4d} [--plotversion PLOTVERSION]
+To run a single image representation, use `deepSpecas.py` in `predict` mode:
 
-options:
-  -h, --help            show this help message and exit
-  --csv CSV             CSV to predict [region,BAM_path,GTF_path]
-  --explain             Produce CAM on classification [DEFAULT: False]
-  --imgout IMGOUT       Output dir for saving images [DEFAULT: False]
-  --zoom ZOOM           Zoom
-  --mincov MINCOV       minimum covarege to be plot [default=0]
-  -n NET, --net NET     Trained net file
-  -m {rs50}, --model {rs50}
-                        Network model
-  --wd WD               Working directory for filenames in CSV. [DEFAULT: '']
-  --a                   Collapse A3 and A5 into A. [DEFAULT: False]
-  --cse                 Collapse CE and SE into CSE. [DEFAULT: False]
-  --resizescale RESIZESCALE
-                        Resize images to desired rescaled. [DEFAULT: 1.0]
-  -p {pyplot2s,colmplp2s,squishstack,squish4d,comb,comb4d}, --plot {pyplot2s,colmplp2s,squishstack,squish4d,comb,comb4d}
-                        Plot mode
-  --plotversion PLOTVERSION
-                        Plot version
-```
+| option | meaning |
+|---|---|
+| `--csv CSV` | events to predict (format above) |
+| `-p, --plot MODE` | one of the six representations |
+| `-n, --net NET` | trained net file |
+| `--zoom ZOOM` | `-1` for no zoom |
+| `--a` / `--cse` | class collapsing, must match training |
+| `--resizescale F` | rescale images before the net (default `1.0`) |
+| `--wd DIR` | working directory for the paths inside the CSV |
 
-Example run on Intron retention for benchmark dataset using `squishplot` representation:
+Example run on intron retention for the benchmark dataset using the `squishstack`
+representation:
+
 ```bash
 python deepSpecas.py predict --csv benchmark/IR.csv --zoom -1 -n data/trained_nets/squishstack/trained.pth --a --cse -p squishstack
 ```
@@ -98,62 +96,47 @@ python deepSpecas.py predict --csv benchmark/IR.csv --zoom -1 -n data/trained_ne
 # Train `deepSpecas`
 
 ## Build images from samples
-To build the image representation from samples it is necessary to run the tool `plot2s.py`, usage:
-```
-usage: plot2s.py [-h] -i INPUT -o OUTDIR [-d DATADIR] --outcsv OUTCSV [-m {pyplot2s,colmplp2s,squishstack,squish4d,comb,comb4d}] [--mincov MINCOV] [--zoom [ZOOM ...]] [--version VERSION] [--log LOG] [--resize]
 
-Plot figures from mpileup
+`plot2s.py` renders a CSV of events into an image directory and writes the matching
+`image_path,label` CSV that training consumes.
 
-options:
-  -h, --help            show this help message and exit
-  -i INPUT, --input INPUT
-                        CSV file of events
-  -o OUTDIR, --outdir OUTDIR
-                        output directory
-  -d DATADIR, --datadir DATADIR
-                        root directory containing bams and gtfs
-  --outcsv OUTCSV       Output CSV file of events
-  -m {pyplot2s,colmplp2s,squishstack,squish4d,comb,comb4d}, --mode {pyplot2s,colmplp2s,squishstack,squish4d,comb,comb4d}
-                        Plot type
-  --mincov MINCOV       minimum covarege to be plot [default=0]
-  --zoom [ZOOM ...]     zoom [default=-1]
-  --version VERSION     Plotting version for each mode [default=1]
-  --log LOG             Log output file
-  --resize              Resize images in output
-```
+| option | meaning |
+|---|---|
+| `-i, --input CSV` | CSV of events |
+| `-o, --outdir DIR` | output image directory |
+| `--outcsv CSV` | output CSV of events |
+| `-m, --mode MODE` | one of the six representations |
+| `-d, --datadir DIR` | root directory containing the BAMs |
+| `--zoom [ZOOM ...]` | default `-1` |
+| `--mincov MINCOV` | minimum coverage to plot |
+| `--resize` | resize images on output |
 
 ## Train the nets
-To run on a single image representation it is necessary to run the tool `deepSpecas.py` in `train` mode, of which the help is shown here:
-```
-usage: deepSpecas.py train [-h] --train TRAIN [--val VAL] [--epochs EPOCHS] [--batch-size BATCH_SIZE] [--crossvalidation] [--sample-frac SAMPLE_FRAC] [--no-cf NO_CF] [-o NET_OUT] [-m {rs50,TODO}] [--wd WD] [--a] [--cse] [--resizescale RESIZESCALE] -p
-                           {pyplot2s,colmplp2s,squishstack,squish4d,comb,comb4d} [--plotversion PLOTVERSION] [--hm HM]
 
-options:
-  -h, --help            show this help message and exit
-  --train TRAIN         CSV file
-  --val VAL             CSV file. If not provided `train` will be randomly split
-  --epochs EPOCHS       Training epochs
-  --batch-size BATCH_SIZE
-                        Batch size
-  --crossvalidation     Perform cross-validation instead of training on all dataset
-  --sample-frac SAMPLE_FRAC
-                        Downsample input when training [Default: 1]
-  --no-cf NO_CF         Ignore a crossfeed value [Default: '_']
-  -o NET_OUT, --net-out NET_OUT
-                        Output file for trained network
-  -m {rs50,TODO}, --model {rs50,TODO}
-                        Network model
-  --wd WD               Working directory for filenames in CSV. [DEFAULT: '']
-  --a                   Collapse A3 and A5 into A. [DEFAULT: False]
-  --cse                 Collapse CE and SE into CSE. [DEFAULT: False]
-  --resizescale RESIZESCALE
-                        Resize images to desired rescaled. [DEFAULT: 1.0]
-  -p {pyplot2s,colmplp2s,squishstack,squish4d,comb,comb4d}, --plot {pyplot2s,colmplp2s,squishstack,squish4d,comb,comb4d}
-                        Plot mode
-  --plotversion PLOTVERSION
-                        Plot version
-  --hm HM               Heatmap out [default=hm.png]
-  ```
+`deepSpecas.py train` trains one net on one representation.
+
+| option | meaning |
+|---|---|
+| `--train CSV` | training CSV of `image_path,label` |
+| `--val CSV` | validation CSV; if omitted, `--train` is split randomly |
+| `-p, --plot MODE` | one of the six representations |
+| `-o, --net-out FILE` | where to write the trained weights |
+| `--epochs`, `--batch-size` | training loop |
+| `--crossvalidation` | k-fold cross-validation instead of a single fit |
+| `--sample-frac F` | downsample the training set |
+| `--a` / `--cse` | class collapsing |
+| `--resizescale F` | rescale images before the net |
+| `--hm FILE` | confusion-matrix heatmap output (default `hm.png`) |
+
+`deepSpecas.py validate` loads a trained net, scores it against a validation CSV, and
+reports precision/recall/F-score plus a heatmap.
 
 # Replicate experiments
-The entire pipeline is available as a [snakefile](runDS.smk).
+
+The entire pipeline is available as a [snakefile](runDS.smk): `make_plots` →
+`train_test_split_data` → `train_net`/`crossvalidate_net` → `validate_net` →
+`predict_benchmark`/`ensemble_benchmark`.
+
+Note that `runDS.smk` hardcodes absolute data paths (`/data/deepSpecas/...`) that only
+exist on the original compute environment. Treat it as documentation of the pipeline
+shape and of the wildcard/filename conventions rather than as something runnable as-is.

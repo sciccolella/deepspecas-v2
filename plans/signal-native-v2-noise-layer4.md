@@ -78,6 +78,8 @@ next to the real event.
    `build_premrna_fasta.py`, or a `--novel-junctions` option added to it) to
    emit the `NOVEL_<gene_id>_<op>` sequences from step 2's output alongside
    the pre-mRNA sequences.
+   *As implemented:* neither name was used — the sequences are emitted by
+   `sim/novel_junctions.py --out-fasta`. There is no `sim/build_novel_fasta.py`.
    *Tier: cheap model, mechanical wiring matching the layer-3 pattern.*
 
 5. **Re-run the full pipeline on pasteur.** Same 360-row pilot design, same

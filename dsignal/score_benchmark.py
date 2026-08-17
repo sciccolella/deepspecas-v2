@@ -5,9 +5,26 @@ The top-level plan says to reuse ``tools/score_benchmark.py``; that file does
 not exist in this repo, so this is it.
 
 The benchmark (``benchmark/{A3,A5,ES,IR}.csv``, 140 events over the local
-``benchmark/c1.bam``/``c2.bam``) is the true held-out set: it is real data,
-manually curated from an rMATS + SUPPA consensus (see benchmark/README.md), and
-nothing in Phase 2 or Phase 3 has been fit to it. Its CSV -> label map is
+``benchmark/c1.bam``/``c2.bam``) is the held-out set: it is real data, manually
+curated from an rMATS + SUPPA consensus (see benchmark/README.md).
+
+**It is no longer fully held out, and the two leaks must be reported with any
+number from here:**
+
+* ``DPSI_BETA`` / ``PSI_LEVEL_BETA`` in ``sim/select_events.py`` are fitted by
+  moments to the benchmark's own 125 matched events, so anything simulated with
+  ``--psi-dist beta`` is domain-calibrated along the effect-size axis rather
+  than zero-shot. What leaks is two 2-parameter marginals, not labels or
+  structures -- but it is not nothing.
+* the v3 window sampler's flank magnitude (0-100 bp) was measured off the
+  curated windows (``python -m dsignal.audit_noise padding``). The per-type
+  padding constants were deliberately *not* reproduced, since those would be
+  label leakage; the magnitude was.
+
+Neither is fixed by anything currently in the repo. The clean fix is a held-out
+split of the benchmark, or an independent dPSI distribution.
+
+Its CSV -> label map is
 ``A3.csv``->A3, ``A5.csv``->A5, ``ES.csv``->CSE, ``IR.csv``->RI. **There are no
 NN events in it**, so it scores the positive classes only -- an NN prediction is
 always wrong here, and NN's own recall is unmeasurable.
@@ -16,10 +33,15 @@ Both numbers are reported: the 5-class one, and the A3+A5 -> A collapse, which
 is what is comparable to v1's 123/140. Per-event region width is included in the
 output so accuracy-vs-width is plottable against v1's.
 
-**Expect the sim-only model to do poorly.** This is zero-shot sim->real transfer
-with no fine-tuning; Phase 4 is what closes that gap. The number's value is as
-the baseline for the Phase-5 "noise realism transfers" ablation, not as a
-headline.
+This is sim->real transfer with **no fine-tuning at all** -- the model has never
+seen a read from this dataset. Current standing: **110/140 = 78.6% collapsed**
+(``runs/benchmark_geomwin.log``), against v1's 123/140 = 87.9%, reproduced
+locally in ``runs/v1/``. The gap was 25.8 points before the window sampler was
+fixed and is 8.6 now.
+
+Fine-tuning on real data (the original plan's Phase 4) is **not** currently
+recommended; see plans/signal-native-v2-resume-2.md for why, and for the two
+readings of what the remaining gap is.
 
 Usage:
     python -m dsignal.score_benchmark --net runs/control/fold*.pt
@@ -143,8 +165,8 @@ def report(rows, predictor) -> None:
     print(
         f"\nwall clock: {tot.mean():.3f} s/event "
         f"({ext.mean():.3f} extract + {inf.mean():.3f} inference), {tot.sum():.1f} s total.\n"
-        f"  v1's ensemble spends ~17 s/event on image rendering alone, so this is\n"
-        f"  the Phase-5 cost comparison in its rawest form."
+        f"  For scale: v1's six-net ensemble spends ~17 s/event on image rendering alone\n"
+        f"  on the default PIL path (see report.md; --gpu-render cuts that several-fold)."
     )
     print(f"  widest event {widths.max():,} bp, median {int(np.median(widths)):,} bp")
 

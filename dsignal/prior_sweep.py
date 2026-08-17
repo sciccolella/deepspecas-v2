@@ -1,11 +1,24 @@
 """Does the zero-shot sim->real gap come from a class-prior mismatch?
 (Phase 4 probe; plan: plans/signal-native-v2-prior-correction.md)
 
-The dominant benchmark error is a false NN prediction -- 41/140 under the fixed
-windows, 29/140 under the old ones -- and NN is 43% of the training design
-(540/1260) against a benchmark that contains **no NN events at all**. This
-sweeps `dsignal.predict.PriorCorrection` over that mismatch, on already-trained
+The dominant benchmark error is a false NN prediction, against a benchmark that
+contains **no NN events at all**. This sweeps
+`dsignal.predict.PriorCorrection` over that mismatch, on already-trained
 checkpoints: no retraining, no simulation.
+
+Counts, since they have moved several times as the design and the window
+sampler changed. All out of 140, counted directly from the stored per-event
+TSVs in `runs/` (this text originally quoted 41 and 29 from the run logs; the
+TSVs say 42 and 30, so prefer the TSVs):
+
+    training set                       NN frac   false NN preds   run
+    1,260, window sampler v1              43%          30         benchmark_events
+    npz_windowfix  (1,260, v2 windows)    43%          42         ..._windowfix
+    npz_scaleup    (4,800, v2 windows)    25%          32         ..._scaleup
+    npz_geomwin    (4,800, v3 windows)    25%          13         ..._geomwin
+
+Still the largest single bucket at 13 (of 30 collapsed errors), but no longer
+the dominant story it was.
 
 Each benchmark event is extracted and run through the folds **once**; the
 per-fold posteriors are cached and every prior setting is then evaluated
@@ -17,8 +30,13 @@ Read the output as a diagnosis, not a score:
 * a large jump on **both** checkpoint sets means the prior mismatch was always
   the dominant error and the window fix is transfer-neutral;
 * a jump on only one means the window change moved NN's decision geometry;
-* no movement means the errors are genuine and Phase 4 needs representation
-  adaptation, not calibration.
+* no movement means the errors are genuine and closing the gap needs
+  representation adaptation, not calibration.
+
+What actually happened: under v3 windows the uniform correction is worth ~0.7
+points (78.6% -> 79.3%), i.e. calibration is a small free win, not the answer.
+Note also that fine-tuning on real data ("Phase 4" in the original plan) is
+**not** currently recommended -- see plans/signal-native-v2-resume-2.md.
 
 `nn_weight=0` is an **oracle upper bound**, not a deployable setting: it
 presumes the truth set contains no negatives, which is exactly what makes the

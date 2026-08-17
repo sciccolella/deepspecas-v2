@@ -1,7 +1,11 @@
 # signal-native-v2 — START HERE (2026-08-17)
 
-Resume document. Branch `signal-native-v2`, HEAD `fb30f1d`, clean tree, nothing
-pushed (per repo convention — pushing is the user's call).
+Resume document. Branch `signal-native-v2`, clean tree, nothing pushed (per repo
+convention — pushing is the user's call).
+
+`CLAUDE.md` now covers both lines of work and maps `dsignal/` + `sim/`; `README.md`
+is deliberately v1-only (v2 is unpublished). `plans/README.md` indexes this
+directory.
 
 Supersedes `plans/signal-native-v2-resume.md` (2026-08-16), which is now
 history: its two headline findings were artifacts of a bug this session fixed.
@@ -181,6 +185,53 @@ the simulation under-differential at 0.55×; that metric picks the most
 supported junctions (median 9 vs 5.5) from noise layers 3–4, so it selected
 background structure rather than the event. It measured junction multiplicity.
 The event-level measurement says the opposite (2.3× more differential).
+
+## Reproducing the headline number
+
+Local, in the `DSnet` env. Note `--feature-subset no-geometry` is the default but is
+stated explicitly here because it is load-bearing, and `--augment all` is *not* default:
+
+```bash
+python -m dsignal.train \
+  --npz-dir sim/experiment/npz_geomwin --labels sim/experiment/labels_geomwin.tsv \
+  --augment all --feature-subset no-geometry \
+  --out-dir runs/geomwin_allaug --json-out runs/geomwin_allaug.json
+
+python -m dsignal.score_benchmark \
+  --net runs/geomwin_allaug/fold*.pt --out runs/benchmark_events_geomwin.tsv
+```
+
+→ sim-CV macro-F1 0.867, benchmark 110/140 = 78.6% collapsed.
+
+## The `dsignal/` CLI surface
+
+Eleven runnable entry points, all `python -m dsignal.<name>`:
+
+| module | what it does |
+|---|---|
+| `extract` | BAMs + region CSV → `.npz` records |
+| `train` | 5-fold GroupKFold-by-gene training, one checkpoint per fold |
+| `predict` | `region,bam1,bam2` CSV → predictions |
+| `score_benchmark` | the 140 curated events; `--target-prior`, `--tau` |
+| `prior_sweep` | one extraction pass, N prior settings evaluated analytically |
+| `baseline_gbm` | LightGBM baseline **and** the shared eval harness |
+| `audit_noise` | `measure` / `compare` / `padding` — the acceptance test |
+| `verify` | extractor parity against `plot2s.get_coords_from_bam` |
+| `verify_features` | canonicalization, flip, coverage off-by-one |
+| `diagnose_cse_a3` | annotation-free structural motif scoring |
+| `tabulate_runs` | side-by-side table of `train --json-out` files |
+
+## Which `sim/experiment/` sets are live
+
+Fourteen `npz_*` directories exist; most are archaeology from the layer-by-layer build.
+
+- **Live:** `npz_geomwin` (4,800 events, v3 windows — the current training set),
+  `npz_geomwin_b1` (960-event volume-matched control), `npz_beta` (960 events, beta
+  effect size).
+- **Archaeology, keep for reprovenance, do not train on:** `npz`, `npz_layer{2,3,4,4fix,5}`,
+  `npz_nn_novel`, `npz_window`, `npz_windowfix`, `npz_scale1260`, `npz_scaleup`.
+  Everything before `npz_geomwin` uses a superseded window sampler, so its numbers are
+  not comparable to anything current.
 
 ## Environments and paths
 

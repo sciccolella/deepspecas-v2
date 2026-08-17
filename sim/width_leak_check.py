@@ -1,22 +1,38 @@
 """Window-width leak test: how much of the label can be predicted from the
 extraction window's *width* alone?
 
-This is the narrowest possible probe of the Phase-2 window sampler. It reads
-widths straight off the `.npz` filenames (`{ix}.{chrom}_{start}_{end}.npz`), so
-it touches no coverage, no junctions, and no model code -- if this scores above
-chance, the simulation's window geometry carries label information no curator
-would reproduce.
+This is the narrowest possible probe of the window sampler. It reads widths
+straight off the `.npz` filenames (`{ix}.{chrom}_{start}_{end}.npz`), so it
+touches no coverage, no junctions, and no model code.
 
-`sim/window.py` originally drew flank as a multiple of the event span, and this
-check scored 0.457 acc / 0.235 macro-F1 on `npz_scale1260`. With the
-benchmark-calibrated width draw it sits at 0.432 / 0.199 on `npz_windowfix`,
-against a majority-class floor of 0.429 / 0.120 -- i.e. at chance on accuracy.
-Re-run it after any change to the window sampler or the design's region
-definitions.
+**Read this number as a measurement, not as a pass/fail.** Its meaning changed
+when the window sampler did:
+
+    sampler   set                   n     acc / macro-F1   majority-class floor
+    v1        npz_scale1260      1,260    0.457 / 0.235    --
+    v2        npz_windowfix      1,260    0.432 / 0.199    0.429 / 0.120
+    v2        npz_scaleup        4,800    0.279 / 0.221    0.250 / 0.080
+    v3        npz_geomwin        4,800    0.349 / 0.293    0.250 / 0.080
+
+Only the last two rows are like-for-like -- the 1,260-event sets carry a 43% NN
+design and therefore a much higher majority-class floor. Compare within a
+column, never across the n boundary.
+
+Under v1 and v2 the goal was for this to sit at chance, and under v2 it did (on
+accuracy). Under **v3 it is expected to rise** and does: the window is now
+deliberately the event span plus a small flank, because that is what the curated
+benchmark's windows measurably are, and event span tracks the label. See
+`sim/window.py` and `dsignal/baseline_gbm.py` for why that trade was accepted --
+briefly, the same coupling exists in the deployment distribution, where window
+geometry alone recovers 13 of 17 curated IR events.
+
+So a *rise* here is no longer evidence of a bug; an unexplained rise still is.
+Re-run after any change to the window sampler or the design's region definitions
+and compare against the row for the sampler you are running.
 
 Usage:
-    python -m sim.width_leak_check --npz-dir sim/experiment/npz_windowfix \
-        --labels sim/experiment/labels_windowfix.tsv
+    python -m sim.width_leak_check --npz-dir sim/experiment/npz_geomwin \
+        --labels sim/experiment/labels_geomwin.tsv
 """
 
 from __future__ import annotations

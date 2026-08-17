@@ -45,10 +45,18 @@ class PriorCorrection:
     averaged probability is a different (and wrong) estimator: the average of
     corrected posteriors is not the correction of the averaged posterior.
 
-    Motivation: the simulation design is 43% NN while the curated benchmark
-    contains no NN events at all, and false NN is the dominant real error
-    (41/140 under the fixed windows). ``tau`` scales the correction: 0 is a
-    no-op, 1 is the full adjustment.
+    Motivation: the simulation design carries a large NN fraction (43% at the
+    1,260-event pilot, 25% in the current 4,800-event design) while the curated
+    benchmark contains no NN events at all, and false NN is the dominant real
+    error -- 41 of 140 under the pilot, and still the largest single bucket at
+    13 of 140 under the current v3-window model. ``tau`` scales the correction:
+    0 is a no-op, 1 is the full adjustment.
+
+    **Open caveat.** The strength that scores best on the benchmark is currently
+    chosen by *reading* benchmark accuracy, which is test-set fitting. There is
+    a legitimate version of the argument -- deployment inputs are pre-filtered
+    rMATS/SUPPA candidates, so a low NN prior is defensible a priori -- but it
+    has to be argued from the deployment setting and fixed before scoring.
     """
 
     def __init__(self, train_prior, target_prior, tau: float = 1.0):

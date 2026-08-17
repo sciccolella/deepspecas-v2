@@ -5,6 +5,14 @@ learnable at all, before scaling up"). Not the eventual signal-native
 architecture -- just confirms the raw junction/coverage signal separates
 A3/A5/CSE/RI/NN above chance before investing in a real model.
 
+**Its numbers outlived their pilot status.** This model's scores on
+npz_scale1260 (accuracy 0.488, macro-F1 0.325) are hardcoded as the standing
+reference in three places -- `dsignal.baseline_gbm.REFERENCE_RF`,
+`dsignal.tabulate_runs.REFERENCE_ROWS`, and every `print_vs_reference` call
+from `dsignal.train`. Treat them as a fixed historical yardstick, not as a
+current baseline: they come from 1,260 events under window sampler v1 at 43%
+NN, which is not the distribution anything is trained on now.
+
 Usage:
     python -m sim.baseline_model --npz-dir sim/experiment/npz \
         --labels sim/experiment/labels.tsv
