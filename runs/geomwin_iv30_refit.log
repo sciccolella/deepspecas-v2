@@ -5,3 +5,14 @@ model: 1,403,229 trainable parameters
   fold 0 epoch  10  loss 0.5970  inner-val macro-F1 0.815  (best 0.819 @ 7)
   fold 0 epoch  20  loss 0.5029  inner-val macro-F1 0.828  (best 0.830 @ 18)
   fold 0 epoch  30  loss 0.4200  inner-val macro-F1 0.838  (best 0.847 @ 23)
+  fold 0 epoch  40  loss 0.3873  inner-val macro-F1 0.850  (best 0.854 @ 37)
+  fold 0 epoch  50  loss 0.3647  inner-val macro-F1 0.844  (best 0.854 @ 37)
+  fold 0: early stop at epoch 52 (no improvement for 15 epochs)
+  fold 0: refitting on the full training fold for 38 epochs
+fold 0: held-out macro-F1 0.850 at epoch 37 (epoch chosen on inner val, macro-F1 0.854)
+  fold 1 epoch   0  loss 0.9804  inner-val macro-F1 0.646  (best 0.646 @ 0)
+  fold 1 epoch  10  loss 0.5903  inner-val macro-F1 0.805  (best 0.818 @ 9)
+  fold 1 epoch  20  loss 0.4833  inner-val macro-F1 0.828  (best 0.836 @ 19)
+  fold 1 epoch  30  loss 0.4125  inner-val macro-F1 0.826  (best 0.836 @ 19)
+  fold 1: early stop at epoch 34 (no improvement for 15 epochs)
+  fold 1: refitting on the full training fold for 20 epochs

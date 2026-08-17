@@ -60,6 +60,7 @@ from torch.utils.data import DataLoader
 from dsignal.baseline_gbm import grouped_folds, print_vs_reference, report, report_collapsed
 from dsignal.dataset import (
     CLASSES,
+    TYPE_CLASSES,
     AugmentConfig,
     JunctionSetDataset,
     collate,
@@ -75,6 +76,56 @@ def class_weights(labels, classes, device):
     counts = np.array([max(sum(1 for l in labels if l == c), 1) for c in classes], dtype=np.float64)
     w = counts.sum() / (len(classes) * counts)
     return torch.tensor(w, dtype=torch.float32, device=device)
+
+
+def aux_weights(ds, device):
+    """``(type_weights [T], pos_weight [])`` for the two-head loss, counted on
+    the training fold only -- the same rule ``class_weights`` follows.
+
+    The type head is balanced over the four structural types; the differential
+    head gets ``n_negative / n_positive`` so the 25% NN design fraction does not
+    tilt it. Both are counted from the dataset's own entries, so a fold with an
+    unusual mix is weighted for what it actually contains.
+    """
+    from dsignal.dataset import aux_targets
+
+    targets = [aux_targets(e[1], e[2]) for e in ds.entries]
+    counts = np.array([max(sum(1 for t, _ in targets if t == i), 1)
+                       for i in range(len(TYPE_CLASSES))], dtype=np.float64)
+    w = counts.sum() / (len(TYPE_CLASSES) * counts)
+    n_pos = max(sum(1 for _, d in targets if d > 0.5), 1)
+    n_neg = max(len(targets) - n_pos, 1)
+    return (torch.tensor(w, dtype=torch.float32, device=device),
+            torch.tensor(n_neg / n_pos, dtype=torch.float32, device=device))
+
+
+def two_head_loss(model, batch, device, type_weights, pos_weight, diff_lambda: float):
+    """Type cross-entropy (masked) + differential BCE.
+
+    The type term is averaged over the events that *have* a structural type --
+    every positive plus the ``nn_hard`` negatives, which are catalogued events
+    held at dPSI = 0. ``nn_plain``/``nn_novel`` carry no event and are excluded
+    by the -1 sentinel rather than being folded into a fifth type, which is the
+    whole reason the head is 4-way and not 5-way.
+    """
+    type_logits, diff_logit = model.forward_parts(
+        batch["tokens"].to(device), batch["cls"].to(device),
+        batch["s_rel"].to(device), batch["e_rel"].to(device), batch["pad_mask"].to(device),
+    )
+    type_target = batch["type_label"].to(device)
+    is_diff = batch["is_diff"].to(device)
+
+    has_type = type_target >= 0
+    if has_type.any():
+        loss_type = torch.nn.functional.cross_entropy(
+            type_logits[has_type], type_target[has_type], weight=type_weights
+        )
+    else:  # a batch of nothing but plain/novel negatives is possible, if rare
+        loss_type = type_logits.sum() * 0.0
+    loss_diff = torch.nn.functional.binary_cross_entropy_with_logits(
+        diff_logit, is_diff, pos_weight=pos_weight
+    )
+    return loss_type + diff_lambda * loss_diff
 
 
 def evaluate(model, loader, device):
@@ -173,6 +224,7 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
     mcfg = ModelConfig(
         n_classes=len(CLASSES), d_model=args.d_model, n_heads=args.n_heads,
         n_layers=args.n_layers, d_ff=args.d_ff, dropout=args.dropout,
+        two_head=args.two_head, n_types=len(TYPE_CLASSES),
     )
     model = JunctionSetTransformer(mcfg).to(device)
     if fold == 0:
@@ -180,6 +232,11 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
 
     weights = class_weights(train_ds.labels, CLASSES, device)
     criterion = torch.nn.CrossEntropyLoss(weight=weights)
+    # two-head: class-balance the type head over the four types, and balance the
+    # differential head by the positive:negative ratio of the training fold
+    type_weights = pos_weight = None
+    if args.two_head:
+        type_weights, pos_weight = aux_weights(train_ds, device)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
 
@@ -192,14 +249,18 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
         total_loss, n_seen = 0.0, 0
         for batch in train_loader:
             opt.zero_grad(set_to_none=True)
-            logits, _ = model(
-                batch["tokens"].to(device),
-                batch["cls"].to(device),
-                batch["s_rel"].to(device),
-                batch["e_rel"].to(device),
-                batch["pad_mask"].to(device),
-            )
-            loss = criterion(logits, batch["label"].to(device))
+            if args.two_head:
+                loss = two_head_loss(model, batch, device, type_weights, pos_weight,
+                                     args.diff_lambda)
+            else:
+                logits, _ = model(
+                    batch["tokens"].to(device),
+                    batch["cls"].to(device),
+                    batch["s_rel"].to(device),
+                    batch["e_rel"].to(device),
+                    batch["pad_mask"].to(device),
+                )
+                loss = criterion(logits, batch["label"].to(device))
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
             opt.step()
@@ -249,6 +310,8 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
         )
         model = JunctionSetTransformer(mcfg).to(device)
         criterion = torch.nn.CrossEntropyLoss(weight=class_weights(full_ds.labels, CLASSES, device))
+        refit_type_weights, refit_pos_weight = (
+            aux_weights(full_ds, device) if args.two_head else (None, None))
         opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         # same schedule shape as the selection run, so epoch n means the same thing
         sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
@@ -258,12 +321,16 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
             model.train()
             for batch in full_loader:
                 opt.zero_grad(set_to_none=True)
-                logits, _ = model(
-                    batch["tokens"].to(device), batch["cls"].to(device),
-                    batch["s_rel"].to(device), batch["e_rel"].to(device),
-                    batch["pad_mask"].to(device),
-                )
-                loss = criterion(logits, batch["label"].to(device))
+                if args.two_head:
+                    loss = two_head_loss(model, batch, device, refit_type_weights,
+                                         refit_pos_weight, args.diff_lambda)
+                else:
+                    logits, _ = model(
+                        batch["tokens"].to(device), batch["cls"].to(device),
+                        batch["s_rel"].to(device), batch["e_rel"].to(device),
+                        batch["pad_mask"].to(device),
+                    )
+                    loss = criterion(logits, batch["label"].to(device))
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
                 opt.step()
@@ -418,6 +485,19 @@ def _build_argparser() -> argparse.ArgumentParser:
         "beyond holding k state dicts in RAM.",
     )
 
+    ap.add_argument(
+        "--two-head", action="store_true",
+        help="factorize the head into a 4-way structural type and a binary "
+        "is-differential output, predicting NN when the latter says not "
+        "differential (plan Stage 1.3). Separates 'what structure is here', "
+        "which the simulation gets right and which is depth-robust, from 'did "
+        "it change', which is where the domain shift lives -- the sim trains "
+        "|dPSI| ~ U(0.3, 0.8) against negatives pinned at exactly 0 while "
+        "81.6%% of real curated events sit below 0.30.",
+    )
+    ap.add_argument("--diff-lambda", type=float, default=1.0,
+                    help="weight on the is-differential term of the two-head loss")
+
     ap.add_argument("--num-workers", type=int, default=0)
     ap.add_argument("--no-cache", action="store_true", help="do not hold normalized records in RAM")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -479,6 +559,7 @@ def main(argv=None) -> None:
                     "folds": args.folds, "seed": args.seed,
                     "select_on": args.select_on, "inner_val_frac": args.inner_val_frac,
                     "refit": args.refit, "avg_last_k": args.avg_last_k,
+                    "two_head": args.two_head, "diff_lambda": args.diff_lambda,
                     "per_fold_macro_f1": fold_f1,
                     "per_fold_inner_val_macro_f1": fold_val_f1,
                     "elapsed_min": elapsed / 60,

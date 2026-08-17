@@ -49,6 +49,19 @@ N_DISTANCE_BUCKETS = 32
 #: intra-chromosomal separation we will see
 _MAX_LOG_DISTANCE = 7.0
 
+#: Position of NN in dsignal.dataset.CLASSES, and the structural types in that
+#: same order with NN removed. Derived, not written down twice: the composition
+#: in `compose_two_head` has to agree with CLASSES exactly or the 5-vector is
+#: silently permuted. Imported lazily inside the function that needs it to keep
+#: model.py free of a dataset import cycle.
+def _class_layout():
+    from dsignal.dataset import CLASSES
+
+    return list(CLASSES).index("NN"), tuple(c for c in CLASSES if c != "NN")
+
+
+NN_INDEX, TYPE_CLASSES = _class_layout()
+
 
 @dataclass
 class ModelConfig:
@@ -60,9 +73,30 @@ class ModelConfig:
     n_layers: int = 4
     d_ff: int = 512
     dropout: float = 0.2
+    #: two-head factorization (plan Stage 1.3). False keeps the single 5-way
+    #: head, which is what every checkpoint before 2026-08-17 carries -- the
+    #: field defaults so those still load.
+    two_head: bool = False
+    #: structural types the type head ranges over, in CLASSES order minus NN
+    n_types: int = 4
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def compose_two_head(type_logits: torch.Tensor, diff_logit: torch.Tensor) -> torch.Tensor:
+    """Two heads -> 5-class **log probabilities** in CLASSES order.
+
+    ``p(NN) = 1 - p_diff`` and ``p(c) = p_diff * p(c | differential)``, done in
+    log space with logsigmoid so nothing underflows. NN sits at index 3 of
+    ``dsignal.dataset.CLASSES`` (A3, A5, CSE, NN, RI), so the four type columns
+    wrap around it -- the constant here is checked against CLASSES by
+    dsignal.verify_features rather than trusted.
+    """
+    log_p_diff = F.logsigmoid(diff_logit).unsqueeze(1)          # log p(differential)
+    log_p_not = F.logsigmoid(-diff_logit).unsqueeze(1)          # log (1 - p)
+    log_type = F.log_softmax(type_logits, dim=1) + log_p_diff   # [B, 4], types in TYPE order
+    return torch.cat([log_type[:, :NN_INDEX], log_p_not, log_type[:, NN_INDEX:]], dim=1)
 
 
 def pairwise_relations(s_rel: torch.Tensor, e_rel: torch.Tensor) -> torch.Tensor:
@@ -182,7 +216,13 @@ class JunctionSetTransformer(nn.Module):
 
         self.layers = nn.ModuleList(EncoderLayer(c) for _ in range(c.n_layers))
         self.norm = nn.LayerNorm(c.d_model)
-        self.head = nn.Linear(c.d_model, c.n_classes)
+        if c.two_head:
+            # "what structure is this" and "did it change" are different
+            # questions with different domain shifts -- see forward_parts
+            self.type_head = nn.Linear(c.d_model, c.n_types)
+            self.diff_head = nn.Linear(c.d_model, 1)
+        else:
+            self.head = nn.Linear(c.d_model, c.n_classes)
 
     def _attention_bias(self, s_rel, e_rel, pad_mask):
         """[B, H, L, L] with L = J + 1; row/col 0 is the CLS token, which
@@ -203,7 +243,15 @@ class JunctionSetTransformer(nn.Module):
 
     def forward(self, tokens, cls, s_rel, e_rel, pad_mask, need_weights: bool = False):
         """tokens [B, J, F], cls [B, E], s_rel/e_rel [B, J], pad_mask [B, J]
-        (True = padding). Returns (logits [B, C], attention or None)."""
+        (True = padding). Returns (logits [B, C], attention or None).
+
+        Under ``two_head`` the returned tensor is the **composed 5-class log
+        probability**, not a raw logit vector. That is deliberate and exact:
+        ``softmax(log p) == p`` for any proper distribution, so every existing
+        caller -- argmax in train.evaluate, ``logits.softmax`` in
+        predict.fold_probs, the prior correction downstream of it -- keeps
+        working and keeps meaning the same thing.
+        """
         b, j, _ = tokens.shape
         x = torch.cat([self.cls_proj(cls).unsqueeze(1), self.token_proj(tokens)], dim=1)
 
@@ -217,12 +265,44 @@ class JunctionSetTransformer(nn.Module):
             if need_weights:
                 attns.append(attn)
 
-        logits = self.head(self.norm(x[:, 0]))
+        pooled = self.norm(x[:, 0])
+        if self.cfg.two_head:
+            type_logits, diff_logit = self.type_head(pooled), self.diff_head(pooled).squeeze(-1)
+            logits = compose_two_head(type_logits, diff_logit)
+        else:
+            logits = self.head(pooled)
         if not need_weights:
             return logits, None
         # CLS's attention over the junction tokens, averaged over heads --
         # "which junctions drove this call"
         return logits, torch.stack(attns, dim=1)[:, :, :, 0, 1:].mean(dim=2)
+
+    def forward_parts(self, tokens, cls, s_rel, e_rel, pad_mask):
+        """``(type_logits [B, T], diff_logit [B])`` -- the two heads before
+        composition, which is what the training loss needs: the type head is
+        supervised only where a structural type exists, and the differential
+        head on every event. Two-head models only.
+
+        Why factor at all (plan Stage 1.3, hypothesis 1): "which structure is
+        in this window" is something the simulation gets right and which is
+        largely depth-robust, while "did it change between conditions" is where
+        the whole domain shift lives -- the simulation trains positives at
+        |dPSI| ~ U(0.3, 0.8) against negatives pinned at exactly 0, and 81.6%
+        of real curated events sit below 0.30. Splitting them lets the NN
+        operating point be set on the deployment argument (dsignal/prior_sweep)
+        instead of being entangled with the type decision.
+        """
+        if not self.cfg.two_head:
+            raise ValueError("forward_parts is only defined for two_head models")
+        b, j, _ = tokens.shape
+        x = torch.cat([self.cls_proj(cls).unsqueeze(1), self.token_proj(tokens)], dim=1)
+        cls_pad = torch.zeros(b, 1, dtype=torch.bool, device=pad_mask.device)
+        full_pad = torch.cat([cls_pad, pad_mask], dim=1)
+        bias = self._attention_bias(s_rel, e_rel, pad_mask)
+        for layer in self.layers:
+            x, _ = layer(x, bias, full_pad, False)
+        pooled = self.norm(x[:, 0])
+        return self.type_head(pooled), self.diff_head(pooled).squeeze(-1)
 
     def n_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)

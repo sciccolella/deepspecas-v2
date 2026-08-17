@@ -41,6 +41,38 @@ from sim.gene_split import gene_id_of
 
 CLASSES = ("A3", "A5", "CSE", "NN", "RI")
 
+#: the four structural types, CLASSES order with NN removed. The two-head model
+#: (dsignal.model, plan Stage 1.3) ranges its type head over these.
+TYPE_CLASSES = tuple(c for c in CLASSES if c != "NN")
+
+#: SUPPA event-type prefix -> our type name, for recovering the structure of a
+#: negative from its event_id
+_SUPPA_TYPE = {"A3": "A3", "A5": "A5", "SE": "CSE", "RI": "RI"}
+
+
+def aux_targets(event_id: str, label: str):
+    """``(type_index, is_differential)`` for the two-head factorization.
+
+    ``is_differential`` is 1 for every positive and 0 for every NN, which is
+    exactly the design's own distinction. The type index is where it gets
+    interesting: ``nn_hard`` negatives are **real catalogued AS events given
+    dPSI = 0** (sim/select_events.py), and their event_id carries the SUPPA
+    type, so they supervise the type head as well as the differential head --
+    the structure is genuinely there, it just did not change. ``nn_plain`` and
+    ``nn_novel`` have no catalogued event (their ids are ``<gene>;NN``), so they
+    return -1 and the type loss ignores them.
+
+    That asymmetry is the point of factorizing: a negative can teach "this is an
+    A5 site" and "nothing changed here" at the same time, which a single 5-way
+    head cannot express.
+    """
+    if label in TYPE_CLASSES:
+        return TYPE_CLASSES.index(label), 1.0
+    suffix = event_id.split(";", 1)[1] if ";" in event_id else ""
+    kind = suffix.split(":", 1)[0]
+    mapped = _SUPPA_TYPE.get(kind)
+    return (TYPE_CLASSES.index(mapped) if mapped else -1), 0.0
+
 #: the flip augmentation is only label-preserving under this map
 _FLIP_LABEL = {"A3": "A5", "A5": "A3"}
 
@@ -385,12 +417,17 @@ class JunctionSetDataset(Dataset):
         if self.scaler is not None:
             tokens, cls = self.scaler.transform(tokens, cls)
 
+        type_label, is_diff = aux_targets(event_id, label)
         return {
             "tokens": torch.from_numpy(np.ascontiguousarray(tokens, dtype=np.float32)),
             "cls": torch.from_numpy(np.ascontiguousarray(cls, dtype=np.float32)),
             "s_rel": torch.from_numpy(meta["s_rel"].astype(np.int64)),
             "e_rel": torch.from_numpy(meta["e_rel"].astype(np.int64)),
             "label": self.class_to_int.get(label, -1),
+            # aux targets are derived from the *augmented* label, so the
+            # left-right flip's A3<->A5 swap carries into the type head too
+            "type_label": type_label,
+            "is_diff": is_diff,
             "event_id": event_id,
             "ix": ix,
         }
@@ -439,6 +476,11 @@ def collate(batch):
         "e_rel": e_rel,
         "pad_mask": pad_mask,
         "label": torch.tensor([item["label"] for item in batch], dtype=torch.long),
+        # inference builds items by hand and has no targets to give; the two
+        # sentinels mean "no type" and "not differential" and are never read on
+        # that path, so callers outside training need not know about them
+        "type_label": torch.tensor([item.get("type_label", -1) for item in batch], dtype=torch.long),
+        "is_diff": torch.tensor([item.get("is_diff", 0.0) for item in batch], dtype=torch.float32),
         "event_id": [item["event_id"] for item in batch],
         "ix": [item["ix"] for item in batch],
     }
