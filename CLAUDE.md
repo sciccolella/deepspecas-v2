@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **v1 — image-based** (`master`, published). Pileup/coverage data from paired BAM files is rendered into one of six image representations, and a CNN (ResNet50) classifies the image into a splicing event type (`A3`, `A5`, `CE`/`SE` or collapsed `CSE`, `RI`, `NN`, optionally collapsed `A3`+`A5` → `A`). Root-level modules: `deepSpecas.py`, `dsEnsemble.py`, `plot2s.py`, `plot.py`, `DSutils.py`, `mc_mplp.py`, `jitimg.py`.
 - **v2 — signal-native** (branch `signal-native-v2`, in development, unpublished). **No image rendering at all**: junctions and base-resolution coverage are extracted straight from the BAMs and classified by a junction-set Transformer. Training data is simulated end-to-end (SUPPA event catalogue → PSI-targeted abundances → polyester reads → STAR). Lives entirely in `dsignal/` and `sim/`.
 
-**Branch `signal-native-v2` is the active line of work.** It was branched from `master` at `379cbba`, so it contains all of v1 too. If you are resuming v2 work, read **`plans/signal-native-v2-resume-2.md` first** — it is the current state-of-play document; `plans/README.md` indexes the rest.
+**Branch `signal-native-v2` is the active line of work.** It was branched from `master` at `379cbba`, so it contains all of v1 too. If you are resuming v2 work, read **`plans/signal-native-v2-resume-3.md` first** — it is the current state-of-play document; `plans/README.md` indexes the rest.
 
 ## Environment setup
 
@@ -129,9 +129,13 @@ Things that are easy to get wrong here:
 
 ### The benchmark, and what "zero-shot" means here
 
-`benchmark/{A3,A5,ES,IR}.csv` — 140 manually-curated real events over `benchmark/c1.bam`/`c2.bam`. **It contains no NN events**, so every NN prediction is a false positive and NN recall is unmeasurable. The v2 model is trained purely on simulation and scored here with no fine-tuning, which is the point of the comparison: v1 reaches **87.9% collapsed** (123/140, reproduced locally in `runs/v1/`); v2 currently reaches **78.6%** (`runs/benchmark_geomwin.log`).
+`benchmark/{A3,A5,ES,IR}.csv` — 140 manually-curated real events over `benchmark/c1.bam`/`c2.bam`. **It contains no NN events**, so every NN prediction is a false positive and NN recall is unmeasurable. The v2 model is trained purely on simulation and scored here with no fine-tuning, which is the point of the comparison.
 
-Two honesty caveats, both open and both documented in `plans/signal-native-v2-resume-2.md`: the NN prior strength has been chosen by reading benchmark accuracy, and `DPSI_BETA`/`PSI_LEVEL_BETA` in `sim/select_events.py` are fitted on the benchmark's own events (so anything using `--psi-dist beta` is domain-calibrated along that axis, not zero-shot).
+**It is split.** `benchmark/split.tsv` (committed, 70 dev / 70 test, stratified, cluster-disjoint at 50 kb) — everything tuned is read off **dev**, test is scored once per milestone. Use `--half {dev,test,both}` on `score_benchmark`/`prior_sweep`, and `python -m dsignal.benchmark_split compare A.tsv B.tsv --half dev` for the paired McNemar. At n=70 a real difference needs 8–10 events, against 5–6 at n=140.
+
+**Which v1 number to compare against.** v1's famous **87.9%** (123/140) is the *six-net ensemble*. A **single** v1 representation (`squishstack`) trained on v1's own data scores **75.7%**, and trained on v2's simulated data scores **74.3%** (`runs/v1_crossover/`, `runs/v1_pretrained/`) — so a single v2 model should be measured against ~76%, not 87.9%. v2 currently reaches **75.7% dev / 82.9% test** (`runs/geomwin_iv30_refit` + TTA + `nn_weight` 0.1). The older 78.6% figure is **retracted**: its epoch was chosen on the fold it reported.
+
+Honesty caveats: the NN operating point is **settled** — pre-registered from the deployment argument in `dsignal/prior_sweep.py`'s docstring, then scored on dev. Still open: `DPSI_BETA`/`PSI_LEVEL_BETA` in `sim/select_events.py` are fitted on all 140 benchmark events, so anything using `--psi-dist beta` is domain-calibrated along that axis; if it is used again, refit on dev only.
 
 Every benchmark number this branch has produced is in `runs/benchmark_*.log`; grep `aggregate collapsed`.
 
@@ -163,18 +167,27 @@ Add `--shard i/N` to split a CSV across parallel processes, and `--gpu-render` f
 
 ## Running v2
 
-Reproducing the current best (78.6% collapsed), in the local `DSnet` env:
+Reproducing the current best (75.7% dev / 82.9% test collapsed), in the local `DSnet` env:
 
 ```bash
-# train (5 folds, grouped by gene) -- ~4,800 simulated events under v3 windows
+# train (5 folds, grouped by gene) -- ~4,800 simulated events under v3 windows.
+# --refit and --inner-val-frac matter: the epoch is chosen on a gene-disjoint
+# slice of each *training* fold, never on the fold being reported.
 python -m dsignal.train \
   --npz-dir sim/experiment/npz_geomwin --labels sim/experiment/labels_geomwin.tsv \
-  --augment all --feature-subset no-geometry \
-  --out-dir runs/geomwin_allaug --json-out runs/geomwin_allaug.json
+  --augment all --feature-subset no-geometry --refit --inner-val-frac 0.30 \
+  --out-dir runs/geomwin_iv30_refit --json-out runs/geomwin_iv30_refit.json
 
-# score zero-shot against the 140 curated real events
-python -m dsignal.score_benchmark \
-  --net runs/geomwin_allaug/fold*.pt --out runs/benchmark_events_geomwin.tsv
+# score zero-shot against the curated real events -- dev while iterating,
+# test once per milestone
+python -m dsignal.score_benchmark --net runs/geomwin_iv30_refit/fold*.pt \
+  --half dev --tta-condition-swap --target-prior nn-weight --nn-weight 0.1 \
+  --train-labels sim/experiment/labels_geomwin.tsv \
+  --out runs/benchmark_events_stack_dev.tsv
+
+# paired McNemar against another run
+python -m dsignal.benchmark_split compare \
+  runs/benchmark_events_stack_dev.tsv runs/benchmark_events_<new>.tsv --half dev
 ```
 
 Inference on an arbitrary `region,bam1,bam2` CSV — same input format as v1, so the two are a drop-in comparison:

@@ -1,4 +1,10 @@
-# signal-native-v2 — START HERE (2026-08-17)
+# signal-native-v2 — superseded (2026-08-17)
+
+> **Superseded by `plans/signal-native-v2-resume-3.md` (2026-08-18).** This file
+> is accurate through Stage 1 and keeps the detail resume-3 compresses, but its
+> framing predates the Stage 2 crossover, which found that v1's 87.9% is a
+> six-net *ensemble* number and that a single v1 representation scores 75.7% —
+> i.e. there is no representation gap left to explain. Start with resume-3.
 
 Resume document. Branch `signal-native-v2`, clean tree, nothing pushed (per repo
 convention — pushing is the user's call).

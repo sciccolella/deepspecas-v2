@@ -3,15 +3,16 @@
 Plan documents and their implementation reports. Per `CLAUDE.md`, a plan is agreed and
 saved here first, and a separate session implements it.
 
-**Start here:** [`signal-native-v2-resume-2.md`](signal-native-v2-resume-2.md) — the
+**Start here:** [`signal-native-v2-resume-3.md`](signal-native-v2-resume-3.md) — the
 current state of play for the active line of work.
 
 ## signal-native-v2 (the active line)
 
 | file | what it is | status |
 |---|---|---|
-| [`signal-native-v2-resume-2.md`](signal-native-v2-resume-2.md) | **START HERE.** State, direction, open caveats, conventions (2026-08-17) | current |
-| [`signal-native-v2-docs-and-model.md`](signal-native-v2-docs-and-model.md) | Documentation cleanup + the model-improvement plan (Stages 0–3) | current; Part A implemented, Part B pending |
+| [`signal-native-v2-resume-3.md`](signal-native-v2-resume-3.md) | **START HERE.** State, direction, open caveats, conventions (2026-08-18) | current |
+| [`signal-native-v2-resume-2.md`](signal-native-v2-resume-2.md) | Previous resume doc (2026-08-17); accurate through Stage 1 and holds the detail resume-3 compresses | superseded as the entry point |
+| [`signal-native-v2-docs-and-model.md`](signal-native-v2-docs-and-model.md) | Documentation cleanup + the model-improvement plan (Stages 0–3) | **fully implemented** (Parts A and B) |
 | [`signal-native-v2.md`](signal-native-v2.md) | The original top-level plan: Phases 1–5. Every "Phase N step M" reference in a docstring points here | reference |
 | [`signal-native-v2-checkpoint.md`](signal-native-v2-checkpoint.md) | Chronological build log of Phases 1–3 and every noise layer. Accurate on *how*; its framing assumes a disproved premise | reference for mechanism only |
 | [`signal-native-v2-audit-geometry.md`](signal-native-v2-audit-geometry.md) | Plan: noise-calibration audit + window-geometry realism | implemented |

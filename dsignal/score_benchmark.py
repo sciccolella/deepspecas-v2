@@ -34,10 +34,16 @@ is what is comparable to v1's 123/140. Per-event region width is included in the
 output so accuracy-vs-width is plottable against v1's.
 
 This is sim->real transfer with **no fine-tuning at all** -- the model has never
-seen a read from this dataset. Current standing: **110/140 = 78.6% collapsed**
-(``runs/benchmark_geomwin.log``), against v1's 123/140 = 87.9%, reproduced
-locally in ``runs/v1/``. The gap was 25.8 points before the window sampler was
-fixed and is 8.6 now.
+seen a read from this dataset. Current standing: **53/70 = 75.7% dev, 58/70 =
+82.9% test** (``runs/geomwin_iv30_refit`` + ``--tta-condition-swap``
++ ``--target-prior nn-weight --nn-weight 0.1``).
+
+**Compare against the right v1 number.** v1's 123/140 = 87.9% is the *six-net
+ensemble*. A single v1 representation scores 75.7% trained on v1's own data and
+74.3% trained on v2's simulated data (the Stage 2 crossover,
+``runs/v1_crossover``/``runs/v1_pretrained``), so a single v2 model belongs
+against ~76%. The previously quoted 110/140 = 78.6% is **retracted**: its epoch
+was selected on the fold it then reported.
 
 Fine-tuning on real data (the original plan's Phase 4) is **not** currently
 recommended; see plans/signal-native-v2-resume-2.md for why, and for the two
