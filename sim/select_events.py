@@ -226,6 +226,13 @@ def select_hard_negatives(events, n, used_genes, rng, null_sigma: float = 0.0):
             continue
         used_genes.add(e.gene_id)
         mid = float(rng.uniform(0.15, 0.85))
+        # ONE draw, split across the two conditions. Drawing inside each of the
+        # psi1/psi2 expressions below would take two independent samples, and
+        # the realised |dPSI| would be |d1 + d2| / 2 -- sd 0.075/sqrt(2), median
+        # 0.036 rather than the 0.0505 that was measured. That bug shipped
+        # briefly on 2026-08-17 and was caught by checking the design before the
+        # expensive steps ran.
+        null_dpsi = _null_dpsi(rng, null_sigma)
         rows.append(
             dict(
                 event_id=e.event_id,
@@ -236,8 +243,8 @@ def select_hard_negatives(events, n, used_genes, rng, null_sigma: float = 0.0):
                 strand=e.strand,
                 region_start=e.region_start,
                 region_end=e.region_end,
-                psi1=float(np.clip(mid - _null_dpsi(rng, null_sigma) / 2, 0.02, 0.98)),
-                psi2=float(np.clip(mid + _null_dpsi(rng, null_sigma) / 2, 0.02, 0.98)),
+                psi1=float(np.clip(mid - null_dpsi / 2, 0.02, 0.98)),
+                psi2=float(np.clip(mid + null_dpsi / 2, 0.02, 0.98)),
             )
         )
         if len(rows) >= n:

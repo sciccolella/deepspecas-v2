@@ -46,6 +46,19 @@ N_NN=${N_NN:-80}
 # or "beta" (fitted to the curated benchmark; 81.6% of real events fall below
 # the uniform draw's 0.30 floor). See sim/select_events.py::_sample_psi_pair.
 PSI_DIST=${PSI_DIST:-uniform}
+# Stage 3 knobs (plan Stage 3.1-3.3). All default to the pre-Stage-3 behaviour,
+# so re-running any earlier batch tag reproduces it exactly.
+#   NULL_DPSI_SIGMA  hard negatives get |dPSI| ~ HalfNormal(sigma) instead of
+#                    exactly 0. 0.075 is the null median measured from this
+#                    simulation's own replicate noise (sim/null_dpsi_scale.py),
+#                    NOT from the benchmark.
+#   COOC_FRAC        fraction of the gene's other catalogued events that also
+#                    change between conditions, so a window is not "one event
+#                    moves, everything else is frozen".
+# Use them together with PSI_DIST=paired: moving positives down while negatives
+# stay pinned at zero is what the beta batch did, and it collapsed the margin.
+NULL_DPSI_SIGMA=${NULL_DPSI_SIGMA:-0}
+COOC_FRAC=${COOC_FRAC:-0}
 # read simulation, unchanged since noise layer 1 / layer 5
 FRAGLEN=${FRAGLEN:-250}
 FRAGSD=${FRAGSD:-25}
@@ -73,6 +86,7 @@ if [[ ! -s $B/design.tsv ]]; then
     --n-per-label "$N_PER_LABEL" \
     --n-nn-plain "$N_NN" --n-nn-hard "$N_NN" --n-nn-novel "$N_NN" \
     --psi-dist "$PSI_DIST" \
+    --null-dpsi-sigma "$NULL_DPSI_SIGMA" \
     --seed "$SEED" --out "$B/design.tsv" 2>&1 | tee "$B/logs/select_events.log"
 fi
 
@@ -107,6 +121,7 @@ if [[ ! -s $B/count_matrix.tsv ]]; then
     --out-matrix "$B/count_matrix.tsv" \
     --out-transcripts "$B/transcript_ids.txt" \
     --out-psi-check "$B/psi_check.tsv" \
+    --cooc-frac "$COOC_FRAC" \
     --seed "$SEED" 2>&1 | tee "$B/logs/build_experiment.log"
 fi
 
