@@ -116,6 +116,23 @@ NULL_DPSI_MAX = 0.28
 #:   where it hurt worst (82.4% -> 64.7%): a retained intron at |dPSI| ~ 0.1
 #:   carries almost no signal, because the intron's coverage barely moves. So
 #:   RI keeps a higher floor while the junction-defined classes go low.
+#: *Measured (2026-08-18, runs/stage3.* vs runs/geomwin_b1_refit.*, 960 events
+#: each, same protocol):* the whole Stage 3 batch -- paired per-class positives,
+#: non-zero nulls and co-occurrence together -- made things WORSE.
+#:
+#:     sim-CV macro-F1   0.756 -> 0.642
+#:     benchmark dev     48/70 -> 42/70 collapsed (68.6% -> 60.0%),
+#:                       15 lost / 9 gained, McNemar p = 0.308
+#:
+#: Three axes moved at once, so this cannot say which one did the damage, and
+#: the plan called for exactly that (the multi-axis batch was meant to be the
+#: honest test of "realism only pays when several axes move together"). The
+#: answer is that it does not pay: the realism premise is now 0 for 3, counting
+#: depth invariance and effect-size realism before it. Read alongside the Stage
+#: 2 crossover, which found v2's simulation trains v1's representation as well
+#: as v1's own data does (104/140 vs 106/140) -- the simulation is not what
+#: limits transfer, and making it harder without making it more informative
+#: costs sim-CV and transfer together.
 PAIRED_DPSI_RANGE = {
     "A3": (0.10, 0.60),
     "A5": (0.10, 0.60),

@@ -107,6 +107,8 @@ on the 140 paired outcomes.
 | **all three stacked** | 4,800 | 0.862 | **75.7%** (dev) | p = 0.344 |
 | `--two-head` | 4,800 | 0.858 | 67.1% (dev) | p = 0.727 |
 | `--two-head` stacked | 4,800 | 0.858 | 75.7% (dev) | p = 1.000 vs stack |
+| *(control)* b1 under the new protocol | 960 | 0.756 | 68.6% (dev) | — |
+| Stage 3 batch (paired + nulls + co-occurrence) | 960 | 0.642 | 60.0% (dev) | p = 0.308 |
 | `--depth-norm scale` | 4,800 | 0.868 | 77.9% | **p = 1.000** |
 | `--subsample-low 0.15` | 4,800 | 0.862 | 73.6% | — |
 | `--depth-norm drop` | 4,800 | 0.834 | 72.9% | — |
@@ -196,6 +198,49 @@ sides). Fixing it traded per class rather than gaining — A3 57.1→64.3%, A5
 collapsed 66.7→76.7%, ES 76.9→69.2%, IR 82.4→64.7%. A retained intron at
 \|dPSI\|≈0.1 carries almost no signal, so RI degrades. If revisited, the draw
 should be per class, not pooled.
+
+## Stages 2 and 3 both landed, and together they settle the live question
+
+**Stage 2, the representation crossover.** v1's images + ResNet50 trained on
+*v2's* simulated data, scored on the same benchmark, against the *same*
+representation trained on v1's own data (`data/trained_nets/squishstack`):
+
+| trained on | dev | test | all 140 | NN false pos |
+|---|---|---|---|---|
+| v2's simulation | 75.7% | 72.9% | **104/140 = 74.3%** | 22 |
+| v1's own simulation | 80.0% | 71.4% | **106/140 = 75.7%** | 10 |
+
+Two events apart. **v2's simulation trains v1's representation as well as v1's
+own data does**, so the simulation is not what limits transfer.
+
+The second finding matters more: a *single* v1 representation scores 75.7%, not
+87.9%. **87.9% is the six-net ensemble.** The fair comparator for a single v2
+model was never 87.9% — it is ~76%, which v2 already matches (dev 75.7%, test
+82.9% at the Stage 1 best). Most of the "8.6-point gap" this branch has chased
+is ensembling, not representation and not simulation realism.
+
+*Caveats:* the crossover net saw 4,522 of 4,800 events (windows >50 kb capped,
+a few crash `plot2s`; CSE trimmed most), 10 epochs, one seed, no tuning, while
+the control came with the authors' recipe. The control's own dev/test spread is
+80.0% vs 71.4% — n=70 noise again.
+
+**Stage 3, the multi-axis re-simulation.** All three axes at once — per-class
+positives floored at twice the measured null, `nn_hard` nulls at the measured
+replicate-noise scale, and 6.09 co-occurring events perturbed per window —
+against a volume-matched 960-event control under the same protocol:
+
+    sim-CV 0.756 -> 0.642     benchmark dev 48/70 -> 42/70 (68.6% -> 60.0%),
+                              15 lost / 9 gained, McNemar p = 0.308
+
+It made things worse. Three axes moved together, so this cannot apportion blame,
+but that was the design: the multi-axis batch was meant to be the honest test of
+"realism only pays when several axes move together". It does not. **The realism
+premise is now 0 for 3** — depth invariance, effect-size realism, and this.
+
+Read with the crossover, the two results agree: the simulation is not the
+bottleneck, and making it harder without making it more informative costs sim-CV
+and transfer together. Reading 1 from the section below now has the evidence, and
+reading 2 has been tested and failed.
 
 ## The live question
 
