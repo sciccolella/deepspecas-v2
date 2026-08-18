@@ -169,6 +169,42 @@ have cost 689 events (14%) biased toward exactly the classes whose windows are
 narrow (A3/A5/RI), which would have distorted the comparison this render exists
 to make.
 
+## 5c. `limitram` jobs die when the ssh session ends
+
+Worth knowing before relying on it for long jobs. `limitram` is
+`systemd-run --user --scope`, so the scope is a unit of the *user manager*. On
+pasteur:
+
+```
+$ loginctl show-user $USER --property=Linger
+Linger=no
+$ grep -E '^#?KillUserProcesses' /etc/systemd/logind.conf
+#KillUserProcesses=no
+```
+
+`KillUserProcesses=no` means plain background processes survive logout — but
+with `Linger=no` the `systemd --user` manager itself stops once the last session
+closes, and every scope it owns goes with it. So
+
+```bash
+nohup limitram 48G bash sim/render_resume.sh … &     # dies at disconnect
+```
+
+silently stops making progress the moment ssh exits; `nohup` protects against
+SIGHUP, not against the user manager shutting down. Observed directly: six
+shards advanced by a handful of events each, then load fell to 0.06 with nothing
+running.
+
+Three ways round it, in increasing order of commitment:
+
+1. **hold the connection** — run it in the foreground of a long-lived ssh
+   (what I do now); fine for jobs of tens of minutes;
+2. **`loginctl enable-linger $USER`** — a durable account-level change, so the
+   user manager (and its scopes) persist without a session. This is the real fix
+   for multi-hour jobs but is your call to make;
+3. **`systemd-run --user --collect -p MemoryMax=…`** as a *service* rather than
+   a `--scope` — still owned by the user manager, so it needs lingering too.
+
 ## 6. What should have been done, and now is
 
 ```bash
