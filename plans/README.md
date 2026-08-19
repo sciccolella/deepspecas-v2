@@ -3,15 +3,17 @@
 Plan documents and their implementation reports. Per `CLAUDE.md`, a plan is agreed and
 saved here first, and a separate session implements it.
 
-**Start here:** [`signal-native-v2-resume-3.md`](signal-native-v2-resume-3.md) — the
+**Start here:** [`signal-native-v2-resume-4.md`](signal-native-v2-resume-4.md) — the
 current state of play for the active line of work.
 
 ## signal-native-v2 (the active line)
 
 | file | what it is | status |
 |---|---|---|
-| [`signal-native-v2-resume-3.md`](signal-native-v2-resume-3.md) | **START HERE.** State, direction, open caveats, conventions (2026-08-18) | current |
-| [`signal-native-v2-ensemble.md`](signal-native-v2-ensemble.md) | The v2 ensemble plan (2026-08-19). Also **corrects the comparison target**: the v1 six-net ensemble is 60/70 dev, 62/69 test, 122/139 — not "17 events ahead" | **agreed, not yet implemented** |
+| [`signal-native-v2-resume-4.md`](signal-native-v2-resume-4.md) | **START HERE.** State, direction, open caveats, conventions (2026-08-19) | current |
+| [`signal-native-v2-ensemble-results.md`](signal-native-v2-ensemble-results.md) | Full stage-by-stage results of the ensemble plan (2026-08-19): E3 reaches 77.1% dev / 85.7% test, closing part but not all of the gap to v1 (60/70 dev / 63/70 test); the mechanism that actually worked was more data (`npz_union`), not ensembling | **implemented** |
+| [`signal-native-v2-ensemble.md`](signal-native-v2-ensemble.md) | The v2 ensemble plan (2026-08-19). Also **corrects the comparison target**: the v1 six-net ensemble is 60/70 dev, 62/69 test, 122/139 — itself superseded by the results doc's cleaner keying (60/70 dev, **63/70 test**, 123/140) | implemented — see results doc |
+| [`signal-native-v2-resume-3.md`](signal-native-v2-resume-3.md) | Previous resume doc (2026-08-18); accurate through the pre-ensemble state and holds detail resume-4 compresses | superseded as the entry point |
 | [`signal-native-v2-resume-2.md`](signal-native-v2-resume-2.md) | Previous resume doc (2026-08-17); accurate through Stage 1 and holds the detail resume-3 compresses | superseded as the entry point |
 | [`signal-native-v2-docs-and-model.md`](signal-native-v2-docs-and-model.md) | Documentation cleanup + the model-improvement plan (Stages 0–3) | **fully implemented** (Parts A and B) |
 | [`signal-native-v2.md`](signal-native-v2.md) | The original top-level plan: Phases 1–5. Every "Phase N step M" reference in a docstring points here | reference |

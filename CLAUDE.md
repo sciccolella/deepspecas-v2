@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **v1 — image-based** (`master`, published). Pileup/coverage data from paired BAM files is rendered into one of six image representations, and a CNN (ResNet50) classifies the image into a splicing event type (`A3`, `A5`, `CE`/`SE` or collapsed `CSE`, `RI`, `NN`, optionally collapsed `A3`+`A5` → `A`). Root-level modules: `deepSpecas.py`, `dsEnsemble.py`, `plot2s.py`, `plot.py`, `DSutils.py`, `mc_mplp.py`, `jitimg.py`.
 - **v2 — signal-native** (branch `signal-native-v2`, in development, unpublished). **No image rendering at all**: junctions and base-resolution coverage are extracted straight from the BAMs and classified by a junction-set Transformer. Training data is simulated end-to-end (SUPPA event catalogue → PSI-targeted abundances → polyester reads → STAR). Lives entirely in `dsignal/` and `sim/`.
 
-**Branch `signal-native-v2` is the active line of work.** It was branched from `master` at `379cbba`, so it contains all of v1 too. If you are resuming v2 work, read **`plans/signal-native-v2-resume-3.md` first** — it is the current state-of-play document; `plans/README.md` indexes the rest.
+**Branch `signal-native-v2` is the active line of work.** It was branched from `master` at `379cbba`, so it contains all of v1 too. If you are resuming v2 work, read **`plans/signal-native-v2-resume-4.md` first** — it is the current state-of-play document; `plans/README.md` indexes the rest.
 
 ## Environment setup
 
@@ -133,7 +133,9 @@ Things that are easy to get wrong here:
 
 **It is split.** `benchmark/split.tsv` (committed, 70 dev / 70 test, stratified, cluster-disjoint at 50 kb) — everything tuned is read off **dev**, test is scored once per milestone. Use `--half {dev,test,both}` on `score_benchmark`/`prior_sweep`, and `python -m dsignal.benchmark_split compare A.tsv B.tsv --half dev` for the paired McNemar. At n=70 a real difference needs 8–10 events, against 5–6 at n=140.
 
-**Which v1 number to compare against.** v1's famous **87.9%** (123/140) is the *six-net ensemble*. A **single** v1 representation (`squishstack`) trained on v1's own data scores **75.7%**, and trained on v2's simulated data scores **74.3%** (`runs/v1_crossover/`, `runs/v1_pretrained/`) — so a single v2 model should be measured against ~76%, not 87.9%. v2 currently reaches **75.7% dev / 82.9% test** (`runs/geomwin_iv30_refit` + TTA + `nn_weight` 0.1). The older 78.6% figure is **retracted**: its epoch was chosen on the fold it reported.
+**Which v1 number to compare against.** v1's famous **87.9%** (123/140) is the *six-net ensemble*. A **single** v1 representation (`squishstack`) trained on v1's own data scores **75.7%**, and trained on v2's simulated data scores **74.3%** (`runs/v1_crossover/`, `runs/v1_pretrained/`) — so a single v2 model should be measured against ~76%, not 87.9%. The older 78.6% figure is **retracted**: its epoch was chosen on the fold it reported.
+
+**Split-wise (`benchmark/split.tsv`), the numbers are** (`dsignal.v1_reference`, `plans/signal-native-v2-ensemble-results.md`): v1 six-net ensemble **60/70 dev, 63/70 test** (60+63=123/140, consistent with the all-140 figure above); v1 single `squishstack` net 56/70 dev, 50/70 test. v2's ensemble (`runs/ensembles/e3_bagged.json`, 16 members, `--ensemble`) reaches **77.1% dev (54/70) / 85.7% test (60/70)**; a single v2 model (no ensembling) reaches 75.7% dev (53/70) / 82.9% test (58/70) (`runs/geomwin_iv30_refit` + TTA + `nn_weight` 0.1). **Test was scored once** and the pre-registered parity/win criterion against v1 was **not** met (McNemar p=0.549, discordant 4 v2-only / 7 v1-only) — any further v1-vs-v2 comparison on this benchmark needs a fresh held-out half. An earlier ad hoc analysis quoted v1 at 62/69 test (122/139 all); that figure is **retracted** — it deduplicated by region alone rather than `(csv, region)`, dropping one of the two rows for the region that appears in both `A3.csv` and `A5.csv`.
 
 Honesty caveats: the NN operating point is **settled** — pre-registered from the deployment argument in `dsignal/prior_sweep.py`'s docstring, then scored on dev. Still open: `DPSI_BETA`/`PSI_LEVEL_BETA` in `sim/select_events.py` are fitted on all 140 benchmark events, so anything using `--psi-dist beta` is domain-calibrated along that axis; if it is used again, refit on dev only.
 
@@ -167,7 +169,14 @@ Add `--shard i/N` to split a CSV across parallel processes, and `--gpu-render` f
 
 ## Running v2
 
-Reproducing the current best (75.7% dev / 82.9% test collapsed), in the local `DSnet` env:
+The single-model recipe below (75.7% dev / 82.9% test collapsed) is still the base for every ensemble member. **The current headline is the ensemble** (`runs/ensembles/e3_bagged.json`, 16 members, 77.1% dev / 85.7% test) — see `plans/signal-native-v2-ensemble-results.md`. Score it with:
+
+```bash
+python -m dsignal.score_benchmark --ensemble runs/ensembles/e3_bagged.json \
+  --half dev --tta-condition-swap --target-prior nn-weight --nn-weight 0.1
+```
+
+Reproducing the single-model best (75.7% dev / 82.9% test collapsed), in the local `DSnet` env:
 
 ```bash
 # train (5 folds, grouped by gene) -- ~4,800 simulated events under v3 windows.
