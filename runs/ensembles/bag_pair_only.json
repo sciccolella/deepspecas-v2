@@ -1,0 +1,9 @@
+{
+  "name": "bag_pair_only",
+  "members": [
+    {"run_dir": "runs/ens_bag_geomwin20", "labels": "sim/experiment/labels_geomwin.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_bag_geomwin21", "labels": "sim/experiment/labels_geomwin.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_bag_bag2_0",    "labels": "sim/experiment/labels_bag2.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_bag_bag2_1",    "labels": "sim/experiment/labels_bag2.tsv", "weight": 1.0}
+  ]
+}

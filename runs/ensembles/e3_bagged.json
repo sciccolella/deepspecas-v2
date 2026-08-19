@@ -1,0 +1,21 @@
+{
+  "name": "e3_bagged",
+  "members": [
+    {"run_dir": "runs/geomwin_iv30_refit", "labels": "sim/experiment/labels_geomwin.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_seed1",          "labels": "sim/experiment/labels_geomwin.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_seed2",          "labels": "sim/experiment/labels_geomwin.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_seed3",          "labels": "sim/experiment/labels_geomwin.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_seed4",          "labels": "sim/experiment/labels_geomwin.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_allfeat",        "labels": "sim/experiment/labels_geomwin.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_twohead",        "labels": "sim/experiment/labels_geomwin.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_depthscale",     "labels": "sim/experiment/labels_geomwin.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_augsub",         "labels": "sim/experiment/labels_geomwin.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_nn15",           "labels": "sim/experiment/labels_geomwin.nn15.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_cse",            "labels": "sim/experiment/labels_geomwin.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_bag_geomwin20",  "labels": "sim/experiment/labels_geomwin.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_bag_geomwin21",  "labels": "sim/experiment/labels_geomwin.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_bag_bag2_0",     "labels": "sim/experiment/labels_bag2.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_bag_bag2_1",     "labels": "sim/experiment/labels_bag2.tsv", "weight": 1.0},
+    {"run_dir": "runs/ens_bag_union",      "labels": "sim/experiment/labels_union.tsv", "weight": 1.0}
+  ]
+}
