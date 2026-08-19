@@ -11,6 +11,7 @@ current state of play for the active line of work.
 | file | what it is | status |
 |---|---|---|
 | [`signal-native-v2-resume-3.md`](signal-native-v2-resume-3.md) | **START HERE.** State, direction, open caveats, conventions (2026-08-18) | current |
+| [`signal-native-v2-ensemble.md`](signal-native-v2-ensemble.md) | The v2 ensemble plan (2026-08-19). Also **corrects the comparison target**: the v1 six-net ensemble is 60/70 dev, 62/69 test, 122/139 — not "17 events ahead" | **agreed, not yet implemented** |
 | [`signal-native-v2-resume-2.md`](signal-native-v2-resume-2.md) | Previous resume doc (2026-08-17); accurate through Stage 1 and holds the detail resume-3 compresses | superseded as the entry point |
 | [`signal-native-v2-docs-and-model.md`](signal-native-v2-docs-and-model.md) | Documentation cleanup + the model-improvement plan (Stages 0–3) | **fully implemented** (Parts A and B) |
 | [`signal-native-v2.md`](signal-native-v2.md) | The original top-level plan: Phases 1–5. Every "Phase N step M" reference in a docstring points here | reference |
