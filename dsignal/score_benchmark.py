@@ -186,7 +186,14 @@ def report(rows, predictor, half: str = "both") -> None:
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--net", nargs="+", required=True, help="trained fold checkpoints (.pt)")
+    net_group = ap.add_mutually_exclusive_group(required=True)
+    net_group.add_argument("--net", nargs="+", help="trained fold checkpoints (.pt) of one run")
+    net_group.add_argument("--ensemble", default=None,
+                           help="EnsembleSpec JSON (dsignal.ensemble, runs/ensembles/*.json) -- "
+                           "a multi-run ensemble instead of one run's folds")
+    ap.add_argument("--rule", choices=("mean_prob", "mean_logprob", "sum_logit"), default="mean_prob",
+                    help="cross-run combine rule, only meaningful with --ensemble "
+                    "(dsignal.ensemble.combine)")
     ap.add_argument("--csv", nargs="+", default=DEFAULT_CSVS)
     ap.add_argument("--out", default=None, help="per-event TSV (region, width, truth, pred, probs, timings)")
     ap.add_argument("--device", default=None)
@@ -224,28 +231,51 @@ def main(argv=None) -> None:
     ap.add_argument("--split", default="benchmark/split.tsv")
     args = ap.parse_args(argv)
 
-    correction = None
-    if args.target_prior != "none":
-        if not args.train_labels:
-            ap.error("--target-prior needs --train-labels to count the training class prior")
+    if args.ensemble:
+        if args.target_prior != "none" and not args.train_labels:
+            # each member may fall back to its own checkpoints' train_class_counts
+            # (Predictor.build_prior_correction, H2) -- unlike --net this is not
+            # an error, just a per-member choice made inside MultiRunPredictor.
+            print("--train-labels not given: each ensemble member falls back to "
+                  "its own checkpoints' stored train_class_counts", file=sys.stderr)
 
-    predictor = Predictor(
-        args.net,
-        device=args.device,
-        filters=ReadFilters(min_anchor=args.min_anchor, max_nh=args.max_nh, min_mapq=args.min_mapq),
-        tta_condition_swap=args.tta_condition_swap,
-    )
-    if args.target_prior != "none":
-        train_counts = class_counts_from_labels(args.train_labels, predictor.classes)
-        correction = PriorCorrection(
-            train_counts,
-            make_target_prior(predictor.classes, args.target_prior, nn_weight=args.nn_weight),
-            args.tau,
+        from dsignal.ensemble import EnsembleSpec, MultiRunPredictor
+
+        spec = EnsembleSpec.load(args.ensemble)
+        predictor = MultiRunPredictor(
+            spec,
+            device=args.device,
+            filters=ReadFilters(min_anchor=args.min_anchor, max_nh=args.max_nh, min_mapq=args.min_mapq),
+            tta_condition_swap=args.tta_condition_swap,
+            target_prior=args.target_prior, nn_weight=args.nn_weight, tau=args.tau,
+            rule=args.rule,
         )
-        predictor.prior_correction = correction
-        print(f"prior correction: {correction}", file=sys.stderr)
-    print(f"loaded {len(predictor.models)} fold checkpoint(s), classes {predictor.classes}, "
-          f"feature subset {predictor.feature_subset!r}", file=sys.stderr)
+        print(f"ensemble {spec.name!r}: {len(predictor.predictors)} members, "
+              f"weights {predictor.weights}, classes {predictor.classes}, rule {args.rule!r}",
+              file=sys.stderr)
+    else:
+        correction = None
+        if args.target_prior != "none":
+            if not args.train_labels:
+                ap.error("--target-prior needs --train-labels to count the training class prior")
+
+        predictor = Predictor(
+            args.net,
+            device=args.device,
+            filters=ReadFilters(min_anchor=args.min_anchor, max_nh=args.max_nh, min_mapq=args.min_mapq),
+            tta_condition_swap=args.tta_condition_swap,
+        )
+        if args.target_prior != "none":
+            train_counts = class_counts_from_labels(args.train_labels, predictor.classes)
+            correction = PriorCorrection(
+                train_counts,
+                make_target_prior(predictor.classes, args.target_prior, nn_weight=args.nn_weight),
+                args.tau,
+            )
+            predictor.prior_correction = correction
+            print(f"prior correction: {correction}", file=sys.stderr)
+        print(f"loaded {len(predictor.models)} fold checkpoint(s), classes {predictor.classes}, "
+              f"feature subset {predictor.feature_subset!r}", file=sys.stderr)
 
     keep = None
     if args.half != "both":
