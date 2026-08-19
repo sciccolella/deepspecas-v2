@@ -1,0 +1,4 @@
+n=70
+image-free E3 + v1-crossover hybrid, dev: 61/70 = 87.1% collapsed
+oracle union (image-free E3 OR v1 squishstack single net), dev: 64/70 = 91.4% collapsed
+oracle union (image-free E3 OR v1 six-net ensemble), dev: 66/70 = 94.3% collapsed
