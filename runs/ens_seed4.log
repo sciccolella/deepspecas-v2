@@ -1,0 +1,97 @@
+loaded 4800 events
+gene-grouped 5-fold CV over 4800 genes: no gene leak
+model: 1,403,229 trainable parameters
+  fold 0 epoch   0  loss 0.9961  inner-val macro-F1 0.645  (best 0.645 @ 0)
+  fold 0 epoch  10  loss 0.5579  inner-val macro-F1 0.798  (best 0.817 @ 8)
+  fold 0 epoch  20  loss 0.4926  inner-val macro-F1 0.838  (best 0.843 @ 19)
+  fold 0 epoch  30  loss 0.4225  inner-val macro-F1 0.829  (best 0.843 @ 19)
+  fold 0: early stop at epoch 34 (no improvement for 15 epochs)
+  fold 0: refitting on the full training fold for 20 epochs
+fold 0: held-out macro-F1 0.830 at epoch 19 (epoch chosen on inner val, macro-F1 0.843)
+  fold 1 epoch   0  loss 1.0290  inner-val macro-F1 0.623  (best 0.623 @ 0)
+  fold 1 epoch  10  loss 0.5742  inner-val macro-F1 0.811  (best 0.811 @ 10)
+  fold 1 epoch  20  loss 0.5024  inner-val macro-F1 0.813  (best 0.829 @ 17)
+  fold 1 epoch  30  loss 0.4442  inner-val macro-F1 0.843  (best 0.843 @ 30)
+  fold 1 epoch  40  loss 0.3627  inner-val macro-F1 0.837  (best 0.843 @ 31)
+  fold 1 epoch  50  loss 0.3644  inner-val macro-F1 0.839  (best 0.845 @ 42)
+  fold 1: refitting on the full training fold for 58 epochs
+fold 1: held-out macro-F1 0.872 at epoch 57 (epoch chosen on inner val, macro-F1 0.845)
+  fold 2 epoch   0  loss 1.0348  inner-val macro-F1 0.657  (best 0.657 @ 0)
+  fold 2 epoch  10  loss 0.5856  inner-val macro-F1 0.809  (best 0.835 @ 9)
+  fold 2 epoch  20  loss 0.4910  inner-val macro-F1 0.839  (best 0.847 @ 11)
+  fold 2: early stop at epoch 26 (no improvement for 15 epochs)
+  fold 2: refitting on the full training fold for 12 epochs
+fold 2: held-out macro-F1 0.838 at epoch 11 (epoch chosen on inner val, macro-F1 0.847)
+  fold 3 epoch   0  loss 1.0089  inner-val macro-F1 0.646  (best 0.646 @ 0)
+  fold 3 epoch  10  loss 0.5634  inner-val macro-F1 0.813  (best 0.820 @ 8)
+  fold 3 epoch  20  loss 0.4716  inner-val macro-F1 0.839  (best 0.839 @ 20)
+  fold 3 epoch  30  loss 0.4100  inner-val macro-F1 0.834  (best 0.848 @ 26)
+  fold 3 epoch  40  loss 0.3722  inner-val macro-F1 0.849  (best 0.853 @ 38)
+  fold 3 epoch  50  loss 0.3481  inner-val macro-F1 0.845  (best 0.853 @ 38)
+  fold 3: early stop at epoch 53 (no improvement for 15 epochs)
+  fold 3: refitting on the full training fold for 39 epochs
+fold 3: held-out macro-F1 0.861 at epoch 38 (epoch chosen on inner val, macro-F1 0.853)
+  fold 4 epoch   0  loss 0.9904  inner-val macro-F1 0.674  (best 0.674 @ 0)
+  fold 4 epoch  10  loss 0.5960  inner-val macro-F1 0.808  (best 0.822 @ 8)
+  fold 4 epoch  20  loss 0.4969  inner-val macro-F1 0.847  (best 0.847 @ 20)
+  fold 4 epoch  30  loss 0.4501  inner-val macro-F1 0.838  (best 0.858 @ 29)
+  fold 4 epoch  40  loss 0.4024  inner-val macro-F1 0.845  (best 0.858 @ 29)
+  fold 4: early stop at epoch 44 (no improvement for 15 epochs)
+  fold 4: refitting on the full training fold for 30 epochs
+fold 4: held-out macro-F1 0.854 at epoch 29 (epoch chosen on inner val, macro-F1 0.858)
+
+trained 5 folds in 16.8 min (per-fold macro-F1 0.830 0.872 0.838 0.861 0.854)
+wrote metrics to runs/ens_seed4.json
+class counts: {'A3': 900, 'A5': 900, 'CSE': 900, 'NN': 1200, 'RI': 900}
+augmentations: ['all'], feature subset: no-geometry, depth norm: none, subsample_low: 0.3, epoch selection: inner (30% of each training fold)
+
+=== junction-set transformer [no-geometry] [aug: all] (5-fold group CV, by gene) ===
+              precision    recall  f1-score   support
+
+          A3      0.874     0.837     0.855       900
+          A5      0.845     0.827     0.836       900
+         CSE      0.783     0.886     0.831       900
+          NN      0.886     0.800     0.841      1200
+          RI      0.867     0.921     0.893       900
+
+    accuracy                          0.851      4800
+   macro avg      0.851     0.854     0.851      4800
+weighted avg      0.853     0.851     0.850      4800
+
+confusion matrix (rows=true, cols=pred): ['A3', 'A5', 'CSE', 'NN', 'RI']
+[[753  33  78  26  10]
+ [ 33 744  73  33  17]
+ [ 33  36 797  31   3]
+ [ 29  55  59 960  97]
+ [ 14  12  11  34 829]]
+
+vs sim/baseline_model.py random forest (same data, same protocol):
+  metric         this   RF ref    delta
+  accuracy      0.851    0.488   +0.363
+  macro-F1      0.851    0.325   +0.526
+  F1 A3         0.855    0.108   +0.747
+  F1 A5         0.836    0.160   +0.676
+  F1 CSE        0.831    0.132   +0.699
+  F1 NN         0.841    0.657   +0.184
+  F1 RI         0.893    0.568   +0.325
+
+  A3/A5 F1 is the metric that matters -- that is the class pair the
+  topology features exist to fix.
+
+=== transformer, A3+A5 collapsed to A ===
+              precision    recall  f1-score   support
+
+           A      0.897     0.868     0.883      1800
+         CSE      0.783     0.886     0.831       900
+          NN      0.886     0.800     0.841      1200
+          RI      0.867     0.921     0.893       900
+
+    accuracy                          0.864      4800
+   macro avg      0.858     0.869     0.862      4800
+weighted avg      0.867     0.864     0.864      4800
+
+confusion matrix (rows=true, cols=pred): ['A', 'CSE', 'NN', 'RI']
+[[1563  151   59   27]
+ [  69  797   31    3]
+ [  84   59  960   97]
+ [  26   11   34  829]]

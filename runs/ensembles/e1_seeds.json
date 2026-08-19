@@ -1,0 +1,30 @@
+{
+  "name": "e1_seeds",
+  "members": [
+    {
+      "run_dir": "runs/geomwin_iv30_refit",
+      "labels": "sim/experiment/labels_geomwin.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_seed1",
+      "labels": "sim/experiment/labels_geomwin.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_seed2",
+      "labels": "sim/experiment/labels_geomwin.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_seed3",
+      "labels": "sim/experiment/labels_geomwin.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_seed4",
+      "labels": "sim/experiment/labels_geomwin.tsv",
+      "weight": 1.0
+    }
+  ]
+}
