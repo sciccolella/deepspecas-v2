@@ -71,10 +71,19 @@ from dsignal.model import JunctionSetTransformer, ModelConfig
 from sim.gene_split import assert_no_gene_leak, split_genes
 
 
-def class_weights(labels, classes, device):
-    """Class-balanced cross-entropy weights from the *training* fold only."""
+def class_weights(labels, classes, device, boost: dict | None = None):
+    """Class-balanced cross-entropy weights from the *training* fold only.
+
+    ``boost`` (``{class: factor}``) multiplies specific classes' weights
+    *after* balancing -- the cheap way to shift a decision boundary (e.g.
+    CSE vs A3/A5, plans/signal-native-v2-ensemble.md Stage 2's ``ens_cse``
+    member) without touching the feature/model plumbing.
+    """
     counts = np.array([max(sum(1 for l in labels if l == c), 1) for c in classes], dtype=np.float64)
     w = counts.sum() / (len(classes) * counts)
+    if boost:
+        for c, factor in boost.items():
+            w[classes.index(c)] *= factor
     return torch.tensor(w, dtype=torch.float32, device=device)
 
 
@@ -230,7 +239,7 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
     if fold == 0:
         print(f"model: {model.n_parameters():,} trainable parameters", file=sys.stderr)
 
-    weights = class_weights(train_ds.labels, CLASSES, device)
+    weights = class_weights(train_ds.labels, CLASSES, device, boost=args.class_weight_boost)
     criterion = torch.nn.CrossEntropyLoss(weight=weights)
     # two-head: class-balance the type head over the four types, and balance the
     # differential head by the positive:negative ratio of the training fold
@@ -309,7 +318,9 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
             num_workers=args.num_workers, drop_last=False,
         )
         model = JunctionSetTransformer(mcfg).to(device)
-        criterion = torch.nn.CrossEntropyLoss(weight=class_weights(full_ds.labels, CLASSES, device))
+        criterion = torch.nn.CrossEntropyLoss(
+            weight=class_weights(full_ds.labels, CLASSES, device, boost=args.class_weight_boost)
+        )
         refit_type_weights, refit_pos_weight = (
             aux_weights(full_ds, device) if args.two_head else (None, None))
         opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -498,6 +509,15 @@ def _build_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--diff-lambda", type=float, default=1.0,
                     help="weight on the is-differential term of the two-head loss")
 
+    ap.add_argument(
+        "--class-weight-boost", nargs=2, metavar=("CLASS", "FACTOR"), action="append", default=None,
+        help="multiply one class's balanced cross-entropy weight by FACTOR, e.g. "
+        "'--class-weight-boost CSE 2.0'. Repeatable. The cheap way to shift a "
+        "decision boundary (plans/signal-native-v2-ensemble.md Stage 2's "
+        "ens_cse member, for the CSE-vs-A3/A5 confusion) without touching "
+        "features or architecture.",
+    )
+
     ap.add_argument("--num-workers", type=int, default=0)
     ap.add_argument("--no-cache", action="store_true", help="do not hold normalized records in RAM")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -511,6 +531,13 @@ def main(argv=None) -> None:
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     device = torch.device(args.device)
+
+    boost = {}
+    for c, factor in (args.class_weight_boost or []):
+        if c not in CLASSES:
+            raise ValueError(f"--class-weight-boost: {c!r} is not one of {CLASSES}")
+        boost[c] = float(factor)
+    args.class_weight_boost = boost
 
     entries = read_labels(args.labels, args.npz_dir)
     labels = [e[2] for e in entries]
@@ -560,6 +587,7 @@ def main(argv=None) -> None:
                     "select_on": args.select_on, "inner_val_frac": args.inner_val_frac,
                     "refit": args.refit, "avg_last_k": args.avg_last_k,
                     "two_head": args.two_head, "diff_lambda": args.diff_lambda,
+                    "class_weight_boost": args.class_weight_boost,
                     "per_fold_macro_f1": fold_f1,
                     "per_fold_inner_val_macro_f1": fold_val_f1,
                     "elapsed_min": elapsed / 60,
