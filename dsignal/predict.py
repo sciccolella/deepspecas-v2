@@ -140,15 +140,19 @@ def make_target_prior(classes, kind: str = "uniform", nn_weight: float | None = 
 
 
 class Predictor:
-    """One or more trained folds, applied to extractor records.
+    """One or more trained folds of **one run**, applied to extractor records.
 
     Feature config, scaler, class list and feature subset all come from the
     checkpoint, never from CLI defaults -- applying a different transform at
-    inference than at training is the classic silent way to get garbage.
+    inference than at training is the classic silent way to get garbage. All
+    checkpoints given to one Predictor must therefore agree on all three:
+    mixing runs that differ in ``--flank``/``--depth-norm``/feature subset
+    belongs to ``dsignal.ensemble.MultiRunPredictor``, which holds one
+    Predictor per run instead of forcing them into a single flat fold list.
     """
 
     def __init__(self, checkpoint_paths, device=None, filters: ReadFilters | None = None,
-                 prior_correction: "PriorCorrection | None" = None,
+                 prior_correction: "PriorCorrection | list[PriorCorrection] | None" = None,
                  tta_condition_swap: bool = False):
         if not checkpoint_paths:
             raise ValueError("no checkpoints given")
@@ -156,12 +160,18 @@ class Predictor:
         self.filters = filters or ReadFilters()
         #: average the two condition orientations at inference (see _views)
         self.tta_condition_swap = bool(tta_condition_swap)
-        #: optional train/deploy prior adjustment, applied per fold (see PriorCorrection)
+        #: optional train/deploy prior adjustment, applied per fold (see
+        #: PriorCorrection). Either one correction shared by every fold, or a
+        #: sequence with one entry per fold (see build_prior_correction).
         self.prior_correction = prior_correction
         self.models, self.scalers = [], []
         self.classes = None
         self.feature_subset = None
         self.cfg = None
+        #: per-checkpoint training class counts, in ``self.classes`` order,
+        #: for checkpoints that carry ``train_class_counts``; None entries for
+        #: those predating the field (see build_prior_correction).
+        self.train_class_counts = []
 
         for path in checkpoint_paths:
             ck = torch.load(path, map_location=self.device, weights_only=False)
@@ -176,11 +186,44 @@ class Predictor:
             fcfg = FeatureConfig(**ck["feature_config"])
             if self.classes is None:
                 self.classes, self.feature_subset, self.cfg = classes, subset, fcfg
-            elif (classes, subset) != (self.classes, self.feature_subset):
+            elif (classes, subset, fcfg) != (self.classes, self.feature_subset, self.cfg):
                 raise ValueError(
                     f"{path}: checkpoints disagree -- classes {classes} vs {self.classes}, "
-                    f"feature subset {subset!r} vs {self.feature_subset!r}"
+                    f"feature subset {subset!r} vs {self.feature_subset!r}, "
+                    f"feature config {fcfg} vs {self.cfg}. All checkpoints passed to one "
+                    f"Predictor must be folds of the same run; combine different runs via "
+                    f"dsignal.ensemble.MultiRunPredictor instead"
                 )
+
+            counts = ck.get("train_class_counts")
+            self.train_class_counts.append(
+                np.array([counts[c] for c in self.classes], dtype=np.float64) if counts else None
+            )
+
+    def build_prior_correction(self, kind: str, nn_weight: float | None = None,
+                                tau: float = 1.0, train_labels: str | None = None):
+        """A PriorCorrection for this run's checkpoints.
+
+        With ``train_labels`` given, one correction is built from that file's
+        class counts and shared by every fold -- the original, still-default
+        behaviour, bit-exact with every stored number that used it. Without
+        it, one correction is built **per fold** from that checkpoint's own
+        ``train_class_counts`` (H2): folds of a GroupKFold run see slightly
+        different training data, so this is the more accurate estimator, and
+        it is what lets a run be scored without also carrying its labels TSV
+        around. Raises if any checkpoint predates the field.
+        """
+        target = make_target_prior(self.classes, kind, nn_weight=nn_weight)
+        if train_labels is not None:
+            train_counts = class_counts_from_labels(train_labels, self.classes)
+            return PriorCorrection(train_counts, target, tau)
+        missing = [i for i, c in enumerate(self.train_class_counts) if c is None]
+        if missing:
+            raise ValueError(
+                f"checkpoint(s) at index {missing} carry no train_class_counts; "
+                f"pass train_labels explicitly for this run"
+            )
+        return [PriorCorrection(c, target, tau) for c in self.train_class_counts]
 
     def _views(self, record: dict):
         """Feature views of one record: the record itself, plus -- when
@@ -258,10 +301,18 @@ class Predictor:
         The prior correction is applied to each fold *before* averaging -- see
         PriorCorrection. With no correction configured this is the plain fold
         ensemble, bit-for-bit what the model reported before the feature
-        existed.
+        existed. ``self.prior_correction`` may be a single PriorCorrection
+        (applied identically to every fold, the original behaviour) or a
+        sequence with one PriorCorrection per fold (build_prior_correction's
+        per-checkpoint estimator).
         """
-        if self.prior_correction is not None:
-            per_fold = self.prior_correction.apply(per_fold)
+        pc = self.prior_correction
+        if isinstance(pc, PriorCorrection):
+            per_fold = pc.apply(per_fold)
+        elif pc is not None:
+            if len(pc) != len(per_fold):
+                raise ValueError(f"{len(pc)} prior corrections for {len(per_fold)} folds")
+            per_fold = np.stack([c.apply(row) for c, row in zip(pc, per_fold)])
         probs = per_fold.mean(axis=0)
         return self.classes[int(probs.argmax())], probs
 
