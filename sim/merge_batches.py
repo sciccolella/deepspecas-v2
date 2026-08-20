@@ -105,6 +105,21 @@ def _drop_genes_to(rows, keep_n: int, seed: int):
     return kept
 
 
+def _write_labels_subset(rows, out, out_path: str) -> None:
+    """Write ``out`` (a subset of ``rows``) to ``out_path``, preserving ``rows``'
+    original order, and print per-label counts."""
+    order = {r["ix"]: i for i, r in enumerate(rows)}
+    out = sorted(out, key=lambda r: order[r["ix"]])
+    with open(out_path, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=FIELDS, delimiter="\t")
+        w.writeheader()
+        w.writerows(out)
+    counts = Counter(r["label"] for r in out)
+    print(f"wrote {out_path}: {len(out)} records")
+    for label, k in sorted(counts.items()):
+        print(f"  {label}: {k} ({k / len(out):.1%})")
+
+
 def resample_to_nn_frac(rows, target_frac: float, seed: int, out_path: str):
     """Write a labels file whose NN class is ``target_frac`` of the set.
 
@@ -129,15 +144,15 @@ def resample_to_nn_frac(rows, target_frac: float, seed: int, out_path: str):
               f"{natural:.0%}; {len(rest) - len(kept_rest)} positive rows dropped "
               f"to reach it, so this condition also has less data")
 
-    out = kept_rest + kept_nn
-    order = {r["ix"]: i for i, r in enumerate(rows)}
-    out.sort(key=lambda r: order[r["ix"]])
-    with open(out_path, "w", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=FIELDS, delimiter="\t")
-        w.writeheader()
-        w.writerows(out)
-    print(f"wrote {out_path}: {len(out)} records, "
-          f"NN {len(kept_nn)} ({len(kept_nn) / len(out):.1%}, target {target_frac:.1%})")
+    _write_labels_subset(rows, kept_rest + kept_nn, out_path)
+
+
+def subsample_events(rows, keep_n: int, seed: int, out_path: str) -> None:
+    """Write a labels file with ~``keep_n`` records, dropping whole genes (via
+    ``_drop_genes_to``) so nested subsamples at different ``keep_n`` share one
+    gene-disjoint pool and ``GroupKFold`` grouping is never split."""
+    kept = _drop_genes_to(rows, keep_n, seed)
+    _write_labels_subset(rows, kept, out_path)
 
 
 def main(argv=None) -> None:
@@ -155,6 +170,12 @@ def main(argv=None) -> None:
     ap.add_argument("--nn-frac", type=float, action="append", default=None,
                     help="also write a labels file whose NN class is this fraction; repeatable")
     ap.add_argument("--nn-frac-out", default=None)
+    ap.add_argument("--subsample-events", type=int, action="append", default=None,
+                    help="also write a labels file with ~this many records, dropping whole "
+                    "genes; repeatable. Nested across repeats (same --seed => the smaller "
+                    "sets are gene-set prefixes of the larger ones) as long as the input row "
+                    "set doesn't change between them. Output path is "
+                    "<out-labels stem>.n<N>.tsv")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
 
@@ -176,6 +197,10 @@ def main(argv=None) -> None:
     for frac in args.nn_frac or []:
         out = args.nn_frac_out or args.out_labels.replace(".tsv", f".nn{int(frac * 100)}.tsv")
         resample_to_nn_frac(rows, frac, args.seed, out)
+
+    for n in args.subsample_events or []:
+        out = args.out_labels.replace(".tsv", f".n{n}.tsv")
+        subsample_events(rows, n, args.seed, out)
 
 
 if __name__ == "__main__":
