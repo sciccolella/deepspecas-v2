@@ -3,14 +3,17 @@
 Plan documents and their implementation reports. Per `CLAUDE.md`, a plan is agreed and
 saved here first, and a separate session implements it.
 
-**Start here:** [`signal-native-v2-resume-4.md`](signal-native-v2-resume-4.md) — the
+**Start here:** [`signal-native-v2-resume-5.md`](signal-native-v2-resume-5.md) — the
 current state of play for the active line of work.
 
 ## signal-native-v2 (the active line)
 
 | file | what it is | status |
 |---|---|---|
-| [`signal-native-v2-resume-4.md`](signal-native-v2-resume-4.md) | **START HERE.** State, direction, open caveats, conventions (2026-08-19) | current |
+| [`signal-native-v2-resume-5.md`](signal-native-v2-resume-5.md) | **START HERE.** State, direction, open caveats, conventions (2026-08-21) | current |
+| [`signal-native-v2-scale-union2-results.md`](signal-native-v2-scale-union2-results.md) | Full stage-by-stage results of the Stage 7 scale plan (2026-08-21): single-model scale on `npz_union2` plateaus at 56–57/70 dev past ~8,640 events, but view diversity re-ensembled on the largest pool reaches 61/70 (87.1%) dev, dev-tuned only, no test exposure | **implemented** |
+| [`signal-native-v2-scale-union2.md`](signal-native-v2-scale-union2.md) | The Stage 7 scale plan (2026-08-20): four new gene-disjoint batches, a three-point scale curve, a conditional ensemble, dev-only throughout | implemented — see results doc |
+| [`signal-native-v2-resume-4.md`](signal-native-v2-resume-4.md) | Previous resume doc (2026-08-19); accurate through the ensemble plan and holds detail resume-5 compresses | superseded as the entry point |
 | [`signal-native-v2-ensemble-results.md`](signal-native-v2-ensemble-results.md) | Full stage-by-stage results of the ensemble plan (2026-08-19): E3 reaches 77.1% dev / 85.7% test, closing part but not all of the gap to v1 (60/70 dev / 63/70 test); the mechanism that actually worked was more data (`npz_union`), not ensembling | **implemented** |
 | [`signal-native-v2-ensemble.md`](signal-native-v2-ensemble.md) | The v2 ensemble plan (2026-08-19). Also **corrects the comparison target**: the v1 six-net ensemble is 60/70 dev, 62/69 test, 122/139 — itself superseded by the results doc's cleaner keying (60/70 dev, **63/70 test**, 123/140) | implemented — see results doc |
 | [`signal-native-v2-resume-3.md`](signal-native-v2-resume-3.md) | Previous resume doc (2026-08-18); accurate through the pre-ensemble state and holds detail resume-4 compresses | superseded as the entry point |

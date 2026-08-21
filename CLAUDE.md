@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **v1 — image-based** (`master`, published). Pileup/coverage data from paired BAM files is rendered into one of six image representations, and a CNN (ResNet50) classifies the image into a splicing event type (`A3`, `A5`, `CE`/`SE` or collapsed `CSE`, `RI`, `NN`, optionally collapsed `A3`+`A5` → `A`). Root-level modules: `deepSpecas.py`, `dsEnsemble.py`, `plot2s.py`, `plot.py`, `DSutils.py`, `mc_mplp.py`, `jitimg.py`.
 - **v2 — signal-native** (branch `signal-native-v2`, in development, unpublished). **No image rendering at all**: junctions and base-resolution coverage are extracted straight from the BAMs and classified by a junction-set Transformer. Training data is simulated end-to-end (SUPPA event catalogue → PSI-targeted abundances → polyester reads → STAR). Lives entirely in `dsignal/` and `sim/`.
 
-**Branch `signal-native-v2` is the active line of work.** It was branched from `master` at `379cbba`, so it contains all of v1 too. If you are resuming v2 work, read **`plans/signal-native-v2-resume-4.md` first** — it is the current state-of-play document; `plans/README.md` indexes the rest.
+**Branch `signal-native-v2` is the active line of work.** It was branched from `master` at `379cbba`, so it contains all of v1 too. If you are resuming v2 work, read **`plans/signal-native-v2-resume-5.md` first** — it is the current state-of-play document; `plans/README.md` indexes the rest.
 
 ## Environment setup
 
@@ -169,12 +169,14 @@ Add `--shard i/N` to split a CSV across parallel processes, and `--gpu-render` f
 
 ## Running v2
 
-The single-model recipe below (75.7% dev / 82.9% test collapsed) is still the base for every ensemble member. **The current headline is the ensemble** (`runs/ensembles/e3_bagged.json`, 16 members, 77.1% dev / 85.7% test) — see `plans/signal-native-v2-ensemble-results.md`. Score it with:
+The single-model recipe below (75.7% dev / 82.9% test collapsed) is still the base for every ensemble member. **The test-validated headline is the ensemble** (`runs/ensembles/e3_bagged.json`, 16 members, 77.1% dev / 85.7% test) — see `plans/signal-native-v2-ensemble-results.md`. Score it with:
 
 ```bash
 python -m dsignal.score_benchmark --ensemble runs/ensembles/e3_bagged.json \
   --half dev --tta-condition-swap --target-prior nn-weight --nn-weight 0.1
 ```
+
+**Dev-tuned, not test-validated, current best: 87.1% dev collapsed** (`runs/ensembles/e4_union2.json`, 6 members trained on `npz_union2`, 12,480 events — 1.44× `npz_geomwin`'s size — see `plans/signal-native-v2-scale-union2-results.md`). Single-model scale on `npz_union2` alone plateaus at 56–57/70 dev past ~8,640 events (in-sim macro-F1 keeps climbing, zero-shot transfer does not); reapplying Stage 2's view-diversity ensemble on top of the largest pool reaches 61/70 dev collapsed, +7 events over the best single run there, not significant at n=70 (McNemar p=0.13). **Test is spent** (Stage 6) and this number has no test exposure — do not compare it against v1 or promote it to "the deliverable" without a fresh held-out benchmark half.
 
 Reproducing the single-model best (75.7% dev / 82.9% test collapsed), in the local `DSnet` env:
 
