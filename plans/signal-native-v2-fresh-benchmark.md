@@ -110,6 +110,73 @@ the user. Selection criteria, in order:
 Deliverable: a short table (accession, design, depth, why) → user picks one.
 **Blocking** — nothing downstream starts without it.
 
+### A1–A3 — DONE (2026-08-22), uncurated
+
+Ran through A3 in the same session as A0, since the user is on vacation and
+asked to skip A4 (manual curation) but prepare and use the uncurated data
+if useful.
+
+* **A1.** Fetched all 4 runs (paired, 100bp). One operational fix: the
+  original script gzipped the fastqs before STAR read them — single-threaded
+  gzip of a ~40M-read-pair file measured at ~50 min/file, which would have
+  added 3+ hours for no benefit (STAR reads each file once, raw fastqs are
+  deleted after alignment anyway). Dropped the gzip step;
+  `sim/fetch_align_benchmark_new.sh` now feeds STAR plain fastq directly.
+  Aligned with the same STAR invocation as `sim/align_reads.sh`
+  (`--outSAMattributes All --outSAMtype BAM SortedByCoordinate`), merged to
+  `c1_new.bam`/`c2_new.bam` (kept on pasteur only, 8.4GB/8.8GB — local disk
+  was down to ~1GB free, a pre-existing constraint unrelated to this plan).
+  **Alignment-parity gate:** sampled 200k reads/BAM directly (no curated
+  windows existed yet to run `audit_noise measure` against) — ~100% carry
+  the `jM` tag, value histogram matches the old benchmark's documented shape
+  (motif codes 0–8, `+20` annotated-junction offset present as 21/22/24),
+  chromosome naming (`1`, no `chr` prefix) matches the Ensembl-based index.
+  Passes.
+* **A2.** Installed `rmats=4.3.0` (bioconda) into a new pasteur env; SUPPA2
+  was already present in `DSpoly2v2`. rMATS turbo needed no code (`--b1`/
+  `--b2`, `--readLength 100 --variable-read-length`). SUPPA2's `psiPerEvent`
+  needed transcript TPM, which needed **salmon** (also newly installed) and
+  a whole-transcriptome FASTA (`gffread` from the Ensembl 99 GTF+genome —
+  the existing `sim/experiment/transcripts.fa` files are gene-selection
+  subsets, not usable here). Re-fetched the 4 fastqs (deleted after A1
+  alignment) since salmon needs reads, not the genomic BAM — alignment-mode
+  salmon (`-a`) needs transcriptome-coordinate BAMs, which STAR's genomic
+  output isn't. `benchmark_build/make_tpm_matrix.py` hit a real SUPPA2
+  format trap: `lib.tools.ExpressionParser` sets `min_fields =
+  header_field_count + 1`, so the TPM file's header must have **no** leading
+  blank cell (unlike the printed SUPPA2 doc examples, which do show one) —
+  found by reading the parser source against the "4 expected, 3 given"
+  error rather than guessing. `benchmark_build/consensus.py` matches by
+  `(chr, strand, region)` overlap with a 25bp tolerance rather than exact
+  coordinates, since rMATS and SUPPA2 use different 0/1-based and exon/
+  intron-boundary conventions for "the same" event — an exact join would
+  silently drop real matches. **Result: 711 CSE, 99 RI, 91 A3, 59 A5** —
+  clears the ≥140-total/RI≥25 sanity gate by a wide margin; RI in particular
+  is far better represented than the old benchmark's 41 consensus / 17
+  curated, confirming SRSF3 was a good A0 pick for the thinnest class.
+* **A3.** `benchmark_build/make_candidate_csvs.py` reproduces the old
+  benchmark's measured window-padding convention (`audit_noise padding`:
+  CSE +100bp/edge, RI/A3/A5 +0) on the full 960-event consensus pool.
+  **IGV screenshot rendering was skipped** — it exists only to support A4
+  manual curation, which is deferred.
+
+**Output:** `benchmark_new_uncurated/{A3,A5,ES,IR}.csv` + `events.bed` +
+`c1.bam`/`c2.bam` (the `samtools view -L events.bed` subset, ~200MB total,
+committed) — **960 events, uncurated, not split into dev/test.**
+`python -m dsignal.verify` on all 960: 1920/1920 coverage and junction
+parity. Deliberately named `benchmark_new_uncurated/`, not `benchmark_new/`,
+so it cannot be mistaken for the frozen set Track C's one-shot test spend
+requires — curation (A4) and the freeze+split (A5, `c1.bam`/`c2.bam`
+regenerated from the curated `events.bed`, then `benchmark_split make`) are
+still owed. A6 (v1 reference) is cheap and can run against either the
+uncurated or curated set; not yet run.
+
+**What "use the uncurated data" can mean before curation happens:** a
+dev-half-shaped sanity score of the Track B4 candidate against this pool is
+legitimate context (large-n, not held to McNemar or spend discipline the
+same way) — a Track C-style one-shot test spend against it is not, and must
+wait for curation and a real split.
+
 ### A1 — acquire and align *(cheap model; pasteur)*
 
 Existing assets on pasteur (`/data/conda/ciccolella/deepSpecas-v2/`): `ref/` (5 GB,
