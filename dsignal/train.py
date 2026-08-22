@@ -234,6 +234,7 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
         n_classes=len(CLASSES), d_model=args.d_model, n_heads=args.n_heads,
         n_layers=args.n_layers, d_ff=args.d_ff, dropout=args.dropout,
         two_head=args.two_head, n_types=len(TYPE_CLASSES),
+        use_distance_bias=not args.no_distance_bias, use_relation_bias=not args.no_relation_bias,
     )
     model = JunctionSetTransformer(mcfg).to(device)
     if fold == 0:
@@ -421,6 +422,10 @@ def _build_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--n-layers", type=int, default=4)
     ap.add_argument("--d-ff", type=int, default=512)
     ap.add_argument("--dropout", type=float, default=0.2)
+    ap.add_argument("--no-distance-bias", action="store_true",
+                    help="ablation (plan Stage 8, B3): disable the signed log-distance attention bias")
+    ap.add_argument("--no-relation-bias", action="store_true",
+                    help="ablation (plan Stage 8, B3): disable the pairwise-relation attention bias")
 
     ap.add_argument("--flank", type=int, default=50)
     ap.add_argument("--max-junctions", type=int, default=256)

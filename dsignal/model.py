@@ -79,6 +79,10 @@ class ModelConfig:
     two_head: bool = False
     #: structural types the type head ranges over, in CLASSES order minus NN
     n_types: int = 4
+    #: ablation switches (plan Stage 8, B3). Default True keeps every checkpoint
+    #: before this field existed loading unchanged.
+    use_distance_bias: bool = True
+    use_relation_bias: bool = True
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -232,9 +236,11 @@ class JunctionSetTransformer(nn.Module):
         if j == 0:
             return torch.zeros(b, h, 1, 1, device=s_rel.device)
 
-        rel = pairwise_relations(s_rel, e_rel)
-        dist = distance_buckets(s_rel, e_rel)
-        bias = self.relation_bias(rel) + self.distance_bias(dist)  # [B, J, J, H]
+        bias = torch.zeros(b, j, j, self.cfg.n_heads, device=s_rel.device)
+        if self.cfg.use_relation_bias:
+            bias = bias + self.relation_bias(pairwise_relations(s_rel, e_rel))
+        if self.cfg.use_distance_bias:
+            bias = bias + self.distance_bias(distance_buckets(s_rel, e_rel))
         bias = bias.permute(0, 3, 1, 2)  # [B, H, J, J]
 
         out = torch.zeros(b, h, j + 1, j + 1, device=bias.device, dtype=bias.dtype)
