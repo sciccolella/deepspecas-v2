@@ -23,13 +23,17 @@ ulimit -n 65536 2>/dev/null || true
 # condition 1 = SRSF3 knockdown (ENCSR376FGR), condition 2 = non-target control (ENCSR264TUE)
 declare -A RUNS=( [cond1_rep1]=SRR4421711 [cond1_rep2]=SRR4421712 [cond2_rep1]=SRR4421557 [cond2_rep2]=SRR4421558 )
 
+# fastqs are kept uncompressed -- gzip of a ~40M-read-pair fastq is
+# single-threaded and was measured to take ~50 min/file, dominating the
+# whole pipeline for no benefit since STAR reads them exactly once and
+# they are deleted after alignment anyway (CLAUDE.md: only BAMs/TSVs
+# leave pasteur).
 for name in "${!RUNS[@]}"; do
   srr=${RUNS[$name]}
-  if [[ ! -f "$FASTQ_DIR/${srr}_2.fastq.gz" ]]; then
+  if [[ ! -f "$FASTQ_DIR/${srr}_2.fastq" ]]; then
     echo "fetching $srr ($name)"
     prefetch -O "$FASTQ_DIR" "$srr"
     fasterq-dump --split-files --threads "$THREADS" -O "$FASTQ_DIR" "$FASTQ_DIR/$srr/$srr.sra"
-    gzip -f "$FASTQ_DIR/${srr}_1.fastq" "$FASTQ_DIR/${srr}_2.fastq"
     rm -rf "$FASTQ_DIR/$srr"
   fi
 done
@@ -41,8 +45,7 @@ for name in "${!RUNS[@]}"; do
   "$STAR_BIN" \
     --runThreadN "$THREADS" \
     --genomeDir "$STAR_INDEX" \
-    --readFilesIn "$FASTQ_DIR/${srr}_1.fastq.gz" "$FASTQ_DIR/${srr}_2.fastq.gz" \
-    --readFilesCommand zcat \
+    --readFilesIn "$FASTQ_DIR/${srr}_1.fastq" "$FASTQ_DIR/${srr}_2.fastq" \
     --outSAMattributes All \
     --outSAMtype BAM SortedByCoordinate \
     --outFileNamePrefix "$sample_out" \
