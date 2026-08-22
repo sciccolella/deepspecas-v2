@@ -60,7 +60,40 @@ candidate pool, no generating script. And `benchmark/c1.bam`/`c2.bam` are
 `samtools view -L events.bed` subsets (`benchmark/README.md:50-59`) — **no new event
 can be sourced from the committed BAMs.** The pipeline is built from README prose.
 
-### A0 — pick the BioProject *(strong model; user decides)*
+### A0 — pick the BioProject *(strong model; user decides)* — DECIDED
+
+**Frozen 2026-08-22.** Candidates researched (WebSearch/WebFetch against
+ENCODE/GEO/ENA directly, not snippets): ENCODE shRNA-KD RNA-seq is the
+deepest, best-annotated source but standardized at **2 biological
+replicates**, not 3 — no public splicing-factor-perturbation study was found
+that clears both paired-end *and* >=3 reps/condition. The one triplicate
+candidate found (PRJNA820274, HNRNPC KD, H1299) was **ruled out**: ENA read_run
+metadata for all 6 runs shows `library_layout: SINGLE` (~23.8M reads/run),
+contradicting the GEO page's claim of paired-end — verified directly, not
+assumed, and it fails the paired-end requirement `dsignal/extract.py`'s `jM`/
+`jI`-tag-based pipeline was built against.
+
+**Chosen: `ENCSR376FGR` (GSE88229), SRSF3 shRNA knockdown vs `ENCSR264TUE`
+(GSE88148) non-target control, HepG2 cells.** Confirmed via direct ENA
+`filereport` lookups (not GEO/ENCODE page prose): all 4 runs paired-end,
+Illumina HiSeq 2500, GRCh38-era ENCODE processing.
+
+| condition | run | reads |
+|---|---|---|
+| KD (SRSF3), rep 1 | SRR4421711 | 41.4M |
+| KD (SRSF3), rep 2 | SRR4421712 | 34.4M |
+| control, rep 1 | SRR4421557 | 38.5M |
+| control, rep 2 | SRR4421558 | 41.4M |
+
+Tradeoff accepted: 2 replicates/condition, not 3 — `c1`/`c2` pool 2 SRA runs
+each instead of the old benchmark's 3. HepG2 (different cell line and factor
+than PRJNA255099's HeLa/Tra2), paired-end, >=34M reads/sample throughout.
+Depth and QC are ENCODE-standard (higher confidence than the ruled-out
+candidate ever offered). SRSF3 is a well-characterized CSE/A3/A5 regulator;
+RI representation is not guaranteed and is the first thing A2's consensus
+gate should be read for.
+
+
 
 Shortlist 3–4 candidate public human RNA-seq studies and put the table in front of
 the user. Selection criteria, in order:
