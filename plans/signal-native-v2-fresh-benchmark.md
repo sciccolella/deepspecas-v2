@@ -362,6 +362,37 @@ benchmark.
 Do **not** re-tune `nn_weight`, the combination rule, or the weighting. The first is
 settled (`dsignal/prior_sweep.py` docstring); the latter two are Stage 4's null.
 
+### B4 — DONE (2026-08-23): clean null, e4_union2 stays the candidate
+
+All 11 new members trained cleanly on `npz_union2`/`labels_union2.n12480.tsv`
+(sim-CV collapsed accuracy 0.910–0.922, no outliers — including `ens_u2_nodist`/
+`ens_u2_norel`, which is the B3 code's real-run backward-compat/correctness
+check beyond the checkpoint-loading one already done). Scored on **old dev**,
+same operating point as e4_union2:
+
+| spec | members | dev, 5-class | dev, collapsed | vs e4 (collapsed) McNemar |
+|---|---|---|---|---|
+| `e4_union2` (baseline) | 6 | 60/70 = 85.7% | **61/70 = 87.1%** | — |
+| `e5_arch` | 10 | 59/70 = 84.3% | 60/70 = 85.7% | 1 base-only / 0 new-only, p=1.000 |
+| `e5_seedview` | 11 | 58/70 = 82.9% | 59/70 = 84.3% | 2 base-only / 0 new-only, p=0.500 |
+| `e5_bias` | 8 | 58/70 = 82.9% | 59/70 = 84.3% | 2 base-only / 0 new-only, p=0.500 |
+| `e5_all` | 17 | 58/70 = 82.9% | 59/70 = 84.3% | 2 base-only / 0 new-only, p=0.500 |
+
+Every spec **lost** relative to e4_union2 — 0 new-only gains in any comparison,
+1–2 base-only losses each. Not significant at n=70 either way, but the
+direction is unanimous and wrong for all four new axes at once (architecture
+variation, seeds×views, attention-bias ablation, and the union of all three).
+
+**Selection rule applied: e4_union2 is the frozen Track C candidate.**
+Track B reports a clean null — adding 11 more members drawn from architecture
+variation, more seeds, class-weight boosts, and attention-bias ablation did
+not move the needle past the existing 6-member view-diversity ensemble at
+this scale. This is evidence (not proof, n=70) that the view-diversity
+lift specifically from Stage 2's original 6-family list was doing the work,
+and that further member *count* on `npz_union2` is a spent lever — consistent
+with resume-5's read that scale itself plateaus on this pool, now extended
+to ensemble breadth on top of it.
+
 ---
 
 ## Track C — the one-shot spend

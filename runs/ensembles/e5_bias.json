@@ -1,0 +1,45 @@
+{
+  "name": "e5_bias",
+  "members": [
+    {
+      "run_dir": "runs/scale_union2_n12480",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_union2_allfeat",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_union2_twohead",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_union2_depthscale",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_union2_augsub",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_union2_nn15",
+      "labels": "sim/experiment/labels_union2.n12480.nn15.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_u2_nodist",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_u2_norel",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    }
+  ]
+}

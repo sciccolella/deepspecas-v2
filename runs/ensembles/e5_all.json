@@ -1,0 +1,90 @@
+{
+  "name": "e5_all",
+  "members": [
+    {
+      "run_dir": "runs/scale_union2_n12480",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_union2_allfeat",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_union2_twohead",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_union2_depthscale",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_union2_augsub",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_union2_nn15",
+      "labels": "sim/experiment/labels_union2.n12480.nn15.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_u2_wide",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_u2_deep",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_u2_shallow",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_u2_drop35",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_u2_seed1",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_u2_seed2",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_u2_seed3",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_u2_cse",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_u2_ri",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_u2_nodist",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    },
+    {
+      "run_dir": "runs/ens_u2_norel",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0
+    }
+  ]
+}
