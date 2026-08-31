@@ -150,21 +150,40 @@ if useful.
   `(chr, strand, region)` overlap with a 25bp tolerance rather than exact
   coordinates, since rMATS and SUPPA2 use different 0/1-based and exon/
   intron-boundary conventions for "the same" event — an exact join would
-  silently drop real matches. **Result: 711 CSE, 99 RI, 91 A3, 59 A5** —
-  clears the ≥140-total/RI≥25 sanity gate by a wide margin; RI in particular
-  is far better represented than the old benchmark's 41 consensus / 17
-  curated, confirming SRSF3 was a good A0 pick for the thinnest class.
+  silently drop real matches. **Initial result: 711 CSE, 99 RI, 91 A3, 59
+  A5** (960 total) — clears the ≥140-total/RI≥25 sanity gate by a wide
+  margin.
 * **A3.** `benchmark_build/make_candidate_csvs.py` reproduces the old
   benchmark's measured window-padding convention (`audit_noise padding`:
-  CSE +100bp/edge, RI/A3/A5 +0) on the full 960-event consensus pool.
-  **IGV screenshot rendering was skipped** — it exists only to support A4
-  manual curation, which is deferred.
+  CSE +100bp/edge, RI/A3/A5 +0). **IGV screenshot rendering was skipped** —
+  it exists only to support A4 manual curation, which is deferred.
+* **A2 revisited (2026-08-31), triggered by the user starting manual
+  curation and reporting the pool looked "quite messy."** Diagnosed rather
+  than assumed: rMATS's `IncLevelDifference` and SUPPA2's `dPSI` disagreed
+  in raw sign 82–95% of matched pairs per class (correlation **−0.41 to
+  −0.85**, not near zero) — the two tools use opposite "which isoform is
+  the alternative one" conventions for these event types; a strong negative
+  correlation is the signature of a systematic convention flip, not random
+  mismatches (which would show ~50% sign agreement). Separately, 711 rMATS
+  CSE rows collapsed to only 428 unique SUPPA2 events — rMATS reports the
+  same skipped exon many times over via different flanking-exon choices.
+  Fixed in `consensus.py`: best-overlap match per rMATS row (not first-hit,
+  which was silently mismatching nearby-but-distinct events in
+  multi-isoform loci), dedup by SUPPA2 event id keeping the strongest
+  rMATS p-value, and a direction-consistency filter (against the corrected
+  convention). **Result: 573 events — 71 A3, 52 A5, 373 CSE, 77 RI.** Still
+  clears the sanity gate by a wide margin; RI (77) is far better
+  represented than the old benchmark's 41 consensus / 17 curated,
+  confirming SRSF3 was a good A0 pick for the thinnest class.
 
 **Output:** `benchmark_new_uncurated/{A3,A5,ES,IR}.csv` + `events.bed` +
-`c1.bam`/`c2.bam` (the `samtools view -L events.bed` subset, ~200MB total,
-committed) — **960 events, uncurated, not split into dev/test.**
-`python -m dsignal.verify` on all 960: 1920/1920 coverage and junction
-parity. Deliberately named `benchmark_new_uncurated/`, not `benchmark_new/`,
+`c1.bam`/`c2.bam` (the `samtools view -L events.bed` subset, ~170MB total,
+committed) — **573 events, uncurated, not split into dev/test.**
+`python -m dsignal.verify`: 1146/1146 coverage and junction parity.
+Curation aids also committed: `positions_{A3,A5,ES,IR}.txt` (one region per
+line, IGV-locus-box format, sorted by \|ΔPSI\| descending) and
+`review_{A3,A5,ES,IR}.tsv` (same rows + gene symbol/p-values/ΔPSI for
+context). Deliberately named `benchmark_new_uncurated/`, not `benchmark_new/`,
 so it cannot be mistaken for the frozen set Track C's one-shot test spend
 requires — curation (A4) and the freeze+split (A5, `c1.bam`/`c2.bam`
 regenerated from the curated `events.bed`, then `benchmark_split make`) are
