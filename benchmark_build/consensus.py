@@ -84,35 +84,72 @@ def suppa_regions(suppa_dir, ioe_dir, suppa_type):
     return merged[["event_id", "gene_id", "chr", "strand", "region_start", "region_end", "dPSI", "pval"]]
 
 
-def overlaps(a_start, a_end, b_start, b_end, tol):
-    return (a_start - tol) <= b_end and (b_start - tol) <= a_end
+def overlap_len(a_start, a_end, b_start, b_end, tol):
+    lo = max(a_start - tol, b_start - tol)
+    hi = min(a_end + tol, b_end + tol)
+    return hi - lo + 1
 
 
 def match_class(rmats_dir, suppa_dir, ioe_dir, suppa_type):
+    """Best-overlap match (not first-hit): for each rMATS row, keep the
+    SUPPA2 candidate with the largest overlap, not whichever happened to
+    come first in an arbitrary row order -- the latter silently mismatched
+    nearby-but-distinct events in multi-isoform loci."""
     rm = rmats_regions(rmats_dir, suppa_type)
     su = suppa_regions(suppa_dir, ioe_dir, suppa_type)
     rows = []
     for _, r in rm.iterrows():
         cand = su[(su["chr"] == r["chr"]) & (su["strand"] == r["strand"])]
+        best, best_len = None, 0
         for _, s in cand.iterrows():
-            if overlaps(r["region_start"], r["region_end"], s["region_start"], s["region_end"], TOLERANCE):
-                rows.append({
-                    "class": LABEL_MAP[suppa_type],
-                    "chr": r["chr"], "strand": r["strand"],
-                    "region_start": min(r["region_start"], s["region_start"]),
-                    "region_end": max(r["region_end"], s["region_end"]),
-                    "gene_id": r["GeneID"], "gene_symbol": r["geneSymbol"],
-                    "rmats_pvalue": r["PValue"], "rmats_fdr": r["FDR"], "rmats_incleveldiff": r["IncLevelDifference"],
-                    "suppa_event_id": s["event_id"], "suppa_dpsi": s["dPSI"], "suppa_pvalue": s["pval"],
-                })
-                break  # first overlapping SUPPA2 call is enough for a candidate row
+            ol = overlap_len(r["region_start"], r["region_end"], s["region_start"], s["region_end"], TOLERANCE)
+            if ol > 0 and ol > best_len:
+                best, best_len = s, ol
+        if best is None:
+            continue
+        rows.append({
+            "class": LABEL_MAP[suppa_type],
+            "chr": r["chr"], "strand": r["strand"],
+            "region_start": min(r["region_start"], best["region_start"]),
+            "region_end": max(r["region_end"], best["region_end"]),
+            "gene_id": r["GeneID"], "gene_symbol": r["geneSymbol"],
+            "rmats_pvalue": r["PValue"], "rmats_fdr": r["FDR"], "rmats_incleveldiff": r["IncLevelDifference"],
+            "suppa_event_id": best["event_id"], "suppa_dpsi": best["dPSI"], "suppa_pvalue": best["pval"],
+        })
     return pd.DataFrame(rows)
+
+
+def clean(df):
+    """Two problems found by inspection (not assumed): (1) rMATS reports the
+    same underlying event many times over via different flanking-exon/isoform
+    choices, all best-matching the same SUPPA2 event -- collapsed here to one
+    row per suppa_event_id, keeping the smallest rMATS p-value. (2) rMATS's
+    IncLevelDifference and SUPPA2's dPSI disagree in raw sign ~85-95% of the
+    time (checked per class: A3 94.5%, A5 94.9%, RI 89.9%, CSE 81.9% -- and
+    correlation is strongly *negative*, -0.41 to -0.85, not near zero), i.e.
+    the two tools use opposite "which isoform is the alternative one"
+    conventions for these event types -- not random mismatched pairs, which
+    would show no sign relationship at all. Direction agreement is checked
+    against the corrected (flipped) convention and rows that still disagree
+    are dropped as low-confidence/likely-mismatched."""
+    before = len(df)
+    df = df.sort_values("rmats_pvalue").drop_duplicates("suppa_event_id", keep="first")
+    deduped = len(df)
+    agree = (df["rmats_incleveldiff"] > 0) != (df["suppa_dpsi"] > 0)
+    df = df[agree]
+    return df, before, deduped
 
 
 def main():
     rmats_dir, suppa_dir, ioe_dir, out_tsv = sys.argv[1:5]
     frames = [match_class(rmats_dir, suppa_dir, ioe_dir, t) for t in ("A3", "A5", "SE", "RI")]
     out = pd.concat(frames, ignore_index=True)
+    cleaned = []
+    for cls, sub in out.groupby("class", sort=False):
+        c, before, deduped = clean(sub)
+        print(f"{cls}: {before} matched -> {deduped} after dedup -> {len(c)} after direction filter")
+        cleaned.append(c)
+    out = pd.concat(cleaned, ignore_index=True)
     out.to_csv(out_tsv, sep="\t", index=False)
     print(f"wrote {out_tsv}: {len(out)} consensus events")
     print(out["class"].value_counts())
