@@ -1,0 +1,40 @@
+loaded 5 fold checkpoint(s), classes ('A3', 'A5', 'CSE', 'NN', 'RI'), feature subset 'no-geometry'
+training prior from sim/experiment/labels_geomwin.tsv: A3 900, A5 900, CSE 900, NN 1200, RI 900  (NN = 25.0%)
+restricted to the dev half of benchmark_new/split.tsv
+cached per-fold posteriors for 242 benchmark events
+
+wrote runs/bnew_prior_sweep_geomwin_dev.tsv
+
+=== prior sweep, tau=1, 242 curated events (dev half) ===
+pre-registered operating point: nn_weight=0.1 (see module docstring); the rest of the table is a sensitivity curve, not a menu
+setting                      acc  collapsed  NN pred  base>new  new>base  McNemar p
+-----------------------------------------------------------------------------------
+uncorrected                51.2%      51.2%       55         0         0      1.000
+uniform                    50.4%      50.4%       48         3         1      0.625
+nn_weight=1                50.4%      50.4%       48         3         1      0.625
+nn_weight=0.5              52.5%      52.5%       37         4         7      0.549
+nn_weight=0.25             52.1%      52.1%       27         7         9      0.804
+nn_weight=0.1              48.3%      48.3%       11        20        13      0.296
+nn_weight=0.05             47.9%      47.9%        8        22        14      0.243
+nn_weight=0  (oracle)      45.9%      45.9%        0        27        14      0.060
+
+best setting: nn_weight=0.5  (52.5% vs 51.2% uncorrected)
+per-CSV accuracy, uncorrected -> best:
+  A3  (truth A3  ) n= 16   56.2% ->  56.2%
+  A5  (truth A5  ) n= 12   66.7% ->  75.0%
+  ES  (truth CSE ) n=107   64.5% ->  69.2%
+  IR  (truth RI  ) n= 28   39.3% ->  42.9%
+
+19 predictions moved. Where the previously-NN calls went:
+    4  CSE was NN -> CSE  [correct]
+    2  CSE was NN -> A3
+    2  CSE was NN -> A5
+    2  RI was NN -> A3
+    2  RI was NN -> A5
+    2  NN was NN -> RI
+    1  A5 was NN -> A5  [correct]
+    1  RI was NN -> RI  [correct]
+    1  NN was NN -> A3
+    1  NN was NN -> CSE
+non-NN changes (a correction should not be churning these):
+    1  CSE: A5 -> CSE

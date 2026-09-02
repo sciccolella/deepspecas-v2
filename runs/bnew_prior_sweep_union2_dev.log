@@ -1,0 +1,39 @@
+loaded 5 fold checkpoint(s), classes ('A3', 'A5', 'CSE', 'NN', 'RI'), feature subset 'no-geometry'
+training prior from sim/experiment/labels_union2.n12480.tsv: A3 2340, A5 2340, CSE 2340, NN 3120, RI 2340  (NN = 25.0%)
+restricted to the dev half of benchmark_new/split.tsv
+cached per-fold posteriors for 242 benchmark events
+
+wrote runs/bnew_prior_sweep_union2_dev.tsv
+
+=== prior sweep, tau=1, 242 curated events (dev half) ===
+pre-registered operating point: nn_weight=0.1 (see module docstring); the rest of the table is a sensitivity curve, not a menu
+setting                      acc  collapsed  NN pred  base>new  new>base  McNemar p
+-----------------------------------------------------------------------------------
+uncorrected                55.0%      55.0%       37         0         0      1.000
+uniform                    55.0%      55.0%       34         1         1      1.000
+nn_weight=1                55.0%      55.0%       34         1         1      1.000
+nn_weight=0.5              56.2%      56.2%       21         6         9      0.607
+nn_weight=0.25             56.6%      56.6%       15         8        12      0.503
+nn_weight=0.1              53.7%      53.7%        8        14        11      0.690
+nn_weight=0.05             52.9%      52.9%        6        16        11      0.442
+nn_weight=0  (oracle)      50.8%      50.8%        0        21        11      0.110
+
+best setting: nn_weight=0.25  (56.6% vs 55.0% uncorrected)
+per-CSV accuracy, uncorrected -> best:
+  A3  (truth A3  ) n= 16   68.8% ->  75.0%
+  A5  (truth A5  ) n= 12   50.0% ->  66.7%
+  ES  (truth CSE ) n=107   73.8% ->  80.4%
+  IR  (truth RI  ) n= 28   57.1% ->  64.3%
+
+23 predictions moved. Where the previously-NN calls went:
+    7  CSE was NN -> CSE  [correct]
+    5  NN was NN -> RI
+    2  A5 was NN -> A5  [correct]
+    2  RI was NN -> RI  [correct]
+    2  NN was NN -> CSE
+    1  A3 was NN -> A3  [correct]
+    1  A5 was NN -> RI
+    1  A5 was NN -> CSE
+    1  NN was NN -> A5
+non-NN changes (a correction should not be churning these):
+    1  CSE: RI -> A3
