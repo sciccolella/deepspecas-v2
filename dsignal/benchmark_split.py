@@ -60,8 +60,19 @@ from dsignal.score_benchmark import CSV_LABEL, DEFAULT_CSVS, collapse
 DEFAULT_SPLIT = "benchmark/split.tsv"
 
 
-def _events(csv_paths):
-    """[(csv_stem, region, chrom, start, end)] over the benchmark CSVs."""
+def _load_trash(path):
+    """``region -> "1"/"0"/"NA"``, from a Stage 9 ``curation.tsv``."""
+    with open(path, newline="") as f:
+        return {r["region"]: r["trash"] for r in csv.DictReader(f, delimiter="\t")}
+
+
+def _events(csv_paths, trash=None):
+    """[(csv_stem, region, chrom, start, end, trash)] over the benchmark CSVs.
+
+    ``trash`` is ``None`` unless a ``--trash-tsv`` was given, in which case each
+    event's value is ``"1"``/``"0"``/``"NA"`` -- ``"NA"`` is its own stratum, not
+    folded into ``"0"``.
+    """
     out = []
     for path in csv_paths:
         stem = splitext(basename(path))[0]
@@ -70,8 +81,17 @@ def _events(csv_paths):
         for region, _bam1, _bam2 in read_prediction_csv(path):
             chrom, rest = region.split(":")
             start, end = rest.split("-")
-            out.append((stem, region, chrom, int(start), int(end)))
+            t = trash.get(region, "NA") if trash is not None else None
+            out.append((stem, region, chrom, int(start), int(end), t))
     return out
+
+
+def _stratum(event):
+    """The stratification key for one event: truth class, plus trash value when
+    tracked (``event[5]`` is ``None`` when no ``--trash-tsv`` was given)."""
+    stem, trash = event[0], event[5]
+    cls = CSV_LABEL[stem]
+    return cls if trash is None else (cls, trash)
 
 
 def cluster(events, link: int):
@@ -108,15 +128,16 @@ def cluster(events, link: int):
 
 
 def assign(events, clusters, seed: int):
-    """Cluster -> "dev"/"test", stratified by truth class.
+    """Cluster -> "dev"/"test", stratified by truth class (and, when the events
+    carry a trash value, by ``(class, trash)`` -- see ``_stratum``).
 
     Largest cluster first; each goes to the half further below its quota for the
-    cluster's own class mix, ties broken by the seeded RNG. Quotas are half of
-    each class count, so the two halves come out at 70/70 with per-class counts
-    differing by at most one.
+    cluster's own stratum mix, ties broken by the seeded RNG. Quotas are half of
+    each stratum count, so the two halves come out balanced with per-stratum
+    counts differing by at most one.
     """
     rng = random.Random(seed)
-    counts = Counter(CSV_LABEL[e[0]] for e in events)
+    counts = Counter(_stratum(e) for e in events)
     quota = {"dev": {c: n / 2 for c, n in counts.items()},
              "test": {c: n / 2 for c, n in counts.items()}}
     have = {"dev": Counter(), "test": Counter()}
@@ -124,7 +145,7 @@ def assign(events, clusters, seed: int):
 
     out = {}
     for cl in order:
-        mix = Counter(CSV_LABEL[events[i][0]] for i in cl)
+        mix = Counter(_stratum(events[i]) for i in cl)
         # deficit = how far below quota this half would still be after taking it
         def deficit(half):
             return sum(quota[half][c] - have[half][c] for c in mix.elements())
@@ -149,9 +170,10 @@ def write_split(path, events, clusters, halves) -> None:
             cluster_of[i] = k
     with open(path, "w", newline="") as f:
         w = csv.writer(f, delimiter="\t")
-        w.writerow(["csv", "region", "truth", "cluster", "half"])
-        for i, (stem, region, chrom, start, end) in enumerate(events):
-            w.writerow([stem, region, CSV_LABEL[stem], cluster_of[i], halves[i]])
+        w.writerow(["csv", "region", "truth", "trash", "cluster", "half"])
+        for i, (stem, region, chrom, start, end, trash) in enumerate(events):
+            w.writerow([stem, region, CSV_LABEL[stem], "" if trash is None else trash,
+                        cluster_of[i], halves[i]])
 
 
 def load_split(path=DEFAULT_SPLIT):
@@ -175,7 +197,8 @@ def _read_events_tsv(path):
 
 
 def cmd_make(args) -> None:
-    events = _events(args.csv)
+    trash = _load_trash(args.trash_tsv) if args.trash_tsv else None
+    events = _events(args.csv, trash=trash)
     clusters = cluster(events, args.link)
     halves, have = assign(events, clusters, args.seed)
     write_split(args.out, events, clusters, halves)
@@ -183,9 +206,10 @@ def cmd_make(args) -> None:
     sizes = Counter(len(c) for c in clusters)
     print(f"{len(events)} events, {len(clusters)} clusters at link={args.link} bp "
           f"(sizes {dict(sorted(sizes.items()))})")
+    strata = sorted({_stratum(e) for e in events})
     for half in ("dev", "test"):
         n = sum(1 for v in halves.values() if v == half)
-        per = "  ".join(f"{c}={have[half][c]}" for c in ("A3", "A5", "CSE", "RI"))
+        per = "  ".join(f"{s}={have[half][s]}" for s in strata)
         print(f"  {half:4s} n={n:3d}   {per}")
     # a cluster must not straddle the split
     by_cluster = defaultdict(set)
@@ -232,6 +256,10 @@ def main(argv=None) -> None:
     m.add_argument("--link", type=int, default=50000,
                    help="single-linkage gap for the same-locus proxy (default: 50000)")
     m.add_argument("--seed", type=int, default=0)
+    m.add_argument("--trash-tsv", default=None,
+                   help="Stage 9 curation.tsv -- stratify by (truth class, trash) "
+                   "instead of truth class alone, so dev/test carry comparable "
+                   "TRASH fractions per class. 'NA' trash values form their own stratum.")
     m.set_defaults(func=cmd_make)
 
     c = sub.add_parser("compare", help="paired McNemar between two scored per-event TSVs")

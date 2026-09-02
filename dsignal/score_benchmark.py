@@ -72,8 +72,10 @@ from dsignal.predict import (
 )
 
 #: benchmark CSV basename -> our label. ES ("exon skipping") is SUPPA's SE,
-#: which Phase 2 labels CSE; IR ("intron retention") is RI.
-CSV_LABEL = {"A3": "A3", "A5": "A5", "ES": "CSE", "IR": "RI"}
+#: which Phase 2 labels CSE; IR ("intron retention") is RI. NN is the fifth
+#: class, added in Stage 9 for benchmark_new/ -- the old benchmark/ (DEFAULT_CSVS
+#: below) has no NN.csv, so this entry is inert for every existing use.
+CSV_LABEL = {"A3": "A3", "A5": "A5", "ES": "CSE", "IR": "RI", "NN": "NN"}
 
 DEFAULT_CSVS = ["benchmark/A3.csv", "benchmark/A5.csv", "benchmark/ES.csv", "benchmark/IR.csv"]
 
@@ -128,11 +130,13 @@ def _confusion(rows, key_true, key_pred, labels):
 
 def report(rows, predictor, half: str = "both") -> None:
     n = len(rows)
-    which = "all 140" if half == "both" else f"{half} half"
+    stems = sorted({r["csv"] for r in rows}, key=lambda s: (CSV_LABEL[s], s))
+    has_nn_truth = any(r["truth"] == "NN" for r in rows)
+    which = f"all {n}" if half == "both" else f"{half} half"
     print(f"\n=== curated benchmark ({which}): {n} events ===")
 
     print("\nper-CSV accuracy (5-class / A3+A5 collapsed):")
-    for stem in ("A3", "A5", "ES", "IR"):
+    for stem in stems:
         sub = [r for r in rows if r["csv"] == stem]
         if not sub:
             continue
@@ -144,14 +148,20 @@ def report(rows, predictor, half: str = "both") -> None:
     n_correct = sum(r["correct"] for r in rows)
     n_correct_c = sum(r["correct_collapsed"] for r in rows)
     print(f"\naggregate 5-class:  {n_correct}/{n} = {n_correct / n:.1%}")
-    v1_note = ("(this is the number comparable to v1's 123/140 = 87.9%)" if half == "both"
-               else f"({half} half only -- v1's 123/140 = 87.9% is over all 140)")
+    if not has_nn_truth:
+        # the historical benchmark/ (no NN.csv): this is the number comparable
+        # to v1's 123/140 = 87.9% when half == "both"
+        v1_note = ("(this is the number comparable to v1's 123/140 = 87.9%)" if half == "both"
+                   else f"({half} half only -- v1's 123/140 = 87.9% is over all 140)")
+    else:
+        v1_note = "(this set has NN truth -- not directly comparable to v1's no-NN 123/140)"
     print(f"aggregate collapsed: {n_correct_c}/{n} = {n_correct_c / n:.1%}   {v1_note}")
 
     labels = list(predictor.classes)
     print(f"\nconfusion matrix, 5-class (rows=truth, cols=pred): {labels}")
-    print("  NB: the benchmark contains no NN events, so the NN row is empty by")
-    print("  construction and every NN *prediction* is a false positive.")
+    if not has_nn_truth:
+        print("  NB: this benchmark contains no NN events, so the NN row is empty by")
+        print("  construction and every NN *prediction* is a false positive.")
     print(_confusion(rows, "truth", "pred", labels))
 
     clabels = sorted({collapse(l) for l in labels})
