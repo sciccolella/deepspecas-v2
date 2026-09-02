@@ -3,14 +3,17 @@
 Plan documents and their implementation reports. Per `CLAUDE.md`, a plan is agreed and
 saved here first, and a separate session implements it.
 
-**Start here:** [`signal-native-v2-resume-7.md`](signal-native-v2-resume-7.md) — the
+**Start here:** [`signal-native-v2-resume-8.md`](signal-native-v2-resume-8.md) — the
 current state of play for the active line of work.
 
 ## signal-native-v2 (the active line)
 
 | file | what it is | status |
 |---|---|---|
-| [`signal-native-v2-resume-7.md`](signal-native-v2-resume-7.md) | **START HERE.** State, direction, open caveats, conventions (2026-09-02) | current |
+| [`signal-native-v2-resume-8.md`](signal-native-v2-resume-8.md) | **START HERE.** State, direction, open caveats, conventions (2026-09-02) | current |
+| [`signal-native-v2-trash-sim-results.md`](signal-native-v2-trash-sim-results.md) | Stage 11 results (2026-09-02): real-supervision ceiling (Stage 1) doesn't clear zero-shot NN recall; TRASH-simulation pilot (Stage 2) fails its noise gate but localizes why (RI already calibrated, CSE/NN don't respond to the premrna knob) -- Stage 3 (full batches) never ran | **implemented through Stage 2; Stage 3+ not started** |
+| [`signal-native-v2-trash-sim.md`](signal-native-v2-trash-sim.md) | The Stage 11 plan (2026-09-02): simulate the real TRASH/NN noise regime, retrain, treat borderline-TRASH as NN | implemented through Stage 2 — see results doc |
+| [`signal-native-v2-resume-7.md`](signal-native-v2-resume-7.md) | Previous resume doc (2026-09-02); accurate through Stage 10's `benchmark_new` dev scoring and holds detail resume-8 compresses | superseded as the entry point |
 | [`signal-native-v2-bnew-dev-results.md`](signal-native-v2-bnew-dev-results.md) | Stage 10 results (2026-09-02): `benchmark_new` dev scored properly for the first time — v2 beats v1 descriptively (58.7% vs 41.3%/48.8%), NN recall is the dominant weakness (9-14%), `nn_weight=0.1` sensitivity-tested (argmax 0.25-0.5, not significant, kept as-is), TRASH-vs-clean gap confirmed with real scores | **implemented** |
 | [`signal-native-v2-resume-6.md`](signal-native-v2-resume-6.md) | Previous resume doc (2026-09-02); accurate through the `benchmark_new` freeze/split and TRASH gate | superseded as the entry point |
 | [`signal-native-v2-trash-results.md`](signal-native-v2-trash-results.md) | Full stage-by-stage results of the Stage 9 plan (2026-09-02): `benchmark_new` frozen/split with real NN truth for the first time; TRASH-iness fails its ~0.70 recoverability gate (0.612), so Stages 3-4 (spuriousness features, conditioned NN prior) did not run; Stage 2 found sim falls 2-3x short of `real-TRASH` on several noise metrics | **implemented through Stage 2; Stages 3-4 gated off** |
