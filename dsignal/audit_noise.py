@@ -508,6 +508,41 @@ def compare(real_rows, sim_rows, threshold: float = 2.0) -> None:
         _by_group(real_rows, "csv")
 
 
+def compare_grouped(rows_by_name: dict, threshold: float = 2.0) -> None:
+    """N-way version of ``compare`` -- Stage 9 Stage 2: split the real side into
+    TRASH vs clean (``dsignal.benchmark_split`` naming aside, any named groups
+    work) and lay them next to sim in one table, plus the per-metric multiplier
+    needed to move sim's distribution onto the last-named group (intended to be
+    ``real-TRASH``).
+    """
+    names = list(rows_by_name)
+    print("\n=== noise calibration: N-way comparison ===")
+    for name, rows in rows_by_name.items():
+        print(f"  {name}: n={len(rows)}")
+    print("\n'rate' quantities are compared on the mean (their median is often "
+          "0), 'level' quantities on the median (heavy tails).\n")
+    header = f"{'quantity':<26} {'kind':<6} " + " ".join(f"{n:>14}" for n in names) + "  audits"
+    print(header)
+    summaries = {name: {} for name in names}
+    for metric, kind, knob in METRICS:
+        vals = {}
+        for name, rows in rows_by_name.items():
+            v = _summarize(np.array([row.get(metric, np.nan) for row in rows], dtype=float), kind)
+            vals[name] = v
+            summaries[name][metric] = v
+        line = f"{metric:<26} {kind:<6} " + " ".join(f"{vals[n]:>14.4g}" for n in names)
+        print(line + f"  {knob}")
+
+    sim_name = "sim" if "sim" in rows_by_name else names[0]
+    target_name = names[-1]
+    print(f"\n=== multiplier per metric needed to move {sim_name!r} onto {target_name!r} ===")
+    for metric, kind, knob in METRICS:
+        s, t = summaries[sim_name][metric], summaries[target_name][metric]
+        mult = t / s if (np.isfinite(s) and s != 0 and np.isfinite(t)) else float("nan")
+        note = "  [real side is a lower bound]" if metric in LOWER_BOUND_ON_REAL else ""
+        print(f"  {metric:<26} {mult:>8.2f}x{note}")
+
+
 def _by_group(rows, key: str) -> None:
     cols = ["cov_mean", "top_junction_count", "n_supported", "se_minor_count",
             "a3_minor_count", "intron_cov_frac", "left_flank", "right_flank",
@@ -711,6 +746,14 @@ def main(argv=None) -> None:
     c.add_argument("--real", required=True)
     c.add_argument("--sim", nargs="+", required=True)
     c.add_argument("--threshold", type=float, default=2.0)
+    c.add_argument("--group-tsv", default=None,
+                   help="Stage 9 curation.tsv -- splits --real into named groups by "
+                        "--group-col (keyed on region), for a 3-way sim/clean/TRASH table")
+    c.add_argument("--group-col", default="trash")
+    c.add_argument("--half", choices=("dev", "test", "both"), default="both",
+                   help="restrict --real to one half of a benchmark_split.py split "
+                        "before grouping/comparing")
+    c.add_argument("--split", default="benchmark_new/split.tsv")
 
     p = sub.add_parser("padding", help="curated window vs SUPPA event span (Track B)")
     p.add_argument("--benchmark-dir", default="benchmark")
@@ -725,7 +768,27 @@ def main(argv=None) -> None:
         sim_rows = []
         for p in args.sim:
             sim_rows += _read_tsv(p)
-        compare(_read_tsv(args.real), sim_rows, args.threshold)
+        real_rows = _read_tsv(args.real)
+        if args.half != "both":
+            from dsignal.benchmark_split import load_split
+
+            split = load_split(args.split)
+            real_rows = [r for r in real_rows if split.get((r.get("csv"), r["region"])) == args.half]
+            print(f"restricted --real to {args.half} half: {len(real_rows)} rows", file=sys.stderr)
+        if args.group_tsv:
+            group_map = {}
+            with open(args.group_tsv, newline="") as f:
+                for r in csv.DictReader(f, delimiter="\t"):
+                    group_map[r["region"]] = r[args.group_col]
+            real_clean = [r for r in real_rows if group_map.get(r["region"]) == "0"]
+            real_trash = [r for r in real_rows if group_map.get(r["region"]) == "1"]
+            n_dropped = len(real_rows) - len(real_clean) - len(real_trash)
+            print(f"real split by {args.group_col!r}: clean={len(real_clean)} "
+                  f"TRASH={len(real_trash)} dropped (NA/unmatched)={n_dropped}", file=sys.stderr)
+            compare_grouped({"sim": sim_rows, "real-clean": real_clean, "real-TRASH": real_trash},
+                            args.threshold)
+        else:
+            compare(real_rows, sim_rows, args.threshold)
 
 
 if __name__ == "__main__":

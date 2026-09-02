@@ -1,0 +1,47 @@
+restricted --real to dev half: 242 rows
+real split by 'trash': clean=172 TRASH=63 dropped (NA/unmatched)=7
+
+=== noise calibration: N-way comparison ===
+  sim: n=800
+  real-clean: n=172
+  real-TRASH: n=63
+
+'rate' quantities are compared on the mean (their median is often 0), 'level' quantities on the median (heavy tails).
+
+quantity                   kind              sim     real-clean     real-TRASH  audits
+intron_cov_frac            level         0.03428        0.03564         0.1127  layer 2: --premrna-frac-low/high 0.01/0.10
+novel_junction_rate        rate          0.07324        0.09735         0.1673  layer 4: --novel-frac 0.005-0.03, --novel-nn-frac-high 0.20
+novel_junction_read_frac   rate          0.01111        0.02009         0.0166  layer 4 (read share)
+dup_rate                   rate           0.1332         0.1453         0.1623  layer 5: PCR_RATE=0.1 PCR_LAMBDA=1
+background_frac            rate          0.07796         0.1474        0.08588  layer 3: --neighbor-depth 100-3000  [LOWER BOUND on real]
+antisense_frac             rate          0.02356       0.007116        0.00915  layer 3, antisense component  [LOWER BOUND on real]
+cov_mean                   level            85.9          21.17          24.43  --gene-mean-depth 2000
+cov_median                 level             3.5            2.5              8  --gene-mean-depth 2000
+top_junction_count         level            1329            323            457  --gene-mean-depth 2000
+n_supported                level               5              5              6  -
+a3_minor_count             level             266           56.5             44  _sample_psi_pair: --psi-dist {uniform,beta}
+a3_delta                   level          0.1681         0.1874         0.1437  _sample_psi_pair
+se_minor_count             level           156.5             38             34  _sample_psi_pair
+se_delta                   level          0.1961         0.2432         0.1668  _sample_psi_pair
+left_flank                 level           -1810         -568.5         -956.5  sim/window.py (Track B)
+right_flank                level           -1720           -678         -732.5  sim/window.py (Track B)
+struct_span_frac           rate           0.9676         0.9504         0.9598  sim/window.py (Track B) -- saturates, see note
+
+=== multiplier per metric needed to move 'sim' onto 'real-TRASH' ===
+  intron_cov_frac                3.29x
+  novel_junction_rate            2.28x
+  novel_junction_read_frac       1.49x
+  dup_rate                       1.22x
+  background_frac                1.10x  [real side is a lower bound]
+  antisense_frac                 0.39x  [real side is a lower bound]
+  cov_mean                       0.28x
+  cov_median                     2.29x
+  top_junction_count             0.34x
+  n_supported                    1.20x
+  a3_minor_count                 0.17x
+  a3_delta                       0.85x
+  se_minor_count                 0.22x
+  se_delta                       0.85x
+  left_flank                     0.53x
+  right_flank                    0.43x
+  struct_span_frac               0.99x
