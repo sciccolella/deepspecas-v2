@@ -38,11 +38,15 @@ def main(argv=None) -> None:
             region = f"{row['chrom']}:{row['win_start']}-{row['win_end']}"
             writer.writerow([region, args.bam1, args.bam2])
 
+    has_trash = "trash" in rows[0] if rows else False
     with open(args.labels_out, "w", newline="") as f:
         writer = csv.writer(f, delimiter="\t")
-        writer.writerow(["ix", "event_id", "label", "kind"])
+        writer.writerow(["ix", "event_id", "label", "kind"] + (["trash"] if has_trash else []))
         for ix, row in enumerate(rows):
-            writer.writerow([f"{ix:05d}", row["event_id"], row["label"], row["kind"]])
+            out = [f"{ix:05d}", row["event_id"], row["label"], row["kind"]]
+            if has_trash:
+                out.append(row["trash"])
+            writer.writerow(out)
 
     print(f"wrote {len(rows)} rows to {args.out} and {args.labels_out}")
 

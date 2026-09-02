@@ -655,7 +655,7 @@ def _read_tsv(path: str) -> list:
         for r in csv.DictReader(fh, delimiter="\t"):
             out = {}
             for k, v in r.items():
-                if k in ("region", "strand", "label", "kind", "csv", "source"):
+                if k in ("region", "strand", "label", "kind", "csv", "source", "trash"):
                     out[k] = v
                 else:
                     try:
@@ -683,6 +683,8 @@ def _measure(args) -> None:
             if labels is not None and i < len(labels):
                 meta["label"] = labels[i]["label"]
                 meta["kind"] = labels[i]["kind"]
+                if "trash" in labels[i]:
+                    meta["trash"] = labels[i]["trash"]
             else:
                 meta["csv"] = stem
             jobs.append((region, bam1, bam2, meta))
@@ -705,7 +707,7 @@ def _measure(args) -> None:
                   file=sys.stderr, flush=True)
 
     fields = list(rows[0].keys()) if rows else []
-    for extra in ("source", "csv", "label", "kind"):
+    for extra in ("source", "csv", "label", "kind", "trash"):
         if any(extra in r for r in rows) and extra not in fields:
             fields.append(extra)
     with open(args.out, "w", newline="") as fh:
