@@ -545,8 +545,8 @@ def compare_grouped(rows_by_name: dict, threshold: float = 2.0) -> None:
 
 def _by_group(rows, key: str) -> None:
     cols = ["cov_mean", "top_junction_count", "n_supported", "se_minor_count",
-            "a3_minor_count", "intron_cov_frac", "left_flank", "right_flank",
-            "struct_span_frac"]
+            "a3_minor_count", "intron_cov_frac", "novel_junction_rate",
+            "left_flank", "right_flank", "struct_span_frac"]
     groups = defaultdict(list)
     for row in rows:
         groups[row.get(key, "?")].append(row)
@@ -655,7 +655,7 @@ def _read_tsv(path: str) -> list:
         for r in csv.DictReader(fh, delimiter="\t"):
             out = {}
             for k, v in r.items():
-                if k in ("region", "strand", "label", "kind", "csv", "source", "trash"):
+                if k in ("region", "strand", "label", "kind", "csv", "source", "trash", "orig_label"):
                     out[k] = v
                 else:
                     try:
@@ -685,6 +685,8 @@ def _measure(args) -> None:
                 meta["kind"] = labels[i]["kind"]
                 if "trash" in labels[i]:
                     meta["trash"] = labels[i]["trash"]
+                if "orig_label" in labels[i]:
+                    meta["orig_label"] = labels[i]["orig_label"]
             else:
                 meta["csv"] = stem
             jobs.append((region, bam1, bam2, meta))
@@ -707,7 +709,7 @@ def _measure(args) -> None:
                   file=sys.stderr, flush=True)
 
     fields = list(rows[0].keys()) if rows else []
-    for extra in ("source", "csv", "label", "kind", "trash"):
+    for extra in ("source", "csv", "label", "kind", "trash", "orig_label"):
         if any(extra in r for r in rows) and extra not in fields:
             fields.append(extra)
     with open(args.out, "w", newline="") as fh:
@@ -756,6 +758,13 @@ def main(argv=None) -> None:
                    help="restrict --real to one half of a benchmark_split.py split "
                         "before grouping/comparing")
     c.add_argument("--split", default="benchmark_new/split.tsv")
+    c.add_argument("--by-label", action="store_true",
+                   help="Stage 11 Stage 2d: also break each of the 4 groups "
+                   "down by class (sim: 'label', real: 'csv') -- the pooled "
+                   "median is biased by class composition when sim's design "
+                   "is class-balanced and real is not (RI structurally has "
+                   "high intron_cov_frac, so it dominates whichever group has "
+                   "more of it)")
 
     p = sub.add_parser("padding", help="curated window vs SUPPA event span (Track B)")
     p.add_argument("--benchmark-dir", default="benchmark")
@@ -787,8 +796,47 @@ def main(argv=None) -> None:
             n_dropped = len(real_rows) - len(real_clean) - len(real_trash)
             print(f"real split by {args.group_col!r}: clean={len(real_clean)} "
                   f"TRASH={len(real_trash)} dropped (NA/unmatched)={n_dropped}", file=sys.stderr)
-            compare_grouped({"sim": sim_rows, "real-clean": real_clean, "real-TRASH": real_trash},
-                            args.threshold)
+            # Stage 11 Stage 2d: when the sim side carries its own 'trash' flag
+            # (a pilot/full batch run with the TRASH layer on), split it too, so
+            # the gate compares like against like -- sim-TRASH vs real-TRASH,
+            # sim-clean vs real-clean -- instead of lumping a mixed sim pool
+            # against both real groups.
+            if any("trash" in r for r in sim_rows):
+                sim_clean = [r for r in sim_rows if r.get("trash") == "0"]
+                sim_trash = [r for r in sim_rows if r.get("trash") == "1"]
+                print(f"sim split by its own trash flag: clean={len(sim_clean)} "
+                      f"TRASH={len(sim_trash)} (of {len(sim_rows)})", file=sys.stderr)
+                compare_grouped(
+                    {"sim-clean": sim_clean, "real-clean": real_clean,
+                     "sim-TRASH": sim_trash, "real-TRASH": real_trash},
+                    args.threshold,
+                )
+                # Stage 11 Stage 2d: the pooled median above is biased by class
+                # composition (RI structurally carries high intron_cov_frac --
+                # that's the retained intron itself, not noise -- and sim's
+                # design is class-balanced while real is not), so also break
+                # each group down by class label before reading off the gate.
+                if args.by_label:
+                    # sim rows are grouped by 'orig_label' when the pilot ran
+                    # with --trash-label-policy nn -- 'label' itself is
+                    # rewritten to NN for every trashy row by design, which
+                    # would make a TRASH-side breakdown by 'label' degenerate
+                    # (100% NN, telling us nothing about what was actually
+                    # simulated underneath). Falls back to 'label' for older
+                    # sim TSVs that never carried orig_label. Real rows carry
+                    # "csv" (ES/IR); CSV_LABEL's naming isn't unified here, but
+                    # the blocks are printed side by side so ES<->CSE, IR<->RI
+                    # read off directly against each other.
+                    sim_key = "orig_label" if any("orig_label" in r for r in sim_rows) else "label"
+                    for name, rows, key in (
+                        ("sim-clean", sim_clean, sim_key), ("real-clean", real_clean, "csv"),
+                        ("sim-TRASH", sim_trash, sim_key), ("real-TRASH", real_trash, "csv"),
+                    ):
+                        print(f"\n--- {name}, by {key} ---")
+                        _by_group(rows, key)
+            else:
+                compare_grouped({"sim": sim_rows, "real-clean": real_clean, "real-TRASH": real_trash},
+                                args.threshold)
         else:
             compare(real_rows, sim_rows, args.threshold)
 

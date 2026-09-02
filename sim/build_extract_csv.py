@@ -39,13 +39,14 @@ def main(argv=None) -> None:
             writer.writerow([region, args.bam1, args.bam2])
 
     has_trash = "trash" in rows[0] if rows else False
+    has_orig_label = "orig_label" in rows[0] if rows else False
+    extra_cols = (["trash"] if has_trash else []) + (["orig_label"] if has_orig_label else [])
     with open(args.labels_out, "w", newline="") as f:
         writer = csv.writer(f, delimiter="\t")
-        writer.writerow(["ix", "event_id", "label", "kind"] + (["trash"] if has_trash else []))
+        writer.writerow(["ix", "event_id", "label", "kind"] + extra_cols)
         for ix, row in enumerate(rows):
             out = [f"{ix:05d}", row["event_id"], row["label"], row["kind"]]
-            if has_trash:
-                out.append(row["trash"])
+            out += [row[c] for c in extra_cols]
             writer.writerow(out)
 
     print(f"wrote {len(rows)} rows to {args.out} and {args.labels_out}")

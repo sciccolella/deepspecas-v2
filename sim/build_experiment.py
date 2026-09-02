@@ -386,7 +386,7 @@ def main(argv=None) -> None:
         writer.writerows(psi_check_rows)
 
     if args.out_design:
-        design_fields = [k for k in design_rows[0].keys() if k not in ("orig_label", "orig_kind")]
+        design_fields = list(design_rows[0].keys())
         with open(args.out_design, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=design_fields, delimiter="\t")
             writer.writeheader()
