@@ -164,6 +164,87 @@ choosing windows differently.
 * **Track C1** (Stage 11's `intron_cov_frac` mechanism question) is
   unaffected and still worth doing locally.
 
+## C1 — Stage 11's mechanistic question, answered locally
+
+The question carried over from `plans/signal-native-v2-trash-sim-results.md`:
+*why does elevating `premrna_frac` not elevate `intron_cov_frac`
+proportionally for CSE/NN the way it does for RI?* Stage 11's two candidate
+causes were `MIN_INTRON_FOR_COV`/flank filtering and CSE/NN's intron-length
+structure. Answered here from data already in hand (`npz_union2`, n≈2000
+sampled, vs `benchmark_new`'s 485 real windows), no pasteur time.
+
+**1. `MIN_INTRON_FOR_COV` is not the cause.** Short introns account for
+0–4% of dropped junctions in every class, sim and real alike. That candidate
+is eliminated.
+
+**2. The window-edge rule is the dominant filter, and it explains A3/A5 —
+not CSE/NN.** `_intron_cov_frac` skips any junction whose intron comes within
+`flank`=50bp of a window edge, which drops 42–92% of supported junctions:
+
+| class | sim kept% | real kept% | sim events with **no** measurable junction | real |
+|---|---:|---:|---:|---:|
+| A3 | 0.17 | 0.08 | 0.48 | **0.79** |
+| A5 | 0.21 | 0.06 | 0.46 | **0.91** |
+| CSE | 0.35 | 0.57 | 0.13 | 0.03 |
+| NN | 0.33 | 0.42 | 0.52 | 0.25 |
+| RI | 0.20 | 0.32 | 0.21 | 0.26 |
+
+Only 9–24% of real A3/A5 windows yield a measurable value at all. **Stage
+11's "A3 10x short (real n=16, likely noisy)" is now explained rather than
+guessed**: the metric is close to undefined for A3/A5 on real data, and its
+A3/A5 rows should not be read as calibration evidence in either direction.
+Relaxing the rule to allow truncated flanks moves A3 21.7x→9.6x and A5
+7.8x→3.3x, but leaves CSE (4.05→3.90) and NN (4.68→4.60) essentially
+unchanged — so the edge rule is *not* the CSE/NN story.
+
+**3. Within a domain, the metric is largely set by window geometry.** Across
+all five classes, `intron_cov_frac × (intronic/exonic territory of the
+window)` ≈ 1 (RI 1.12, NN 0.64, CSE 1.06, A3 0.93, A5 1.04), with median
+intronic fraction ranging 0.75 (RI) to 0.99 (CSE). This is the mechanism
+behind Stage 11's stratification fix: the *pooled* gate compares whichever
+group happens to carry more RI-like geometry, which is why the pooled read
+was backwards. Use `--by-label` always, as `resume-8` already instructs.
+
+**4. But the CSE/NN sim-vs-real gap is real, not a geometry confound.**
+Matching sim and real within bins of intronic fraction does **not** close it:
+
+| class | unmatched ratio | within-bin ratios (real/sim) |
+|---|---:|---|
+| CSE | 3.83 | 9.42 / 3.82 / 3.16 / 2.85 |
+| NN | 4.73 | 7.24 / 7.95 / 4.10 / 6.05 |
+| RI | 1.38 | 1.18 / 1.78 |
+
+So Stage 11's central finding stands: RI is well-calibrated, CSE and NN are
+genuinely 3–6x short of real intronic coverage at matched geometry.
+
+**5. Why the knob is sublinear — a hypothesis, not a measured fact.** The
+pre-mRNA row is added as a fraction of the gene's total *reads*
+(`sim/abundance.py:_add_low_abundance_row`), and those reads spread over the
+pre-mRNA's length while spliced reads spread over the mRNA's. Per-base
+intronic coverage is therefore ≈ `premrna_frac × L_mRNA / L_preMRNA`: the
+knob's effect on the metric is scaled by a **per-gene length ratio**. RI's
+retained intron is a genuine annotated isoform whose coverage is set by PSI
+rather than by this background, which is why it responds and CSE/NN do not.
+Consistent with Stage 11's own numbers — a 3.5x increase in median
+`premrna_frac` (U[0.01,0.10] → U[0.08,0.16]) produced only 1.29x in CSE's
+`intron_cov_frac` (0.0077 → 0.0099). Within-class rank correlation between
+`log icf` and `log` intronic fraction is negative in all five classes but
+weak for CSE (rho −0.10, p=0.14), so this is a plausible model, not an
+established one; confirming it needs the per-gene length ratio, which is not
+in the locally committed tables.
+
+### Verdict on the TRASH layer
+
+**Revivable, with a specific change — not by re-tuning the knob.** A uniform
+elevation of `--trash-premrna-frac-*` cannot fix a shortfall whose size
+varies per gene by the length ratio above. If the layer is picked up again,
+the per-row pre-mRNA fraction should be **solved for the target
+`intron_cov_frac`** using the gene's own exonic/intronic length ratio, rather
+than drawn from a global range and hoped to land. Until then the layer stays
+shelved, and the gate it is measured against must be read `--by-label`, must
+exclude A3/A5 (undefined on real data), and should report within-geometry
+matched ratios rather than pooled ones.
+
 ## C2 — measurements recorded so they are not re-derived
 
 From `benchmark_new/curation.tsv`, 485 unambiguous rows, candidate class =
