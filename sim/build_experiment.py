@@ -172,6 +172,47 @@ def main(argv=None) -> None:
         "real junction-noise signal without a labelled AS event.",
     )
     ap.add_argument("--novel-nn-frac-high", type=float, default=0.20)
+    ap.add_argument(
+        "--trash-rate", nargs=2, metavar=("CLASS", "RATE"), action="append", default=None,
+        help="Stage 11 TRASH layer (plans/signal-native-v2-trash-sim.md Stage 2b): "
+        "per-class probability a row is drawn 'trashy' -- e.g. "
+        "'--trash-rate NN 0.545 --trash-rate CSE 0.151 --trash-rate RI 0.167 "
+        "--trash-rate A3 0.03 --trash-rate A5 0.0', the measured real rates "
+        "(Stage 9). Repeatable; a class not given keeps rate 0. Default: no "
+        "class gets a nonzero rate, so this layer is off and every batch run "
+        "before Stage 11 reproduces bit-identically. The class-conditional "
+        "coupling is legitimate only because deployment has the same coupling "
+        "(a caller flags noisy regions, a curator rejects them) -- "
+        "--trash-rate-mode uniform is the label-independent control arm that "
+        "measures this rather than assumes it.",
+    )
+    ap.add_argument("--trash-rate-mode", choices=("class-conditional", "uniform"), default="class-conditional")
+    ap.add_argument(
+        "--trash-uniform-rate", type=float, default=0.0,
+        help="with --trash-rate-mode uniform: one rate applied to every row "
+        "regardless of label (the label-independent control arm)",
+    )
+    ap.add_argument(
+        "--trash-label-policy", choices=("keep", "nn"), default="keep",
+        help="'keep' (default): a trashy row keeps its planted label. 'nn': a "
+        "trashy row whose planted label is not already NN is emitted with "
+        "label NN, kind 'nn_trash' -- a TRASH event carrying a positive label "
+        "is borderline enough that NN is the defensible call (user, "
+        "2026-09-02). kind stays out of ('nn_plain', 'nn_novel') so the "
+        "underlying biological event is still simulated with its real "
+        "psi1/psi2 -- only the training label changes.",
+    )
+    ap.add_argument("--trash-premrna-frac-low", type=float, default=0.08)
+    ap.add_argument("--trash-premrna-frac-high", type=float, default=0.16)
+    ap.add_argument("--trash-novel-frac-low", type=float, default=0.10)
+    ap.add_argument("--trash-novel-frac-high", type=float, default=0.25)
+    ap.add_argument(
+        "--out-design", default=None,
+        help="write the design table back out with a 'trash' column appended "
+        "and 'label'/'kind' updated per --trash-label-policy -- "
+        "sim/build_extract_csv.py should be pointed at this file, not the "
+        "original --design, once this layer is in use",
+    )
     args = ap.parse_args(argv)
 
     # RNG isolation: each noise layer gets its own independent Generator,
@@ -184,13 +225,26 @@ def main(argv=None) -> None:
     # layer 4 update). With independent streams, turning any single layer
     # on/off leaves every other layer's draws bit-for-bit identical.
     seed_seq = np.random.SeedSequence(args.seed)
-    rng_design, rng_premrna, rng_neighbor_base, rng_novel = (
-        np.random.default_rng(s) for s in seed_seq.spawn(4)
+    rng_design, rng_premrna, rng_neighbor_base, rng_novel, rng_trash = (
+        np.random.default_rng(s) for s in seed_seq.spawn(5)
     )
     config = AbundanceConfig(gene_mean_depth=args.gene_mean_depth,
                              cooc_dpsi_range=tuple(args.cooc_dpsi))
 
+    trash_rates = {c: float(r) for c, r in (args.trash_rate or [])}
+
     design_rows = _load_design(args.design)
+
+    # trash draw: one Bernoulli per design row, in file order, on its own RNG
+    # stream -- independent of whether the layer is actually on, so turning it
+    # on/off never perturbs any other layer's draws (see --trash-rate's help).
+    for row in design_rows:
+        rate = args.trash_uniform_rate if args.trash_rate_mode == "uniform" else trash_rates.get(row["label"], 0.0)
+        row["trash"] = "1" if rng_trash.random() < rate else "0"
+        row["orig_label"], row["orig_kind"] = row["label"], row["kind"]
+        if row["trash"] == "1" and args.trash_label_policy == "nn" and row["label"] != "NN":
+            row["label"], row["kind"] = "NN", "nn_trash"
+    n_trashy = sum(1 for r in design_rows if r["trash"] == "1")
     catalogue = build_catalogue(args.events_dir)
     events_by_id = {e.event_id: e for e in catalogue}
     # gene -> its other catalogued events, for the co-occurrence axis. Built
@@ -237,24 +291,30 @@ def main(argv=None) -> None:
             obs1 = empirical_psi(df, event, c1_cols)
             obs2 = empirical_psi(df, event, c2_cols)
 
+        is_trashy = row["trash"] == "1"
+
         premrna_frac = float("nan")
         if not args.no_premrna:
+            if is_trashy:
+                p_low, p_high = args.trash_premrna_frac_low, args.trash_premrna_frac_high
+            else:
+                p_low, p_high = args.premrna_frac_low, args.premrna_frac_high
             depth_before = df.sum(axis=0)
-            df = add_premrna_row(
-                df, gene_id, config, rng_premrna, args.premrna_frac_low, args.premrna_frac_high
-            )
+            df = add_premrna_row(df, gene_id, config, rng_premrna, p_low, p_high)
             # recover the drawn fraction from the row actually added, for QC
             premrna_frac = float(
                 (df.loc[premrna_id(gene_id)] / depth_before).mean()
             )
 
         if gene_id in novel_by_gene:
-            if row["kind"] == "nn_novel":
+            if is_trashy:
+                frac_low, frac_high = args.trash_novel_frac_low, args.trash_novel_frac_high
+            elif row["orig_kind"] == "nn_novel":
                 frac_low, frac_high = args.novel_nn_frac_low, args.novel_nn_frac_high
             else:
                 frac_low, frac_high = args.novel_frac_low, args.novel_frac_high
             df = add_novel_junction_row(df, novel_by_gene[gene_id], config, rng_novel, frac_low, frac_high)
-        elif row["kind"] == "nn_novel":
+        elif row["orig_kind"] == "nn_novel":
             n_novel_nn_missing_variant += 1
 
         matrices.append(df)
@@ -268,6 +328,7 @@ def main(argv=None) -> None:
                 observed_psi1=obs1,
                 observed_psi2=obs2,
                 premrna_frac=premrna_frac,
+                trash=row["trash"],
             )
         )
 
@@ -318,10 +379,35 @@ def main(argv=None) -> None:
             "observed_psi1",
             "observed_psi2",
             "premrna_frac",
+            "trash",
         ]
         writer = csv.DictWriter(f, fieldnames=fields, delimiter="\t")
         writer.writeheader()
         writer.writerows(psi_check_rows)
+
+    if args.out_design:
+        design_fields = [k for k in design_rows[0].keys() if k not in ("orig_label", "orig_kind")]
+        with open(args.out_design, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=design_fields, delimiter="\t")
+            writer.writeheader()
+            for row in design_rows:
+                writer.writerow({k: row[k] for k in design_fields})
+        print(f"wrote {args.out_design}", file=sys.stderr)
+
+    if trash_rates or args.trash_rate_mode == "uniform":
+        by_label = {}
+        for row in design_rows:
+            by_label.setdefault(row["orig_label"], [0, 0])
+            by_label[row["orig_label"]][0] += int(row["trash"])
+            by_label[row["orig_label"]][1] += 1
+        n_relabelled = sum(1 for r in design_rows if r["kind"] == "nn_trash")
+        print(
+            f"trash layer ({args.trash_rate_mode}, policy={args.trash_label_policy}): "
+            f"{n_trashy}/{len(design_rows)} rows trashy "
+            + ", ".join(f"{l}={h}/{n}" for l, (h, n) in sorted(by_label.items()))
+            + (f"; {n_relabelled} positives relabelled NN (kind nn_trash)" if args.trash_label_policy == "nn" else ""),
+            file=sys.stderr,
+        )
 
     print(f"genes: {len(design_rows) - n_missing_gene}/{len(design_rows)} (missing_gene={n_missing_gene})", file=sys.stderr)
     if args.neighbors:
