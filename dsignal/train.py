@@ -47,6 +47,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import sys
@@ -528,6 +529,11 @@ def _build_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--json-out", default=None, help="write the aggregate metrics here")
+    ap.add_argument("--dump-oof", default=None,
+                    help="write per-event out-of-fold predictions (ix, event_id, truth, "
+                    "pred) to this TSV -- lets a caller re-score under a different "
+                    "labeling convention (e.g. dsignal.score_benchmark.apply_trash_as_nn) "
+                    "without retraining")
     return ap
 
 
@@ -581,6 +587,14 @@ def main(argv=None) -> None:
     result = report(oof_gold, oof_pred, list(CLASSES), title)
     print_vs_reference(result)
     collapsed = report_collapsed(oof_gold, oof_pred, "transformer, A3+A5 collapsed to A")
+
+    if args.dump_oof:
+        with open(args.dump_oof, "w", newline="") as f:
+            w = csv.writer(f, delimiter="\t")
+            w.writerow(["ix", "event_id", "truth", "pred"])
+            for (ix, event_id, _label, _gene_id, _path), truth, pred in zip(entries, oof_gold, oof_pred):
+                w.writerow([ix, event_id, truth, pred])
+        print(f"wrote out-of-fold predictions to {args.dump_oof}", file=sys.stderr)
 
     if args.json_out:
         with open(args.json_out, "w") as f:
