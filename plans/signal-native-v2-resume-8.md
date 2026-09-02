@@ -41,6 +41,12 @@ the CSE/NN mechanism is understood — see "Next session" below.
 `benchmark_new` dev's proper scoring, the `nn_weight=0.1` deployment
 decision, the v1-vs-v2 descriptive comparison caveats, and both benchmarks'
 test halves (unspent) all carry forward exactly as `resume-7` describes them.
+**Corrected 2026-09-02 (Stage 12)**: the "descriptive comparison" caveat is
+retracted — the curator states `benchmark_new`'s prediction columns were
+visible but not consulted, so the dev-half v1-vs-v2 result is real and the
+test half is a legitimate pre-registered arena. `benchmark/`'s test half is
+*spent* (Stage 6), not unspent; only `benchmark_new`'s is unspent. See
+`plans/signal-native-v2-real-supervision.md`.
 Nothing about the model, features, or deployed checkpoints changed this
 session.
 

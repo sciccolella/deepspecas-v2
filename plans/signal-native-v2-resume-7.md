@@ -22,6 +22,9 @@ columns Stage 9 quoted. Three things came out of it:
    p<0.0001; 58.7% vs 48.8% collapsed, p=0.0032) — but this is a
    **descriptive** comparison, not the pre-registered arena: both models'
    predictions were used as curation aids while building `benchmark_new`.
+   **Corrected 2026-09-02 (Stage 12)**: the curator states the prediction
+   columns were visible but did not inform the assessment — this is a real
+   result, and `benchmark_new` test is a legitimate pre-registered arena.
 2. **NN recall is now a measurable, and clearly the dominant, weakness** —
    8.9%–13.9% across the three v2 checkpoint sets measured, at the currently
    deployed `nn_weight=0.1`. This is the first time this branch has ever had
@@ -65,6 +68,9 @@ spend.
   agree with more often will look better here by construction to some
   unknown degree. Treat the direction as suggestive (and consistent with
   `benchmark/`'s own numbers), not dispositive.
+  **Retracted 2026-09-02 (Stage 12)** — the curator states the columns were
+  visible in the sheets but were not consulted, so no such by-construction
+  advantage exists. See `plans/signal-native-v2-real-supervision.md`.
 * **No re-simulation, no retraining, no feature or model changes** happened.
   One code addition: `dsignal/v1_reference.py --curation` mode, needed
   because `benchmark_new`'s curation moved rows between candidate classes
@@ -85,6 +91,8 @@ spend.
 5. **New**: every v1-vs-v2 number this session produced is descriptive, not
    pre-registered — see above. Do not quote these numbers as a fresh
    head-to-head result without that caveat attached.
+   **Retracted 2026-09-02 (Stage 12)**: curator attestation, see above. The
+   numbers may be quoted as a real result on the dev half.
 
 ## What is new in the code
 

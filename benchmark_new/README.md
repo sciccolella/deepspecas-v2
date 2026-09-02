@@ -74,6 +74,33 @@ original `benchmark/` has none; see its README for that caveat.
 - `split.tsv` -- committed dev/test split (Stage 9 Stage 0.3), stratified by
   `(truth, trash)` so the two halves carry comparable TRASH fractions per
   class, not just comparable class counts.
+
+## Curation and the prediction columns (read before quoting any number)
+
+`curation.tsv` carries `v1_pred`/`v2_pred`. Those columns were **visible in
+the review sheets but were not consulted during the manual assessment**
+(curator's attestation, 2026-09-02). Earlier documents
+(`plans/signal-native-v2-bnew-dev-results.md`,
+`plans/signal-native-v2-resume-7.md`) treat this set's v1-vs-v2 numbers as
+"descriptive, not pre-registered" on the assumption that they were curation
+aids; that caveat is **retracted**, with the retraction recorded next to each
+occurrence per the branch's never-delete convention.
+
+## The test half is reserved
+
+**`split.tsv`'s test half (243 events) is unspent and is held for one
+specific measurement**: Stage 12's Track A winning arm vs the v1 six-net
+ensemble (`plans/signal-native-v2-real-supervision.md`, step A5). Do not
+score it for an intermediate result. Dev (242 events) is the half to iterate
+on -- `--half dev` on `score_benchmark`/`prior_sweep`, and
+`dsignal.benchmark_split compare --half dev` for the paired McNemar.
+
+Note also that this set is deliberately harder and dirtier than
+`benchmark/`: it retains the whole 573-candidate consensus pool, so 26% of
+the scored rows are TRASH and 159 events are NN-because-the-candidate-failed.
+`benchmark/` by contrast contains only curator-affirmed positives (and no NN
+at all). Neither set dominates the other -- see the three-benchmark table in
+`plans/signal-native-v2-real-supervision.md`.
 - `c1.bam`/`c2.bam` -- `samtools view -L events.bed` subsets of
   `c1_new.bam`/`c2_new.bam`, generated on `pasteur` and copied back (the full
   merges stay there). **Same caveat as `benchmark/`'s README:** any quantity

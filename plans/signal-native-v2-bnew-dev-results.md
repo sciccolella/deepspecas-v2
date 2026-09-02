@@ -20,6 +20,13 @@ findings:
    review aids while curating `benchmark_new`, so neither model is scored
    here on data it had zero influence over. The pre-registered comparison
    remains `benchmark_new`'s test half, still unspent.
+   **Correction (2026-09-02, Stage 12).** The curator (the user) states the
+   prediction columns were *visible* in the review sheets but **did not
+   inform the manual assessment** — they were present, not an input. This
+   comparison therefore stands as a real result, not a merely descriptive
+   one, and `benchmark_new`'s test half is a legitimate pre-registered arena.
+   The caveat is kept per the never-delete convention; see
+   `plans/signal-native-v2-real-supervision.md`.
 2. **NN recall is the dominant weakness for every checkpoint set measured**,
    v1 included: at the currently-committed `nn_weight=0.1`, v2's NN recall on
    dev ranges 8.9%–13.9% depending on ensemble. This is the first time NN
@@ -101,7 +108,9 @@ only `A`, never `A3`/`A5`, so the 5-class number understates it by
 construction — collapsed is the comparable figure, as always for v1.)
 
 **Contamination caveat, repeated**: `v1_pred`/`v2_pred` were both curation
-aids for `benchmark_new`, so this comparison is descriptive. Table:
+aids for `benchmark_new`, so this comparison is descriptive.
+**Corrected 2026-09-02 (Stage 12)** — the curator states the columns were
+visible but not consulted; see the correction under Summary point 1. Table:
 
 | comparison | 5-class | collapsed | McNemar p (5-class / collapsed) |
 |---|---|---|---|
@@ -239,6 +248,12 @@ running existing tools against `benchmark_new`.
    with `benchmark/`'s own numbers in direction), not as a fresh head-to-head
    result. The pre-registered `benchmark_new` test-half spend is still owed
    and would be the honest one-shot comparison.
+   **Retracted 2026-09-02 (Stage 12)**: the curator states the prediction
+   columns were visible in the review sheets but did not inform the manual
+   assessment. This caveat does not hold; the dev-half comparison is a real
+   result and `benchmark_new` test is a legitimate pre-registered arena. The
+   test-half spend is still owed, and Stage 12 reserves it for Track A's
+   winning arm (`plans/signal-native-v2-real-supervision.md`, A5).
 
 ---
 
