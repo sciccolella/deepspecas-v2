@@ -55,7 +55,7 @@ from os.path import basename, splitext
 
 from dsignal.predict import read_prediction_csv
 from dsignal.prior_sweep import mcnemar
-from dsignal.score_benchmark import CSV_LABEL, DEFAULT_CSVS, collapse
+from dsignal.score_benchmark import CSV_LABEL, DEFAULT_CSVS, apply_trash_as_nn, collapse
 
 DEFAULT_SPLIT = "benchmark/split.tsv"
 
@@ -224,6 +224,10 @@ def cmd_compare(args) -> None:
     split = load_split(args.split)
     base = filter_rows(_read_events_tsv(args.base), args.half, split)
     new = filter_rows(_read_events_tsv(args.new), args.half, split)
+    if args.trash_as_nn:
+        base = apply_trash_as_nn(base, args.trash_as_nn)
+        new = apply_trash_as_nn(new, args.trash_as_nn)
+        print(f"convention B (TRASH-as-NN via {args.trash_as_nn})", file=sys.stderr)
     key = lambda r: (r["csv"], r["region"])
     base_by, new_by = {key(r): r for r in base}, {key(r): r for r in new}
     shared = [k for k in base_by if k in new_by]
@@ -267,6 +271,10 @@ def main(argv=None) -> None:
     c.add_argument("new")
     c.add_argument("--half", choices=("dev", "test", "both"), default="dev")
     c.add_argument("--split", default=DEFAULT_SPLIT)
+    c.add_argument("--trash-as-nn", default=None, metavar="curation.tsv",
+                   help="Convention B (Stage 11 Stage 0): re-truth both sides via "
+                   "dsignal.score_benchmark.apply_trash_as_nn before pairing, so "
+                   "McNemar runs under TRASH-as-NN instead of the default convention A")
     c.set_defaults(func=cmd_compare)
 
     args = ap.parse_args(argv)

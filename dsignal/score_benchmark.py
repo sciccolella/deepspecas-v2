@@ -84,6 +84,39 @@ def collapse(label: str) -> str:
     return "A" if label in ("A3", "A5") else label
 
 
+def apply_trash_as_nn(rows, curation_path: str):
+    """Convention B (Stage 11 / plans/signal-native-v2-trash-sim.md Stage 0):
+    any event with ``curation.tsv``'s ``trash == "1"`` has truth NN
+    regardless of its curated label -- a TRASH event carrying a positive
+    label is borderline enough that NN is the defensible call. Drops
+    ``trash == "NA"`` rows entirely (7 on dev, giving n=235).
+
+    Keyed by ``(csv, region)`` via ``CSV_LABEL``'s inverse against
+    curation's own ``truth`` column -- ``r["csv"]`` here is already the
+    truth-side stem (the benchmark_new CSVs are bucketed by final truth, not
+    original SUPPA source), the same join ``benchmark_build/trash_breakdown.py``
+    and ``dsignal/v1_reference.py --curation`` use. Convention A (this
+    module's default, unchanged) stays available side by side -- this never
+    mutates ``rows`` in place."""
+    from benchmark_build.trash_breakdown import load_trash
+
+    trash = load_trash(curation_path)
+    out = []
+    for r in rows:
+        t = trash.get((r["csv"], r["region"]))
+        if t is None or t == "NA":
+            continue
+        r = dict(r)
+        if t == "1":
+            r["truth"] = "NN"
+        if "correct" in r:
+            r["correct"] = int(r["pred"] == r["truth"])
+        if "correct_collapsed" in r:
+            r["correct_collapsed"] = int(collapse(r["pred"]) == collapse(r["truth"]))
+        out.append(r)
+    return out
+
+
 def score(predictor: Predictor, csv_paths, verbose: bool = False, keep=None):
     """``keep``, when given, is a predicate on ``(csv_stem, region)`` -- used by
     ``--half`` to score only one side of ``benchmark/split.tsv``. Filtering here
@@ -239,6 +272,12 @@ def main(argv=None) -> None:
         "doubles inference time and leaves extraction untouched",
     )
     ap.add_argument("--split", default="benchmark/split.tsv")
+    ap.add_argument(
+        "--trash-as-nn", default=None, metavar="curation.tsv",
+        help="Convention B (Stage 11 Stage 0): score with any curation.tsv "
+        "trash==1 event's truth forced to NN, dropping trash==NA rows. "
+        "Reported alongside, never instead of, the default convention A",
+    )
     args = ap.parse_args(argv)
 
     if args.ensemble:
@@ -297,6 +336,20 @@ def main(argv=None) -> None:
 
     rows = score(predictor, args.csv, args.verbose, keep=keep)
     report(rows, predictor, args.half)
+
+    if args.trash_as_nn:
+        rows_b = apply_trash_as_nn(rows, args.trash_as_nn)
+        print("\n### convention B: TRASH-as-NN ###", file=sys.stderr)
+        report(rows_b, predictor, args.half)
+        if args.out:
+            base, ext = splitext(args.out)
+            out_b = f"{base}.trash_as_nn{ext}"
+            fields = list(rows_b[0].keys())
+            with open(out_b, "w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=fields, delimiter="\t")
+                w.writeheader()
+                w.writerows(rows_b)
+            print(f"wrote convention-B per-event results to {out_b}", file=sys.stderr)
 
     if args.out:
         fields = list(rows[0].keys())
