@@ -394,6 +394,7 @@ def audit_event(region: str, bam1: str, bam2: str, filters: dsextract.ReadFilter
         "n_supported": int(len(idx)),
         "cov_mean": float(cov.mean()) if norm.n else 0.0,
         "cov_median": float(np.median(cov)) if norm.n else 0.0,
+        "cov_cv": float(cov.std() / cov.mean()) if norm.n and cov.mean() > 0 else 0.0,
         "top_junction_count": float(pooled.max()) if pooled.size else 0.0,
         "intron_cov_frac": intron_frac,
         "n_intron_measured": n_intron,

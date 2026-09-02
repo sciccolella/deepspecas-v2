@@ -1,0 +1,65 @@
+[dev] 235 rows probed (7 trash=NA dropped, 243 off-half, 0 unmatched to curation.tsv)
+
+=== pooled AUC (dev) (n=235) ===
+  intron_cov_frac               AUC=0.667  (higher=TRASH, n=187)
+  background_frac               AUC=0.396  (lower=TRASH, n=230)
+  antisense_frac                AUC=0.522  (higher=TRASH, n=235)
+  dup_rate                      AUC=0.528  (higher=TRASH, n=235)
+  unsupported_junction_frac     AUC=0.496  (lower=TRASH, n=235)
+  struct_span_frac              AUC=0.544  (higher=TRASH, n=230)
+  cov_cv                        AUC=0.390  (lower=TRASH, n=235)
+  novel_junction_rate           AUC=0.597  (higher=TRASH, n=230) [diagnostic, not a feature candidate]
+
+=== AUC within truth=A3 (n=16) ===
+  single class present -- AUC undefined
+
+=== AUC within truth=A5 (n=9) ===
+  single class present -- AUC undefined
+
+=== AUC within truth=CSE (n=106) ===
+  intron_cov_frac               AUC=0.703  (higher=TRASH, n=102)
+  background_frac               AUC=0.339  (lower=TRASH, n=104)
+  antisense_frac                AUC=0.590  (higher=TRASH, n=106)
+  dup_rate                      AUC=0.476  (lower=TRASH, n=106)
+  unsupported_junction_frac     AUC=0.523  (higher=TRASH, n=106)
+  struct_span_frac              AUC=0.580  (higher=TRASH, n=104)
+  cov_cv                        AUC=0.362  (lower=TRASH, n=106)
+  novel_junction_rate           AUC=0.551  (higher=TRASH, n=104) [diagnostic, not a feature candidate]
+
+=== AUC within truth=NN (n=77) ===
+  intron_cov_frac               AUC=0.663  (higher=TRASH, n=60)
+  background_frac               AUC=0.426  (lower=TRASH, n=75)
+  antisense_frac                AUC=0.460  (lower=TRASH, n=77)
+  dup_rate                      AUC=0.488  (lower=TRASH, n=77)
+  unsupported_junction_frac     AUC=0.421  (lower=TRASH, n=77)
+  struct_span_frac              AUC=0.563  (higher=TRASH, n=75)
+  cov_cv                        AUC=0.433  (lower=TRASH, n=77)
+  novel_junction_rate           AUC=0.633  (higher=TRASH, n=75) [diagnostic, not a feature candidate]
+
+=== AUC within truth=RI (n=27) ===
+  intron_cov_frac               AUC=0.353  (lower=TRASH, n=22)
+  background_frac               AUC=0.564  (higher=TRASH, n=27)
+  antisense_frac                AUC=0.541  (higher=TRASH, n=27)
+  dup_rate                      AUC=0.673  (higher=TRASH, n=27)
+  unsupported_junction_frac     AUC=0.700  (higher=TRASH, n=27)
+  struct_span_frac              AUC=0.441  (lower=TRASH, n=27)
+  cov_cv                        AUC=0.736  (higher=TRASH, n=27)
+  novel_junction_rate           AUC=0.541  (higher=TRASH, n=27) [diagnostic, not a feature candidate]
+
+=== cluster-grouped 5-fold logistic regression over ['intron_cov_frac', 'background_frac', 'antisense_frac', 'dup_rate', 'unsupported_junction_frac', 'struct_span_frac', 'cov_cv'] ===
+  pooled out-of-fold AUC = 0.612  (n=235, 212 clusters)
+  DECISION GATE: below ~0.70 means TRASH is not signal-recoverable at window level -- Stages 3-4 do not run.
+
+=== metrics vs v2's existing per-event correctness (n=235) ===
+  v2 correct: 136/235 = 57.9%
+  metric                          mean|correct      mean|wrong
+  intron_cov_frac                        0.133           0.183
+  background_frac                        0.153           0.101
+  antisense_frac                         0.007           0.009
+  dup_rate                               0.145           0.157
+  unsupported_junction_frac              0.634           0.616
+  struct_span_frac                       0.963           0.940
+  cov_cv                                 3.123           2.526
+  novel_junction_rate                    0.098           0.141
+
+  mean(trash) | v2 correct = 0.132   mean(trash) | v2 wrong = 0.455
