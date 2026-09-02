@@ -3,15 +3,18 @@
 Plan documents and their implementation reports. Per `CLAUDE.md`, a plan is agreed and
 saved here first, and a separate session implements it.
 
-**Start here:** [`signal-native-v2-resume-5.md`](signal-native-v2-resume-5.md) — the
+**Start here:** [`signal-native-v2-resume-6.md`](signal-native-v2-resume-6.md) — the
 current state of play for the active line of work.
 
 ## signal-native-v2 (the active line)
 
 | file | what it is | status |
 |---|---|---|
-| [`signal-native-v2-resume-5.md`](signal-native-v2-resume-5.md) | **START HERE.** State, direction, open caveats, conventions (2026-08-21) | current |
-| [`signal-native-v2-fresh-benchmark.md`](signal-native-v2-fresh-benchmark.md) | The Stage 8 plan (2026-08-22): a fresh curated 140-event benchmark from a *different* BioProject (Track A) in parallel with untried ensemble-breadth families — architecture, seeds×views, class-weight boosts, attention-bias ablations (Track B) — converging on one pre-registered v1-vs-v2 spend. Also records why relaxing one-gene-per-event was deferred | **not started** |
+| [`signal-native-v2-resume-6.md`](signal-native-v2-resume-6.md) | **START HERE.** State, direction, open caveats, conventions (2026-09-02) | current |
+| [`signal-native-v2-trash-results.md`](signal-native-v2-trash-results.md) | Full stage-by-stage results of the Stage 9 plan (2026-09-02): `benchmark_new` frozen/split with real NN truth for the first time; TRASH-iness fails its ~0.70 recoverability gate (0.612), so Stages 3-4 (spuriousness features, conditioned NN prior) did not run; Stage 2 found sim falls 2-3x short of `real-TRASH` on several noise metrics | **implemented through Stage 2; Stages 3-4 gated off** |
+| [`signal-native-v2-trash-signal.md`](signal-native-v2-trash-signal.md) | The Stage 9 plan (2026-09-02): ingest the manual curation of the 573-event consensus pool, freeze/split `benchmark_new`, and measure whether TRASH-iness is signal-recoverable before acting on it | implemented — see results doc |
+| [`signal-native-v2-resume-5.md`](signal-native-v2-resume-5.md) | Previous resume doc (2026-08-21); accurate through the union2 scale/ensemble plan and holds detail resume-6 compresses | superseded as the entry point |
+| [`signal-native-v2-fresh-benchmark.md`](signal-native-v2-fresh-benchmark.md) | The Stage 8 plan (2026-08-22): a fresh curated 140-event benchmark from a *different* BioProject (Track A) in parallel with untried ensemble-breadth families — architecture, seeds×views, class-weight boosts, attention-bias ablations (Track B) — converging on one pre-registered v1-vs-v2 spend. Also records why relaxing one-gene-per-event was deferred. Track A3/A4 (consensus + curation) done; Track A's freeze/split is superseded by the Stage 9 plan's Stage 0; Track B and Track C's test spend remain **not started** | **partially implemented** |
 | [`signal-native-v2-scale-union2-results.md`](signal-native-v2-scale-union2-results.md) | Full stage-by-stage results of the Stage 7 scale plan (2026-08-21): single-model scale on `npz_union2` plateaus at 56–57/70 dev past ~8,640 events, but view diversity re-ensembled on the largest pool reaches 61/70 (87.1%) dev, dev-tuned only, no test exposure | **implemented** |
 | [`signal-native-v2-scale-union2.md`](signal-native-v2-scale-union2.md) | The Stage 7 scale plan (2026-08-20): four new gene-disjoint batches, a three-point scale curve, a conditional ensemble, dev-only throughout | implemented — see results doc |
 | [`signal-native-v2-resume-4.md`](signal-native-v2-resume-4.md) | Previous resume doc (2026-08-19); accurate through the ensemble plan and holds detail resume-5 compresses | superseded as the entry point |
