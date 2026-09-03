@@ -8,6 +8,14 @@
 # paired-end runs per condition instead of 3 simulated replicates.
 #
 # Usage: sim/fetch_align_benchmark_new.sh <work_dir> <star_index> <threads>
+#
+# Stage 12 / Track B reuses this for further KD/control pairs. The four runs
+# and the output prefix are overridable from the environment; unset, every
+# default reproduces the original SRSF3 invocation byte for byte:
+#
+#   C1_REP1=SRR3469390 C1_REP2=SRR3469391 \
+#   C2_REP1=SRR3469516 C2_REP2=SRR3469517 OUT_PREFIX=ptbp1 \
+#   sim/fetch_align_benchmark_new.sh <work_dir> <star_index> 12
 set -euo pipefail
 
 WORK_DIR=$1
@@ -21,7 +29,13 @@ mkdir -p "$FASTQ_DIR" "$ALIGN_DIR"
 ulimit -n 65536 2>/dev/null || true
 
 # condition 1 = SRSF3 knockdown (ENCSR376FGR), condition 2 = non-target control (ENCSR264TUE)
-declare -A RUNS=( [cond1_rep1]=SRR4421711 [cond1_rep2]=SRR4421712 [cond2_rep1]=SRR4421557 [cond2_rep2]=SRR4421558 )
+declare -A RUNS=(
+  [cond1_rep1]=${C1_REP1:-SRR4421711}
+  [cond1_rep2]=${C1_REP2:-SRR4421712}
+  [cond2_rep1]=${C2_REP1:-SRR4421557}
+  [cond2_rep2]=${C2_REP2:-SRR4421558}
+)
+OUT_PREFIX=${OUT_PREFIX:-new}
 
 # fastqs are kept uncompressed -- gzip of a ~40M-read-pair fastq is
 # single-threaded and was measured to take ~50 min/file, dominating the
@@ -53,14 +67,14 @@ for name in "${!RUNS[@]}"; do
   samtools index "${sample_out}Aligned.sortedByCoord.out.bam"
 done
 
-samtools merge -f "$ALIGN_DIR/c1_new.bam" \
+samtools merge -f "$ALIGN_DIR/c1_${OUT_PREFIX}.bam" \
   "$ALIGN_DIR/cond1_rep1/Aligned.sortedByCoord.out.bam" \
   "$ALIGN_DIR/cond1_rep2/Aligned.sortedByCoord.out.bam"
-samtools index "$ALIGN_DIR/c1_new.bam"
+samtools index "$ALIGN_DIR/c1_${OUT_PREFIX}.bam"
 
-samtools merge -f "$ALIGN_DIR/c2_new.bam" \
+samtools merge -f "$ALIGN_DIR/c2_${OUT_PREFIX}.bam" \
   "$ALIGN_DIR/cond2_rep1/Aligned.sortedByCoord.out.bam" \
   "$ALIGN_DIR/cond2_rep2/Aligned.sortedByCoord.out.bam"
-samtools index "$ALIGN_DIR/c2_new.bam"
+samtools index "$ALIGN_DIR/c2_${OUT_PREFIX}.bam"
 
-echo "wrote $ALIGN_DIR/c1_new.bam $ALIGN_DIR/c2_new.bam"
+echo "wrote $ALIGN_DIR/c1_${OUT_PREFIX}.bam $ALIGN_DIR/c2_${OUT_PREFIX}.bam"

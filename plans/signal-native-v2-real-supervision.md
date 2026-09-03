@@ -258,6 +258,25 @@ before any scoring: RBPs distinct from SRSF3, and a second cell line
 (K562 alongside HepG2) if the matched controls exist. Pre-registration means
 the accession list is frozen in git before a single number is produced.
 
+**FROZEN 2026-09-03 — pair 1 (all four accessions verified against the ENCODE
+portal and NCBI SRA, not quoted from memory):**
+
+| condition | ENCODE | GEO series | GSM | SRR | layout |
+|---|---|---|---|---|---|
+| PTBP1 shRNA KD, HepG2 | `ENCSR064DXG` | GSE80847 | GSM2138688 | `SRR3469390` | paired |
+| | | | GSM2138689 | `SRR3469391` | paired |
+| non-target shRNA control, HepG2 | `ENCSR603TCV` | GSE80908 | GSM2138814 | `SRR3469516` | paired |
+| | | | GSM2138815 | `SRR3469517` | paired |
+
+`ENCSR603TCV` is `ENCSR064DXG`'s own `possible_controls` entry, so the pairing
+is ENCODE's, not one this branch invented. Same cell line, protocol and
+assay as `benchmark_new`'s SRSF3 pair, different RBP — PTBP1 is a splicing
+repressor with a strong, well-characterized exon-skipping phenotype, so the
+arena should carry real CSE signal rather than only weak calls.
+
+Pairs 2–3 are deliberately **not** frozen yet: launch throughput and disk on
+pasteur are measured on pair 1 first (the user's call, 2026-09-03).
+
 ### B1 — fetch and align *(cheap model, long-running)*
 
 `sim/fetch_align_benchmark_new.sh` per pair on pasteur. This is the long pole
