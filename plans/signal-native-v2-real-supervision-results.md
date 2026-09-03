@@ -245,6 +245,93 @@ shelved, and the gate it is measured against must be read `--by-label`, must
 exclude A3/A5 (undefined on real data), and should report within-geometry
 matched ratios rather than pooled ones.
 
+## Track D — the coverage branch: a reallocation, not an improvement
+
+D's fork was chosen by the user (2026-09-03) after A3 was lost with Track A:
+add a binned log-coverage branch to the junction-set transformer, on the
+hypothesis that the hand-derived `[J,48]`/`[32]` features do not carry the
+intronic-continuity evidence **NN** needs.
+
+### What was built
+
+`features.build_coverage_profile` → `[2, bins]` depth-normalized log coverage,
+one row per condition. Bin edges are *fractional* and each bin is the exact
+integral of the piecewise-constant coverage over it, so mirroring a record
+reverses the profile bit-for-bit; integer edges break that at odd window
+lengths and the flip augmentation would quietly stop being an involution.
+`model.CoverageEncoder` is a dilated 1D conv stack (1/2/4/8) with mean+max
+pooling, added **into the CLS embedding** rather than appended as a token —
+CLS is never masked and is what the heads read. `ModelConfig.coverage_bins`
+defaults to 0, so every pre-Stage-12 checkpoint loads and behaves identically
+(verified: `runs/geomwin_iv30_refit` still scores 53/70 on `benchmark/` dev).
+The profile is built from the *augmented* `NormalizedRecord`, so flip,
+condition_swap, jitter, subsample and condition-swap TTA all apply to it for
+free. `verify_features` gained **check 6** (mirror and condition-swap
+symmetries, exact equality, not a tolerance).
+
+### The result: it depends entirely on which benchmark you score
+
+Three paired seeds (0/1/2), base recipe on `npz_geomwin`, `--coverage-bins 128`
+against the identical recipe without it:
+
+| | `benchmark/` dev (n=70) | `benchmark_new` dev (n=242) | in-sim macro-F1 |
+|---|---|---|---|
+| base, per seed | 53 / 56 / 58 → **mean 55.7 (79.5%)** | 117 / 127 / 122 → **mean 121.7** | 0.8604 |
+| +coverage, per seed | 62 / 63 / 60 → **mean 61.7 (88.1%)** | 126 / 121 / 121 → **mean 122.7** | 0.8671 |
+| paired McNemar | p = 0.023 / 0.119 / 0.754 | p = 0.12 / 0.41 / 1.00 | — |
+
+**On `benchmark/` dev it looks like a large win (+6 events, and it wins all
+three pairings). On `benchmark_new` dev it is a null (+1 event out of 242).**
+Only one of six paired comparisons clears significance.
+
+### Why, and it is not ambiguous
+
+The branch makes the *same* trade on both benchmarks — mean over three seeds:
+
+| class | `benchmark/` dev Δ | `benchmark_new` dev Δ |
+|---|---:|---:|
+| A3 | +0.167 | +0.000 |
+| A5 | +0.111 | +0.167 |
+| CSE | +0.101 | +0.031 |
+| NN | — (set has no NN) | **−0.004** |
+| RI | **−0.167** | **−0.143** |
+
+It buys A3/A5/CSE accuracy and pays for it in **RI**, consistently, on both
+sets. What differs is the class mix: `benchmark/` dev is 89% A3/A5/CSE and
+only 8/70 = 11% RI, so the trade nets +6; `benchmark_new` dev is 33% NN
+(untouched by the branch) and RI-light-but-CSE-heavy, so the same trade nets
++1. **The branch is a reallocation across classes, and how good it looks is a
+property of the evaluation set, not of the model.**
+
+**Track D's hypothesis is not supported.** NN recall — the reason the branch
+was built — moves 0.114 → 0.110 on `benchmark_new` dev (three-seed mean),
+i.e. not at all. Whatever the coverage profile adds, it is not the evidence
+NN needs.
+
+A plausible mechanism for the RI loss, consistent with C1 and worth testing
+before anyone revives this: a *simulated* retained intron is a separate
+annotated isoform and therefore has near-uniform intronic coverage by
+construction, while a real one is ragged. A branch that reads coverage shape
+directly can learn sim-RI's signature and mis-transfer, where the
+junction-anchored summaries it replaces were blind to that difference. C1
+found RI to be the one class whose `intron_cov_frac` *level* already matches
+real data (ratio 1.05-1.44) — level, not shape.
+
+### The methodological finding, which outlives the branch
+
+**Baseline seed spread alone is 5 events at n=70 (53/56/58) and 10 at n=242
+(117/127/122).** That is the same magnitude as most of the "improvements"
+this branch has compared across its whole history. A single-seed A/B on
+either dev half cannot distinguish a real effect from seed noise, and the
+first seed here would have supported a +9-event claim (p=0.023) that three
+seeds cut to +6 on one benchmark and +1 on the other. Any future comparison
+on this branch should be seed-replicated before it is believed.
+
+**Verdict: not adopted.** The branch stays in the code, defaulted off
+(`coverage_bins=0`), verified, and free — but it is not an improvement to
+deploy, and the 88.1% dev figure must not be quoted as a headline. It is what
+a class-mix-favourable benchmark says about a model that got worse at RI.
+
 ## C2 — measurements recorded so they are not re-derived
 
 From `benchmark_new/curation.tsv`, 485 unambiguous rows, candidate class =
