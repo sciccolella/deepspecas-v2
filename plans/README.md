@@ -3,14 +3,17 @@
 Plan documents and their implementation reports. Per `CLAUDE.md`, a plan is agreed and
 saved here first, and a separate session implements it.
 
-**Start here:** [`signal-native-v2-resume-8.md`](signal-native-v2-resume-8.md) — the
+**Start here:** [`signal-native-v2-resume-9.md`](signal-native-v2-resume-9.md) — the
 current state of play for the active line of work.
 
 ## signal-native-v2 (the active line)
 
 | file | what it is | status |
 |---|---|---|
-| [`signal-native-v2-resume-8.md`](signal-native-v2-resume-8.md) | **START HERE.** State, direction, open caveats, conventions (2026-09-02) | current |
+| [`signal-native-v2-resume-9.md`](signal-native-v2-resume-9.md) | **START HERE.** State, direction, open caveats, conventions (2026-09-03) | current |
+| [`signal-native-v2-real-supervision-results.md`](signal-native-v2-real-supervision-results.md) | Stage 12 results (2026-09-03): the annotation-derived-label gate fails (0.607 vs 0.80 required) and Track A stops -- the catalogue holds the right label 97.5% of the time but ~2 other events per window are equally "present"; Stage 11's `intron_cov_frac` question answered (C1); the coverage branch is a reallocation, not a win (RI pays for A3/A5/CSE), and NN does not move; baseline seed spread is 5 events at n=70 | **implemented; Track B's B2/B3 outstanding** |
+| [`signal-native-v2-real-supervision.md`](signal-native-v2-real-supervision.md) | The Stage 12 plan (2026-09-02): real supervision without curation (A), a renewable model-blind arena (B), close-outs (C), a representation change gated on A (D) | A/C/D implemented, B through B1 -- see results doc |
+| [`signal-native-v2-resume-8.md`](signal-native-v2-resume-8.md) | Previous resume doc (2026-09-02); accurate through Stage 11 | superseded as the entry point |
 | [`signal-native-v2-trash-sim-results.md`](signal-native-v2-trash-sim-results.md) | Stage 11 results (2026-09-02): real-supervision ceiling (Stage 1) doesn't clear zero-shot NN recall; TRASH-simulation pilot (Stage 2) fails its noise gate but localizes why (RI already calibrated, CSE/NN don't respond to the premrna knob) -- Stage 3 (full batches) never ran | **implemented through Stage 2; Stage 3+ not started** |
 | [`signal-native-v2-trash-sim.md`](signal-native-v2-trash-sim.md) | The Stage 11 plan (2026-09-02): simulate the real TRASH/NN noise regime, retrain, treat borderline-TRASH as NN | implemented through Stage 2 — see results doc |
 | [`signal-native-v2-resume-7.md`](signal-native-v2-resume-7.md) | Previous resume doc (2026-09-02); accurate through Stage 10's `benchmark_new` dev scoring and holds detail resume-8 compresses | superseded as the entry point |
