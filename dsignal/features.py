@@ -736,3 +736,64 @@ def build_all(record: dict, cfg: FeatureConfig | None = None):
     """Convenience: ``(tokens, event, gbm_row, meta)``."""
     tokens, event, meta = build_features(record, cfg)
     return tokens, event, build_gbm_row(tokens, event), meta
+
+
+# --------------------------------------------------------------------------
+# coverage profile (Stage 12 / Track D)
+# --------------------------------------------------------------------------
+
+#: bins across the window for the coverage branch. 128 is a compromise: fine
+#: enough that a retained intron's edge lands in its own bin for a typical
+#: few-kb window, coarse enough that the branch cannot memorize base-level
+#: noise that never transfers from simulation to real data.
+DEFAULT_COVERAGE_BINS = 128
+
+
+def build_coverage_profile(
+    norm: NormalizedRecord, n_bins: int = DEFAULT_COVERAGE_BINS
+) -> np.ndarray:
+    """``[2, n_bins]`` depth-normalized log coverage, one row per condition.
+
+    The hand-derived token/event features summarize coverage at junction
+    anchors and as window-level moments; neither carries the *shape* of
+    coverage along the window -- and the C1 analysis (Stage 12) found the
+    intron/exon coverage profile to be exactly where simulation and real data
+    diverge for CSE and NN. This is that shape, at a resolution the model can
+    use and the simulator cannot trivially fake.
+
+    Depth-normalized by ``depth_scale`` (the pooled top-junction count) and
+    pooled across conditions, so a window's absolute depth divides out while
+    the *between-condition* difference -- the entire signal -- does not.
+
+    **Exactly reversal-symmetric**: bin edges are fractional (``b * n /
+    n_bins``) and each bin is the exact integral of the piecewise-constant
+    coverage over its interval, so the profile of a mirrored record is the
+    column-reversed profile of the original, up to float rounding. Integer
+    edges would not be: rounding breaks the symmetry at odd window lengths,
+    and the flip augmentation would then quietly stop being an involution.
+    """
+    if n_bins <= 0:
+        raise ValueError("n_bins must be positive")
+    out = np.zeros((2, n_bins), dtype=np.float32)
+    n = int(norm.n)
+    if n == 0:
+        return out
+
+    scale = depth_scale(norm)
+    if scale <= 0:
+        scale = 1.0
+
+    edges = np.arange(n_bins + 1, dtype=np.float64) * (n / n_bins)
+    for row, cov in enumerate((norm.cov_1, norm.cov_2)):
+        c = np.asarray(cov, dtype=np.float64)
+        # cumulative integral of the step function, evaluated at fractional x:
+        # full bases up to floor(x) plus the partial base at the boundary
+        csum = np.concatenate(([0.0], np.cumsum(c)))
+        lo = np.floor(edges).astype(np.int64)
+        lo = np.clip(lo, 0, n)
+        frac = edges - lo
+        partial = np.where(lo < n, c[np.clip(lo, 0, n - 1)] * frac, 0.0)
+        integral = csum[lo] + partial
+        per_bin = np.diff(integral) / (n / n_bins)
+        out[row] = np.log1p(np.maximum(per_bin, 0.0) / scale)
+    return out

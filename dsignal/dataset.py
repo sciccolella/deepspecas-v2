@@ -33,6 +33,7 @@ from dsignal.features import (
     N_TOKEN_FEATURES,
     FeatureConfig,
     NormalizedRecord,
+    build_coverage_profile,
     build_features,
     mirror,
     normalize_record,
@@ -366,6 +367,7 @@ class JunctionSetDataset(Dataset):
         feature_subset: str = "no-geometry",
         cache: bool = True,
         seed: int = 0,
+        coverage_bins: int = 0,
     ):
         self.entries = list(entries)
         self.cfg = cfg or FeatureConfig(max_junctions=256)
@@ -377,6 +379,11 @@ class JunctionSetDataset(Dataset):
         self.cache = cache
         self._cache: dict = {}
         self.seed = seed
+        #: Stage 12 / Track D. 0 disables the coverage branch entirely, which
+        #: is what every checkpoint before this field carries -- the item dict
+        #: then has no "coverage" key and `collate` emits none, so the model
+        #: and every existing caller behave exactly as before.
+        self.coverage_bins = int(coverage_bins)
         self.epoch = 0
 
     def __len__(self):
@@ -418,7 +425,7 @@ class JunctionSetDataset(Dataset):
             tokens, cls = self.scaler.transform(tokens, cls)
 
         type_label, is_diff = aux_targets(event_id, label)
-        return {
+        item = {
             "tokens": torch.from_numpy(np.ascontiguousarray(tokens, dtype=np.float32)),
             "cls": torch.from_numpy(np.ascontiguousarray(cls, dtype=np.float32)),
             "s_rel": torch.from_numpy(meta["s_rel"].astype(np.int64)),
@@ -431,6 +438,14 @@ class JunctionSetDataset(Dataset):
             "event_id": event_id,
             "ix": ix,
         }
+        if self.coverage_bins:
+            # built from the augmented `norm`, so every augmentation applies to
+            # the profile too -- a flipped record yields a reversed profile
+            # without the augmentation needing to know the branch exists
+            item["coverage"] = torch.from_numpy(
+                build_coverage_profile(norm, self.coverage_bins)
+            )
+        return item
 
     def raw_features(self, i: int):
         """Unaugmented, unscaled (tokens, cls) -- used to fit the scaler."""
@@ -469,7 +484,7 @@ def collate(batch):
             e_rel[i, :j] = item["e_rel"]
             pad_mask[i, :j] = False
 
-    return {
+    out = {
         "tokens": tokens,
         "cls": torch.stack([item["cls"] for item in batch]),
         "s_rel": s_rel,
@@ -484,3 +499,6 @@ def collate(batch):
         "event_id": [item["event_id"] for item in batch],
         "ix": [item["ix"] for item in batch],
     }
+    if "coverage" in batch[0]:
+        out["coverage"] = torch.stack([item["coverage"] for item in batch])
+    return out

@@ -83,6 +83,12 @@ class ModelConfig:
     #: before this field existed loading unchanged.
     use_distance_bias: bool = True
     use_relation_bias: bool = True
+    #: Stage 12 / Track D: bins in the coverage branch's input, 0 = no branch.
+    #: Defaults to 0 so every checkpoint written before this field loads and
+    #: behaves exactly as it did.
+    coverage_bins: int = 0
+    #: channels in the coverage encoder's conv stack
+    coverage_channels: int = 64
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -202,6 +208,65 @@ class EncoderLayer(nn.Module):
         return x, attn
 
 
+class CoverageEncoder(nn.Module):
+    """Binned log-coverage ``[B, 2, bins]`` -> one ``d_model`` vector.
+
+    A dilated 1D conv stack, not a transformer: coverage along a window *is*
+    a sequence, and what matters about it is local shape (where an intron's
+    coverage steps up, how sharp the boundary is) at several scales at once.
+    Dilations 1/2/4/8 reach ~half the window by the last layer, which is the
+    span an RI-vs-CSE distinction needs, without the quadratic cost of
+    attention over 128 positions that carry no set structure.
+
+    The two conditions are the two input channels and stay aligned throughout,
+    so the branch can see a *difference* in profile between conditions -- the
+    part of the signal the event-level moments summarize away.
+    """
+
+    def __init__(self, bins: int, d_model: int, channels: int = 64, dropout: float = 0.1):
+        super().__init__()
+        layers = []
+        in_ch = 2
+        for dilation in (1, 2, 4, 8):
+            layers += [
+                nn.Conv1d(in_ch, channels, kernel_size=3, padding=dilation, dilation=dilation),
+                nn.GELU(),
+                nn.GroupNorm(1, channels),
+            ]
+            in_ch = channels
+        self.conv = nn.Sequential(*layers)
+        # mean and max pooling: mean carries "how much intronic signal overall",
+        # max carries "is there a sharp localized feature somewhere"
+        self.proj = nn.Sequential(
+            nn.Linear(2 * channels, d_model), nn.GELU(), nn.Dropout(dropout), nn.LayerNorm(d_model)
+        )
+
+    def forward(self, coverage: torch.Tensor) -> torch.Tensor:
+        h = self.conv(coverage)
+        pooled = torch.cat([h.mean(dim=-1), h.amax(dim=-1)], dim=-1)
+        return self.proj(pooled)
+
+
+def batch_inputs(batch: dict, device) -> dict:
+    """The model's inputs from a collated batch, moved to ``device``.
+
+    ``coverage`` is present only when the dataset was built with
+    ``coverage_bins`` > 0, so callers that predate the branch keep working
+    unchanged and a coverage-less batch never reaches a coverage model by
+    accident -- the model raises instead.
+    """
+    out = {
+        "tokens": batch["tokens"].to(device),
+        "cls": batch["cls"].to(device),
+        "s_rel": batch["s_rel"].to(device),
+        "e_rel": batch["e_rel"].to(device),
+        "pad_mask": batch["pad_mask"].to(device),
+    }
+    if batch.get("coverage") is not None:
+        out["coverage"] = batch["coverage"].to(device)
+    return out
+
+
 class JunctionSetTransformer(nn.Module):
     def __init__(self, cfg: ModelConfig | None = None):
         super().__init__()
@@ -217,6 +282,12 @@ class JunctionSetTransformer(nn.Module):
         self.relation_bias = nn.Embedding(N_RELATIONS, c.n_heads)
         nn.init.zeros_(self.distance_bias.weight)
         nn.init.zeros_(self.relation_bias.weight)
+
+        self.coverage_encoder = (
+            CoverageEncoder(c.coverage_bins, c.d_model, c.coverage_channels, c.dropout)
+            if c.coverage_bins
+            else None
+        )
 
         self.layers = nn.ModuleList(EncoderLayer(c) for _ in range(c.n_layers))
         self.norm = nn.LayerNorm(c.d_model)
@@ -247,7 +318,28 @@ class JunctionSetTransformer(nn.Module):
         out[:, :, 1:, 1:] = bias
         return out
 
-    def forward(self, tokens, cls, s_rel, e_rel, pad_mask, need_weights: bool = False):
+    def _cls_embedding(self, cls, coverage):
+        """The CLS token: the event vector projection, plus the coverage
+        branch when it is enabled.
+
+        Added into CLS rather than appended as a sixth token on purpose. CLS is
+        the only position that is never masked and is what the heads read, so
+        the branch reaches the decision directly; as a token it would instead
+        have to compete for attention with the junction set and would need a
+        relation/distance bias it has no meaningful value for.
+        """
+        h = self.cls_proj(cls)
+        if self.coverage_encoder is not None:
+            if coverage is None:
+                raise ValueError(
+                    "this model was configured with coverage_bins > 0 but the batch "
+                    "carries no 'coverage' -- build the dataset with coverage_bins set"
+                )
+            h = h + self.coverage_encoder(coverage)
+        return h
+
+    def forward(self, tokens, cls, s_rel, e_rel, pad_mask, need_weights: bool = False,
+                coverage=None):
         """tokens [B, J, F], cls [B, E], s_rel/e_rel [B, J], pad_mask [B, J]
         (True = padding). Returns (logits [B, C], attention or None).
 
@@ -259,7 +351,7 @@ class JunctionSetTransformer(nn.Module):
         working and keeps meaning the same thing.
         """
         b, j, _ = tokens.shape
-        x = torch.cat([self.cls_proj(cls).unsqueeze(1), self.token_proj(tokens)], dim=1)
+        x = torch.cat([self._cls_embedding(cls, coverage).unsqueeze(1), self.token_proj(tokens)], dim=1)
 
         cls_pad = torch.zeros(b, 1, dtype=torch.bool, device=pad_mask.device)
         full_pad = torch.cat([cls_pad, pad_mask], dim=1)
@@ -283,7 +375,7 @@ class JunctionSetTransformer(nn.Module):
         # "which junctions drove this call"
         return logits, torch.stack(attns, dim=1)[:, :, :, 0, 1:].mean(dim=2)
 
-    def forward_parts(self, tokens, cls, s_rel, e_rel, pad_mask):
+    def forward_parts(self, tokens, cls, s_rel, e_rel, pad_mask, coverage=None):
         """``(type_logits [B, T], diff_logit [B])`` -- the two heads before
         composition, which is what the training loss needs: the type head is
         supervised only where a structural type exists, and the differential
@@ -324,7 +416,7 @@ class JunctionSetTransformer(nn.Module):
         if not self.cfg.two_head:
             raise ValueError("forward_parts is only defined for two_head models")
         b, j, _ = tokens.shape
-        x = torch.cat([self.cls_proj(cls).unsqueeze(1), self.token_proj(tokens)], dim=1)
+        x = torch.cat([self._cls_embedding(cls, coverage).unsqueeze(1), self.token_proj(tokens)], dim=1)
         cls_pad = torch.zeros(b, 1, dtype=torch.bool, device=pad_mask.device)
         full_pad = torch.cat([cls_pad, pad_mask], dim=1)
         bias = self._attention_bias(s_rel, e_rel, pad_mask)

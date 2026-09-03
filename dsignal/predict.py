@@ -42,8 +42,13 @@ from dsignal.dataset import (
     FeatureScaler,
 )
 from dsignal.extract import ReadFilters, extract_event, parse_region
-from dsignal.features import FeatureConfig, build_features, normalize_record
-from dsignal.model import JunctionSetTransformer, ModelConfig
+from dsignal.features import (
+    FeatureConfig,
+    build_coverage_profile,
+    build_features,
+    normalize_record,
+)
+from dsignal.model import JunctionSetTransformer, ModelConfig, batch_inputs
 
 
 class PriorCorrection:
@@ -168,6 +173,10 @@ class Predictor:
         self.classes = None
         self.feature_subset = None
         self.cfg = None
+        #: Stage 12 / Track D. Read off the checkpoints' model config, never
+        #: from a CLI default -- 0 means the branch is off, which is what every
+        #: checkpoint before Stage 12 carries.
+        self.coverage_bins = None
         #: per-checkpoint training class counts, in ``self.classes`` order,
         #: for checkpoints that carry ``train_class_counts``; None entries for
         #: those predating the field (see build_prior_correction).
@@ -193,6 +202,15 @@ class Predictor:
                     f"feature config {fcfg} vs {self.cfg}. All checkpoints passed to one "
                     f"Predictor must be folds of the same run; combine different runs via "
                     f"dsignal.ensemble.MultiRunPredictor instead"
+                )
+
+            cov_bins = int(ck["model_config"].get("coverage_bins", 0))
+            if self.coverage_bins is None:
+                self.coverage_bins = cov_bins
+            elif cov_bins != self.coverage_bins:
+                raise ValueError(
+                    f"{path}: checkpoints disagree on coverage_bins ({cov_bins} vs "
+                    f"{self.coverage_bins}); folds of one run must agree"
                 )
 
             counts = ck.get("train_class_counts")
@@ -239,7 +257,10 @@ class Predictor:
         out = []
         for n in norms:
             tokens_raw, cls_raw, meta = build_features(norm=n, cfg=self.cfg)
-            out.append((tokens_raw, cls_raw, apply_feature_subset_meta(meta, self.feature_subset)))
+            # built from the same (possibly condition-swapped) view, so TTA
+            # applies to the coverage branch exactly as it does to the tokens
+            cov = build_coverage_profile(n, self.coverage_bins) if self.coverage_bins else None
+            out.append((tokens_raw, cls_raw, apply_feature_subset_meta(meta, self.feature_subset), cov))
         return out
 
     def fold_probs(self, record: dict, need_weights: bool = False):
@@ -258,15 +279,15 @@ class Predictor:
         attn_out = None
 
         for f, (model, scaler) in enumerate(zip(self.models, self.scalers)):
-            for tokens_raw, cls_raw, meta in views:
-                probs, attn = self._forward(model, scaler, tokens_raw, cls_raw, meta, need_weights)
+            for tokens_raw, cls_raw, meta, cov in views:
+                probs, attn = self._forward(model, scaler, tokens_raw, cls_raw, meta, need_weights, cov)
                 per_fold[f] += probs / len(views)
                 if need_weights and attn is not None and attn_out is None:
                     attn_out = attn
 
         return per_fold, attn_out
 
-    def _forward(self, model, scaler, tokens_raw, cls_raw, meta, need_weights: bool):
+    def _forward(self, model, scaler, tokens_raw, cls_raw, meta, need_weights: bool, cov=None):
         """One (fold, view) forward pass -> (softmax [C], attention or None)."""
         tokens, cls = apply_feature_subset(tokens_raw, cls_raw, self.feature_subset)
         tokens, cls = scaler.transform(tokens, cls)
@@ -280,17 +301,13 @@ class Predictor:
                     "label": -1,
                     "event_id": "",
                     "ix": "",
+                    **({"coverage": torch.from_numpy(cov)} if cov is not None else {}),
                 }
             ]
         )
         with torch.no_grad():
             logits, attn = model(
-                batch["tokens"].to(self.device),
-                batch["cls"].to(self.device),
-                batch["s_rel"].to(self.device),
-                batch["e_rel"].to(self.device),
-                batch["pad_mask"].to(self.device),
-                need_weights=need_weights,
+                **batch_inputs(batch, self.device), need_weights=need_weights
             )
         return (logits.softmax(dim=1)[0].cpu().numpy(),
                 attn[0].cpu().numpy() if (need_weights and attn is not None) else None)

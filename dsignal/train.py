@@ -68,7 +68,7 @@ from dsignal.dataset import (
     read_labels,
 )
 from dsignal.features import FeatureConfig
-from dsignal.model import JunctionSetTransformer, ModelConfig
+from dsignal.model import JunctionSetTransformer, ModelConfig, batch_inputs
 from sim.gene_split import assert_no_gene_leak, split_genes
 
 
@@ -118,10 +118,7 @@ def two_head_loss(model, batch, device, type_weights, pos_weight, diff_lambda: f
     by the -1 sentinel rather than being folded into a fifth type, which is the
     whole reason the head is 4-way and not 5-way.
     """
-    type_logits, diff_logit = model.forward_parts(
-        batch["tokens"].to(device), batch["cls"].to(device),
-        batch["s_rel"].to(device), batch["e_rel"].to(device), batch["pad_mask"].to(device),
-    )
+    type_logits, diff_logit = model.forward_parts(**batch_inputs(batch, device))
     type_target = batch["type_label"].to(device)
     is_diff = batch["is_diff"].to(device)
 
@@ -144,13 +141,7 @@ def evaluate(model, loader, device):
     preds, golds, ids = [], [], []
     with torch.no_grad():
         for batch in loader:
-            logits, _ = model(
-                batch["tokens"].to(device),
-                batch["cls"].to(device),
-                batch["s_rel"].to(device),
-                batch["e_rel"].to(device),
-                batch["pad_mask"].to(device),
-            )
+            logits, _ = model(**batch_inputs(batch, device))
             preds.extend(logits.argmax(dim=1).cpu().tolist())
             golds.extend(batch["label"].tolist())
             ids.extend(batch["event_id"])
@@ -200,22 +191,22 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
     # It is fit on the whole training fold, inner val included: that is still
     # training-fold data, so nothing about the reported fold enters it.
     fit_ds = JunctionSetDataset(
-        fold_entries, cfg=cfg, feature_subset=args.feature_subset, cache=not args.no_cache
+        fold_entries, cfg=cfg, feature_subset=args.feature_subset, cache=not args.no_cache, coverage_bins=args.coverage_bins
     )
     scaler = fit_ds.fit_scaler()
 
     train_ds = JunctionSetDataset(
         train_entries, cfg=cfg, augment=aug, scaler=scaler,
-        feature_subset=args.feature_subset, cache=not args.no_cache, seed=args.seed,
+        feature_subset=args.feature_subset, cache=not args.no_cache, coverage_bins=args.coverage_bins, seed=args.seed,
     )
     test_ds = JunctionSetDataset(
         test_entries, cfg=cfg, scaler=scaler,
-        feature_subset=args.feature_subset, cache=not args.no_cache, seed=args.seed,
+        feature_subset=args.feature_subset, cache=not args.no_cache, coverage_bins=args.coverage_bins, seed=args.seed,
     )
     # must come after test_ds: under "held-out" the val set *is* the test set
     val_ds = JunctionSetDataset(
         val_entries, cfg=cfg, scaler=scaler,
-        feature_subset=args.feature_subset, cache=not args.no_cache, seed=args.seed,
+        feature_subset=args.feature_subset, cache=not args.no_cache, coverage_bins=args.coverage_bins, seed=args.seed,
     ) if args.select_on == "inner" else test_ds
 
     train_loader = DataLoader(
@@ -236,6 +227,7 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
         n_layers=args.n_layers, d_ff=args.d_ff, dropout=args.dropout,
         two_head=args.two_head, n_types=len(TYPE_CLASSES),
         use_distance_bias=not args.no_distance_bias, use_relation_bias=not args.no_relation_bias,
+        coverage_bins=args.coverage_bins, coverage_channels=args.coverage_channels,
     )
     model = JunctionSetTransformer(mcfg).to(device)
     if fold == 0:
@@ -264,13 +256,7 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
                 loss = two_head_loss(model, batch, device, type_weights, pos_weight,
                                      args.diff_lambda)
             else:
-                logits, _ = model(
-                    batch["tokens"].to(device),
-                    batch["cls"].to(device),
-                    batch["s_rel"].to(device),
-                    batch["e_rel"].to(device),
-                    batch["pad_mask"].to(device),
-                )
+                logits, _ = model(**batch_inputs(batch, device))
                 loss = criterion(logits, batch["label"].to(device))
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
@@ -313,7 +299,7 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
               file=sys.stderr)
         full_ds = JunctionSetDataset(
             fold_entries, cfg=cfg, augment=aug, scaler=scaler,
-            feature_subset=args.feature_subset, cache=not args.no_cache, seed=args.seed,
+            feature_subset=args.feature_subset, cache=not args.no_cache, coverage_bins=args.coverage_bins, seed=args.seed,
         )
         full_loader = DataLoader(
             full_ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate,
@@ -425,6 +411,11 @@ def _build_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--dropout", type=float, default=0.2)
     ap.add_argument("--no-distance-bias", action="store_true",
                     help="ablation (plan Stage 8, B3): disable the signed log-distance attention bias")
+    ap.add_argument("--coverage-bins", type=int, default=0,
+                    help="Stage 12 / Track D: bins in the coverage branch (0 = branch off, "
+                         "the pre-Stage-12 behaviour)")
+    ap.add_argument("--coverage-channels", type=int, default=64,
+                    help="channels in the coverage encoder's conv stack")
     ap.add_argument("--no-relation-bias", action="store_true",
                     help="ablation (plan Stage 8, B3): disable the pairwise-relation attention bias")
 

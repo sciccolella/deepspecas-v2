@@ -295,6 +295,46 @@ def check_coverage_signal(npz_dir: str, n_records: int, verbose: bool) -> int:
     return 0 if ok else 1
 
 
+def check_coverage_profile(npz_dir: str, n_records: int, verbose: bool) -> int:
+    """The coverage branch's input must respect the same symmetries the rest
+    of the representation does (Stage 12 / Track D):
+
+      * mirroring a record reverses its profile exactly -- otherwise the flip
+        augmentation stops being label-preserving for the branch;
+      * swapping the two conditions swaps the two rows exactly -- otherwise
+        condition-swap TTA averages two views that are not the same event.
+
+    Both are checked as exact equalities, not tolerances: the binning uses
+    fractional edges precisely so that they hold bit-for-bit.
+    """
+    from dsignal.dataset import augment_condition_swap
+    from dsignal.features import build_coverage_profile
+
+    paths = sorted(glob.glob(pjoin(npz_dir, "*.npz")))[:n_records]
+    if not paths:
+        print("check 6 SKIPPED: no records")
+        return 0
+    worst_mirror = worst_swap = 0.0
+    for path in paths:
+        norm = normalize_record(load_record(path))
+        prof = build_coverage_profile(norm)
+        worst_mirror = max(
+            worst_mirror,
+            float(np.abs(build_coverage_profile(mirror(norm)) - prof[:, ::-1]).max()),
+        )
+        worst_swap = max(
+            worst_swap,
+            float(np.abs(build_coverage_profile(augment_condition_swap(norm)) - prof[::-1]).max()),
+        )
+    ok = worst_mirror == 0.0 and worst_swap == 0.0
+    print(
+        f"check 6 (coverage profile symmetries): {'OK' if ok else 'FAILURE'} "
+        f"-- mirror err {worst_mirror:g}, condition-swap err {worst_swap:g} "
+        f"over {len(paths)} records (want exactly 0)"
+    )
+    return 0 if ok else 1
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--npz-dir", default="sim/experiment/npz_geomwin")
@@ -308,6 +348,7 @@ def main(argv=None) -> None:
     failed += check_flip_maps_a3_to_a5(args.verbose)
     failed += check_coverage_offsets(args.npz_dir, args.n_records, args.verbose)
     failed += check_coverage_signal(args.npz_dir, args.n_records, args.verbose)
+    failed += check_coverage_profile(args.npz_dir, args.n_records, args.verbose)
 
     print(f"\n{'ALL CHECKS PASSED' if not failed else f'{failed} CHECK FAILURES'}")
     sys.exit(1 if failed else 0)
