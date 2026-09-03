@@ -324,11 +324,7 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
                     loss = two_head_loss(model, batch, device, refit_type_weights,
                                          refit_pos_weight, args.diff_lambda)
                 else:
-                    logits, _ = model(
-                        batch["tokens"].to(device), batch["cls"].to(device),
-                        batch["s_rel"].to(device), batch["e_rel"].to(device),
-                        batch["pad_mask"].to(device),
-                    )
+                    logits, _ = model(**batch_inputs(batch, device))
                     loss = criterion(logits, batch["label"].to(device))
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
