@@ -32,6 +32,12 @@ PREFIX=$3
 ROOT=${ROOT:-/data/conda/ciccolella/deepSpecas-v2}
 SALMON=${SALMON:-/data/conda/ciccolella/envs/salmon/bin/salmon}
 RMATS=${RMATS:-/data/conda/ciccolella/envs/rmats/bin/rmats.py}
+# rmatspipeline (a compiled .so) sits in the rMATS install directory, NOT in the
+# env's site-packages, and rmats.py's shebang is a bare `#!/usr/bin/env python`
+# -- which the env does not even provide (only python3/python3.12). Invoked
+# directly it dies instantly with ModuleNotFoundError: rmatspipeline.
+RMATS_DIR=${RMATS_DIR:-/data/conda/ciccolella/envs/rmats/rMATS}
+RMATS_PYTHON=${RMATS_PYTHON:-/data/conda/ciccolella/envs/rmats/bin/python3.12}
 SUPPA=${SUPPA:-/data/conda/ciccolella/envs/DSpoly2v2/bin/suppa.py}
 PYTHON=${PYTHON:-/data/conda/ciccolella/envs/DSpoly2v2/bin/python}
 SALMON_INDEX=${SALMON_INDEX:-$ROOT/benchmark_build/salmon_index}
@@ -84,6 +90,26 @@ for t in SE A3 A5 RI; do
 done
 
 echo "=== 4/6 SUPPA2 diffSplice ==="
+# SUPPA2 exits 0 having written `<out>.dpsi.temp.0` and, on this install, never
+# renames it to `<out>.dpsi` (benchmark_new's Stage 8 run did get the rename, so
+# this is install- or version-dependent, not a failure). The temp file is
+# complete -- same row count as the reference run, log says "Done!" -- and
+# differs only by carrying an extra leading `Event_id` header cell. consensus.py
+# reads the final format with `read_csv(...).reset_index()`, i.e. it *needs* the
+# 2-field header where the event id column is unnamed, so strip that one cell
+# rather than copying the file as-is.
+#
+# This runs BEFORE the diffSplice loop, not after: the loop skips on `.dpsi`,
+# so recovering first turns a resumed run into a no-op instead of recomputing
+# every empirical p-value again.
+for t in SE A3 A5 RI; do
+  [[ -f "$OUT_DIR/diffsplice_${t}.dpsi" ]] && continue
+  temp="$OUT_DIR/diffsplice_${t}.dpsi.temp.0"
+  [[ -f "$temp" ]] || continue
+  { head -1 "$temp" | sed 's/^Event_id\t//'; tail -n +2 "$temp"; } > "$OUT_DIR/diffsplice_${t}.dpsi"
+  echo "  ${t}: recovered .dpsi from .temp.0 ($(wc -l < "$OUT_DIR/diffsplice_${t}.dpsi") lines)"
+done
+
 for t in SE A3 A5 RI; do
   [[ -f "$OUT_DIR/diffsplice_${t}.dpsi" ]] && continue
   "$SUPPA" diffSplice -m empirical -i "$IOE_DIR/events_${t}_strict.ioe" \
@@ -92,12 +118,22 @@ for t in SE A3 A5 RI; do
     -o "$OUT_DIR/diffsplice_${t}" > "$OUT_DIR/diffsplice_${t}.log" 2>&1
 done
 
+# fresh run: the loop just produced .temp.0 files, convert them the same way
+for t in SE A3 A5 RI; do
+  [[ -f "$OUT_DIR/diffsplice_${t}.dpsi" ]] && continue
+  temp="$OUT_DIR/diffsplice_${t}.dpsi.temp.0"
+  [[ -f "$temp" ]] || { echo "missing both diffsplice_${t}.dpsi and its .temp.0" >&2; exit 1; }
+  { head -1 "$temp" | sed 's/^Event_id\t//'; tail -n +2 "$temp"; } > "$OUT_DIR/diffsplice_${t}.dpsi"
+  echo "  ${t}: recovered .dpsi from .temp.0 ($(wc -l < "$OUT_DIR/diffsplice_${t}.dpsi") lines)"
+done
+
 echo "=== 5/6 rMATS ==="
 # one merged BAM per condition, matching how benchmark_new's rMATS run was set up
 if [[ ! -f "$OUT_DIR/rmats_out/SE.MATS.JC.txt" ]]; then
   echo "$WORK_DIR/align/c1_${PREFIX}.bam" > "$OUT_DIR/b1.txt"
   echo "$WORK_DIR/align/c2_${PREFIX}.bam" > "$OUT_DIR/b2.txt"
-  "$RMATS" --b1 "$OUT_DIR/b1.txt" --b2 "$OUT_DIR/b2.txt" --gtf "$GTF" \
+  PYTHONPATH="$RMATS_DIR${PYTHONPATH:+:$PYTHONPATH}" "$RMATS_PYTHON" "$RMATS" \
+    --b1 "$OUT_DIR/b1.txt" --b2 "$OUT_DIR/b2.txt" --gtf "$GTF" \
     -t paired --readLength "$READ_LENGTH" --variable-read-length \
     --nthread "$THREADS" --od "$OUT_DIR/rmats_out" --tmp "$OUT_DIR/rmats_tmp" \
     > "$OUT_DIR/rmats.log" 2>&1
