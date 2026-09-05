@@ -13,3 +13,11 @@ runs/*/
 # SUPPA event catalogue: 40MB of .ioe, regenerated on pasteur from the GTF
 # (SUPPA2 generateEvents). sim/catalogue.py reads it; nothing needs it in git.
 sim/events/
+
+# Track B arena BAMs (Stage 12). ~500MB of region subsets -- an order of
+# magnitude larger than benchmark/ (18MB) and benchmark_new/ (71MB), which are
+# committed. Rebuild with benchmark_build/run_arena.sh + samtools view -L, or
+# re-copy from pasteur; the candidate CSVs, consensus.tsv and events.bed that
+# define the arena *are* committed.
+ptbp1_arena/*.bam
+ptbp1_arena/*.bam.bai
