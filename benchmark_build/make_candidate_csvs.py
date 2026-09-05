@@ -13,6 +13,7 @@ requires.
 
 Usage: make_candidate_csvs.py <consensus_tsv> <out_dir> <bam1> <bam2>
 """
+import os
 import sys
 
 import pandas as pd
@@ -23,6 +24,9 @@ CSV_NAME = {"CSE": "ES", "RI": "IR", "A3": "A3", "A5": "A5"}  # CSV_LABEL conven
 
 def main():
     consensus_tsv, out_dir, bam1, bam2 = sys.argv[1:5]
+    # Stage 8 ran this into an existing directory; Track B's run_arena.sh names
+    # a fresh one per arena, so create it rather than dying after rMATS.
+    os.makedirs(out_dir, exist_ok=True)
     df = pd.read_csv(consensus_tsv, sep="\t")
 
     bed_rows = []
