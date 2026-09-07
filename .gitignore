@@ -21,3 +21,7 @@ sim/events/
 # define the arena *are* committed.
 ptbp1_arena/*.bam
 ptbp1_arena/*.bam.bai
+# arena build intermediates (31MB: rMATS tables, .dpsi, TPM matrices) -- the
+# arena is *defined* by consensus.tsv + candidates/, which are committed; these
+# are reproducible with benchmark_build/run_arena.sh or re-copyable from pasteur
+ptbp1_arena/build/

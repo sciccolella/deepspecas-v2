@@ -26,10 +26,59 @@ pair; different RBP. Accessions were frozen in the plan *before* any scoring.
 | RI (`IR.csv`) | 284 |
 | A3 | 152 |
 | A5 | 113 |
-| **total** | **1,622** |
+| **NN** (`NN.csv`) | **800** |
+| **total** | **2,422** |
 
-2.8× `benchmark_new`'s 573 from the identical pipeline — PTBP1 is a stronger
-splicing perturbation than SRSF3.
+The positives are 2.8× `benchmark_new`'s 573 from the identical pipeline —
+PTBP1 is a stronger splicing perturbation than SRSF3.
+
+## The NN half
+
+`benchmark_build/make_nn_candidates.py` builds it from the same two callers
+with the criterion inverted: a locus **both callers see and both call clearly
+unchanged**, in a demonstrably expressed gene. These are deliberately *hard*
+negatives — a real catalogued event with real splicing at it, just no
+differential usage, which is what `sim/select_events.py` calls `nn_hard` and
+what most of `benchmark_new`'s curated NN turned out to be.
+
+    SUPPA2:  dPSI measurable (not NaN), p > 0.20, |dPSI| < 0.05
+    rMATS:   PValue > 0.20, |IncLevelDifference| < 0.05
+    matched at one locus by overlap (TOLERANCE=25, as for positives)
+    expressed: summed transcript TPM >= 1.0 in both conditions, every replicate
+    and not overlapping any positive candidate
+
+800 sampled (seed 0) from pools of 1,652 / 1,000 / 6,159 / 903 available loci,
+allocated **proportionally to the positive class mix** so window widths follow
+the positives' distribution by construction.
+
+Two properties were checked rather than assumed:
+
+* **No width leak.** Width alone separates NN from positives at AUC **0.493**
+  (Mann-Whitney p=0.57, KS p=0.34) — i.e. not at all. Width has leaked class
+  information on this branch before (`sim/width_leak_check.py`).
+* **Extractor parity**: `dsignal.verify` matches 1,600/1,600 NN regions on both
+  coverage and junctions.
+
+* **A weak coverage skew, of the size curation also produces.** Mean window
+  coverage alone separates NN from positives at AUC **0.417** (p=0.004) — NN
+  slightly *lower*, median 15.1× vs 26.8×. For calibration, the same
+  measurement on curated `benchmark_new` gives AUC **0.564** (p=0.050) — the
+  same small magnitude in the **opposite** direction (NN *higher*, 41.9× vs
+  25.2×). So this arena is no more coverage-separable than a curated set, but
+  the sign differs: a model leaning on depth would be rewarded on one set and
+  punished on the other. Neither is a shortcut worth much (|AUC−0.5| ≈ 0.06–0.08).
+
+One thing to know if you rebuild the BAM subsets: they must be cut over
+`candidates/all_events.sorted.bed` (positives **and** NN). The first subset
+here was built from the positives-only BED, which left 11 of the first 12 NN
+windows with **zero coverage** — every NN would then have been "correctly"
+predicted by a model that had learned nothing but a coverage detector.
+
+**The NN side's noise level is not measured.** The positives' 67.2% purity
+comes from `benchmark_new`'s curation; no curated set of automatically-derived
+NN exists to check this half against, so a locus both callers call unchanged
+may still be one a curator would call a real event. Treat NN here exactly like
+the positives: paired comparisons only.
 
 ## How to read numbers from it — the part that matters
 
@@ -49,10 +98,10 @@ Consequences, both binding:
   McNemar between two predictors is valid; the magnitude is a lower bound on
   the true difference.
 
-**There is no NN class.** The consensus pipeline emits only positive
-candidates, so NN recall — the weakness every v1 and v2 checkpoint measured on
-`benchmark_new` shares — cannot be measured here at all. Any comparison run on
-this arena covers the classes both models are already good at.
+**NN is present but its noise is unquantified** — see "The NN half" below. The
+consensus pipeline emits only positives; the NN candidates come from a separate
+inverted criterion whose error rate has never been checked against curation,
+unlike the positives' measured 67.2%.
 
 ## Single-use
 
