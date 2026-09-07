@@ -60,16 +60,26 @@ p=0.023; three seeds cut it to +6 on one benchmark and +1 on the other.
 of this branch's work. `ptbp1_work/fastq` still holds 79G of FASTQ and
 `ptbp1_work/align` the merged BAMs, if a rebuild is ever needed.
 
-## Track B state — B2 complete, B3 is the open decision
+## Track B state — B2 and B3 both complete
 
 `ptbp1_arena/` (see its README, which carries every caveat): **2,422 events**,
 1,073 CSE / 800 NN / 284 RI / 152 A3 / 113 A5, `dsignal.verify` 4,844/4,844.
 The BAM subsets are gitignored (881MB); the CSVs, `consensus.tsv` and the BEDs
 that define the arena are committed.
 
-**B3 has not run, and running it spends the arena's single use.** It is one
-scoring pass: v1's six-net ensemble vs the best v2, paired McNemar, per-class
-and pooled, with absolute accuracy explicitly not quotable.
+**B3 ran** (Stage 13, `plans/signal-native-v2-arena-b3.md`, pre-registered
+before scoring). Headline: v1 six-net ensemble vs v2's `e4_union2` at
+`--nn-weight 0.1`, pooled `correct_collapsed` over all 2,422 events —
+**v1 881/2422 = 36.4%, v2 1175/2422 = 48.5%, McNemar p<0.0001. v2 wins
+pooled and every per-class recall except RI** (v1 89.4% vs v2 75.0%).
+**NN is v2's largest per-class deficit** (16.9% recall vs next-lowest A3's
+59.2%) at the as-deployed operating point; a prior-free secondary run shows
+NN recall at 56.0% with no prior correction, confirming the deficit is
+partly an artefact of `nn_weight=0.1` being tuned on a 0%-NN benchmark, not
+purely a modelling failure. Per the pre-registered decision rule: **Stage 14
+is the NN attack** — build arena pair 2 from a different KD experiment and
+use its NN as hard negatives, holding pair 1 (this arena) as eval, checking
+any resulting move against curated `benchmark_new` dev before trusting it.
 
 ### Three bugs the first arena build hit, all fixed in the committed scripts
 

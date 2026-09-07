@@ -248,6 +248,66 @@ def cmd_compare(args) -> None:
               f"new {n_acc:3d}/{len(shared)} = {n_acc / len(shared):5.1%}   "
               f"base-only {b:2d}  new-only {c:2d}  McNemar p = {p:.4f}")
 
+    if args.by_class:
+        reweight = _class_mix(args.reweight_mix) if args.reweight_mix else None
+        _by_class(base_by, new_by, shared, reweight=reweight)
+
+
+def _class_mix(csv_paths):
+    """truth-class -> proportion, from row counts of class-labelled CSVs (e.g.
+    benchmark_new/{A3,A5,ES,IR,NN}.csv) via score_benchmark.CSV_LABEL."""
+    counts = Counter()
+    for path in csv_paths:
+        stem = splitext(basename(path))[0]
+        if stem not in CSV_LABEL:
+            raise ValueError(f"{path}: no label mapping for {stem!r}")
+        counts[CSV_LABEL[stem]] += sum(1 for _ in read_prediction_csv(path))
+    total = sum(counts.values())
+    return {c: n / total for c, n in counts.items()}
+
+
+def _by_class(base_by, new_by, shared, reweight=None):
+    """Per-truth-class recall (using collapsed correctness, since v1 never
+    predicts A3/A5 -- see CLAUDE.md/the arena-b3 pre-registration) and a
+    paired McNemar per class -- 5 tests, over the 5 truth strata A3/A5/CSE/NN/RI,
+    not to be cherry-picked individually. Macro-recall is the unweighted mean
+    over classes present, so it is not a function of any one class's sample
+    size (Trap 3 in plans/signal-native-v2-arena-b3.md). ``reweight``, if
+    given, is a ``truth-class -> proportion`` mapping (e.g. benchmark_new's
+    class mix) used to print a sensitivity-reweighted accuracy alongside."""
+    classes = sorted({base_by[k]["truth"] for k in shared})
+    print(f"\nper-class recall (collapsed correctness, {len(classes)} truth strata):")
+    b_recalls, n_recalls = {}, {}
+    for cls in classes:
+        ks = [k for k in shared if base_by[k]["truth"] == cls]
+        truth = [collapse(base_by[k]["truth"]) for k in ks]
+        b_pred = [collapse(base_by[k]["pred"]) for k in ks]
+        n_pred = [collapse(new_by[k]["pred"]) for k in ks]
+        b_acc = sum(p == t for p, t in zip(b_pred, truth))
+        n_acc = sum(p == t for p, t in zip(n_pred, truth))
+        b_recalls[cls] = b_acc / len(ks)
+        n_recalls[cls] = n_acc / len(ks)
+        b, c, p = mcnemar(b_pred, n_pred, truth)
+        print(f"  {cls:4s} n={len(ks):4d}  base {b_acc:4d}/{len(ks):<4d} = {b_recalls[cls]:5.1%}   "
+              f"new {n_acc:4d}/{len(ks):<4d} = {n_recalls[cls]:5.1%}   "
+              f"base-only {b:2d}  new-only {c:2d}  McNemar p = {p:.4f}")
+
+    b_macro = sum(b_recalls.values()) / len(classes)
+    n_macro = sum(n_recalls.values()) / len(classes)
+    print(f"  macro-recall (unweighted over {len(classes)} classes):  base {b_macro:5.1%}   new {n_macro:5.1%}")
+
+    if reweight is not None:
+        missing = [c for c in classes if c not in reweight]
+        if missing:
+            print(f"  warning: reweight mix has no entry for {missing}, skipping those classes",
+                  file=sys.stderr)
+        used = [c for c in classes if c in reweight]
+        norm = sum(reweight[c] for c in used)
+        b_rw = sum(b_recalls[c] * reweight[c] for c in used) / norm
+        n_rw = sum(n_recalls[c] * reweight[c] for c in used) / norm
+        print(f"  reweighted to given class mix ({', '.join(f'{c}={reweight[c]:.1%}' for c in used)}):"
+              f"  base {b_rw:5.1%}   new {n_rw:5.1%}")
+
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__,
@@ -275,6 +335,13 @@ def main(argv=None) -> None:
                    help="Convention B (Stage 11 Stage 0): re-truth both sides via "
                    "dsignal.score_benchmark.apply_trash_as_nn before pairing, so "
                    "McNemar runs under TRASH-as-NN instead of the default convention A")
+    c.add_argument("--by-class", action="store_true",
+                   help="also print per-truth-class recall (collapsed correctness) "
+                   "and a paired McNemar per class, plus the unweighted macro-recall")
+    c.add_argument("--reweight-mix", nargs="+", default=None, metavar="CSV",
+                   help="with --by-class: class-mix CSVs (e.g. benchmark_new/*.csv) whose "
+                   "row counts give a truth-class distribution to reweight the arena's "
+                   "per-class recalls by, as a sensitivity check (Trap 3)")
     c.set_defaults(func=cmd_compare)
 
     args = ap.parse_args(argv)
