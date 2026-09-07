@@ -36,8 +36,32 @@ the "## Results" heading, may be edited once building/scoring starts.
 **AQR knockdown**, `ENCSR431SXF` vs its ENCODE `possible_controls` entry
 `ENCSR225PRV`, both HepG2 — chosen over the PRPF4 backup for maximum
 mechanistic distance from PTBP1 (hnRNP, pair 1) and SRSF3 (SR protein,
-`benchmark_new`): AQR is a core intron-binding spliceosomal factor. Accession
-freeze and run-structure table to be appended in Step 1, before any fetch.
+`benchmark_new`): AQR is a core intron-binding spliceosomal factor.
+
+### Step 1 — frozen accessions (verified against ENCODE portal + NCBI SRA, 2026-09-07)
+
+| condition | ENCODE | GEO | runs |
+|---|---|---|---|
+| AQR shRNA KD, HepG2 | `ENCSR431SXF` | GSE177214 | rep1 SRR14843100, rep2 SRR14843099 (one run each, paired-end 100bp, HiSeq 2500) |
+| non-target shRNA control, HepG2 | `ENCSR225PRV` | GSE176746 | rep1 SRR14840064 (one run); rep2 SRR14840062 + SRR14840063 (two runs) |
+
+`ENCSR225PRV` is confirmed as `ENCSR431SXF`'s sole `possible_controls` entry
+(fetched directly from the ENCODE experiment JSON), same relationship
+`ptbp1_arena/README.md`'s condition table documents for pair 1. Same cell
+line/protocol/assay as pair 1 and `benchmark_new`'s SRSF3 pair; different RBP.
+
+**Correction to the Stage 14 plan draft** (`plans/signal-native-v2-stage14-nn-attack-plan.md`
+Step 1): it states the control's rep1 is "SRR14840064+SRR14840061". Verified
+against the ENCODE experiment JSON (`biological_replicates` field per file)
+and cross-checked on NCBI SRA: **`SRR14840061` is not part of this
+experiment at all** — it is "microRNA-seq from ovary" (`SRX11164272`, a
+different SUNY Albany RIP-seq submission that happens to share the same
+`SRR148400xx` accession block). `ENCSR225PRV` has exactly 3 runs total:
+rep1 = `SRR14840064` alone (no second run to concatenate), rep2 =
+`SRR14840062` + `SRR14840063` (the two-run replicate the plan anticipated,
+just on the wrong rep number). The concatenation pre-step in Step 2 is
+therefore needed for **rep2 only**, not rep1. This retraction stays here
+per the never-delete convention; the plan file itself is not edited.
 
 ## Gene-disjointness rule
 
