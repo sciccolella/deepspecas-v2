@@ -1,4 +1,4 @@
-# signal-native-v2 — START HERE (2026-09-03, Stage 12)
+# signal-native-v2 — START HERE (2026-09-07, Stage 12)
 
 Resume document. Branch `signal-native-v2`, **nothing pushed** (per repo
 convention — pushing is the user's call).
@@ -54,16 +54,58 @@ ever compared. Seed 0 alone would have supported a +9-event claim at
 p=0.023; three seeds cut it to +6 on one benchmark and +1 on the other.
 **Seed-replicate any future comparison before believing it.**
 
-## What is running right now (2026-09-03)
+## What is running right now (updated 2026-09-07)
 
-* **pasteur**: `benchmark_build/run_arena.sh ptbp1_work ptbp1_arena ptbp1`
-  (salmon → SUPPA2 → rMATS → consensus → candidate CSVs). Log
-  `ptbp1_arena.log`. Started ~09:37 after the fetch/align finished
-  (`c1_ptbp1.bam`/`c2_ptbp1.bam` are written, 79G of FASTQ retained under
-  `ptbp1_work/fastq`). **Check this first when resuming.**
-* Nothing local.
+**Nothing.** The PTBP1 arena is built, verified and committed; pasteur is idle
+of this branch's work. `ptbp1_work/fastq` still holds 79G of FASTQ and
+`ptbp1_work/align` the merged BAMs, if a rebuild is ever needed.
 
-## Track B state (the main remaining line)
+## Track B state — B2 complete, B3 is the open decision
+
+`ptbp1_arena/` (see its README, which carries every caveat): **2,422 events**,
+1,073 CSE / 800 NN / 284 RI / 152 A3 / 113 A5, `dsignal.verify` 4,844/4,844.
+The BAM subsets are gitignored (881MB); the CSVs, `consensus.tsv` and the BEDs
+that define the arena are committed.
+
+**B3 has not run, and running it spends the arena's single use.** It is one
+scoring pass: v1's six-net ensemble vs the best v2, paired McNemar, per-class
+and pooled, with absolute accuracy explicitly not quotable.
+
+### Three bugs the first arena build hit, all fixed in the committed scripts
+
+Worth knowing because pair 2 should now run end to end: rMATS could not import
+`rmatspipeline` (it lives in the install dir, not site-packages, and
+`rmats.py`'s shebang wants a bare `python` the env lacks); SUPPA2 diffSplice
+exits 0 leaving `.dpsi.temp.0` and never renames it on this install; and
+`make_candidate_csvs.py` did not create its output directory.
+
+### Two things caught in the NN half before anything was scored
+
+1. **`p == 1.0` in a SUPPA2 `.dpsi` means "not measurable", not "unchanged"** —
+   `dPSI` is NaN for exactly those rows and no others, and a measurable
+   permutation p-value never exceeds ~0.485. The originally pre-registered
+   `p > 0.5` therefore selected the empty set. Amended to `p > 0.20` plus an
+   explicit non-NaN guard, recorded as a dated amendment in
+   `benchmark_build/make_nn_candidates.py`.
+2. **The BAM subsets were cut over the positives-only BED**, leaving 11 of the
+   first 12 NN windows at zero coverage — every NN would have scored correct
+   for a model that had learned nothing but a coverage detector. Recut over all
+   2,422 regions. If you ever rebuild them, use
+   `candidates/all_events.sorted.bed`.
+
+### Leak checks on the arena (measured, not assumed)
+
+| shortcut | arena | curated `benchmark_new` |
+|---|---:|---:|
+| width alone (AUC) | 0.493 (p=0.57) | — |
+| mean coverage alone (AUC) | 0.417 (p=0.004) | 0.564 (p=0.050) |
+
+No width leak. The coverage skew is small and — the interesting part — the
+*same magnitude but opposite sign* as in curated data: curated NN skews to
+higher coverage, automated NN slightly lower. A model leaning on depth would be
+rewarded on one set and punished on the other.
+
+## Track B provenance
 
 * **B0 done, frozen in the plan**: PTBP1 KD `ENCSR064DXG`
   (SRR3469390/SRR3469391) vs its own ENCODE `possible_controls`
@@ -72,17 +114,13 @@ p=0.023; three seeds cut it to +6 on one benchmark and +1 on the other.
 * **B1 done**: fetched and aligned on pasteur.
   `sim/fetch_align_benchmark_new.sh` now takes its runs and output prefix
   from the environment; unset, it reproduces the SRSF3 invocation exactly.
-* **B2 in flight**: `benchmark_build/run_arena.sh` (new) scripts what Stage 8
-  did interactively — an arena that cannot be rebuilt is not renewable.
-* **B2 remainder, not yet written**: automated **NN candidates** (catalogued
-  loci where both callers report clearly non-significant, near-zero dPSI,
-  above an expression floor). The consensus pipeline emits none, so without
-  this the arena has no NN class. Its noise level is unknown, unlike the
-  measured 33% for positives — say so in the arena's README.
-* **B3 not started**: freeze, commit, then one scoring pass, v1 six-net
-  ensemble vs best v2, paired McNemar, per-dataset and pooled. Declare up
-  front that absolute accuracy is attenuated by ~33% positive-label noise and
-  **only the paired difference is interpretable**.
+* **B2 done**: `benchmark_build/run_arena.sh` scripts what Stage 8 did
+  interactively (an arena that cannot be rebuilt is not renewable), and
+  `benchmark_build/make_nn_candidates.py` adds the NN half.
+* **B3 not started** — see above; it spends the arena's single use.
+  The NN half's own noise level remains **unmeasured**, unlike the positives'
+  67.2% purity: there is no curated set of automatically-derived NN to check
+  it against.
 * Pairs 2-3 deliberately not frozen — pair 1's throughput and disk first.
 
 ## Numbers measured this stage, so they are not re-derived

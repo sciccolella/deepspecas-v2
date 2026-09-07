@@ -10,7 +10,7 @@ current state of play for the active line of work.
 
 | file | what it is | status |
 |---|---|---|
-| [`signal-native-v2-resume-9.md`](signal-native-v2-resume-9.md) | **START HERE.** State, direction, open caveats, conventions (2026-09-03) | current |
+| [`signal-native-v2-resume-9.md`](signal-native-v2-resume-9.md) | **START HERE.** State, direction, open caveats, conventions (2026-09-07) | current |
 | [`signal-native-v2-real-supervision-results.md`](signal-native-v2-real-supervision-results.md) | Stage 12 results (2026-09-03): the annotation-derived-label gate fails (0.607 vs 0.80 required) and Track A stops -- the catalogue holds the right label 97.5% of the time but ~2 other events per window are equally "present"; Stage 11's `intron_cov_frac` question answered (C1); the coverage branch is a reallocation, not a win (RI pays for A3/A5/CSE), and NN does not move; baseline seed spread is 5 events at n=70 | **implemented; Track B's B2/B3 outstanding** |
 | [`signal-native-v2-real-supervision.md`](signal-native-v2-real-supervision.md) | The Stage 12 plan (2026-09-02): real supervision without curation (A), a renewable model-blind arena (B), close-outs (C), a representation change gated on A (D) | A/C/D implemented, B through B1 -- see results doc |
 | [`signal-native-v2-resume-8.md`](signal-native-v2-resume-8.md) | Previous resume doc (2026-09-02); accurate through Stage 11 | superseded as the entry point |
