@@ -140,5 +140,119 @@ comparison before believing it").
 
 ## Results
 
-(To be appended after Step 8, per the fixed gate above. This section is
-empty at pre-registration time.)
+Steps 0-7 executed exactly as pre-registered above (aqr_arena built and
+verified, `dsignal.verify` 4,032/4,032 arena-wide + 948/948 after extraction;
+gene-disjointness applied, 326/800 NN candidates dropped, 474 kept, zero
+gene overlap asserted; merged unweighted onto `labels_union2.n12480.tsv` ->
+`labels_union2_realnn.tsv`, 12,954 events, NN share 27.7%; 3 seeds trained,
+in-sim macro-F1 0.905/0.911/0.907). Full commit trail: pre-registration
+`da40e8b0`/`33b09a92`, arena build `b4401522`, extract-CSV `07155235`, npz
+extraction `0c91db6a`, merge `5ce67f07`, training `<the commit that follows
+this results write-up>`.
+
+### benchmark_new dev (primary gate)
+
+| seed | pooled collapsed | vs baseline (142/242=58.7%) | McNemar p | NN recall | vs baseline (11/79=13.9%) |
+|---|---:|---:|---:|---:|---:|
+| 0 | 128/242 = 52.9% | −14 events | 0.1557 | 46/79 = 58.2% | +35 events |
+| 1 | 122/242 = 50.4% | −20 events | 0.0446 | 45/79 = 57.0% | +34 events |
+| 2 | 126/242 = 52.1% | −16 events | 0.1011 | 45/79 = 57.0% | +34 events |
+| **median** | **52.1%** | **−16 events** | | **57.0%** | **+34 events** |
+
+Every other class regresses hard, in every seed, with **zero** `new-only`
+wins (the new model never gets right anything the baseline got wrong on
+these classes) — A3 87.5%→~54% (McNemar p≈0.03–0.06), A5 75.0%→~30%
+(p≈0.03–0.06), CSE 83.2%→~56% (p<0.0001), RI 67.9%→~29% (p=0.001), all three
+seeds. Macro-recall drops from 65.5% to 42.9–46.7%.
+
+### benchmark/ dev (regression guard)
+
+| seed | pooled collapsed | vs baseline (53/70=75.7%) | McNemar p |
+|---|---:|---:|---:|
+| 0 | 45/70 = 64.3% | −8 events | 0.0768 |
+| 1 | 44/70 = 62.9% | −9 events | 0.0490 |
+| 2 | 47/70 = 67.1% | −6 events | 0.2101 |
+| **median** | **64.3%** | **−8 events** | |
+
+`benchmark/` has zero NN truth, so this whole regression is spurious NN
+false positives crowding out A3/A5/CSE/RI predictions.
+
+### ptbp1_arena pair 1 (confirmatory only — informative, not gating)
+
+| seed | pooled collapsed | vs baseline (1175/2422=48.5%) | McNemar p | NN recall | vs baseline (135/800=16.9%) |
+|---|---:|---:|---:|---:|---:|
+| 0 | 1230/2422 = 50.8% | +55 events | 0.0900 | 652/800 = 81.5% | +64.6pp |
+| 1 | 1188/2422 = 49.1% | +13 events | 0.7171 | 675/800 = 84.4% | +67.5pp |
+| 2 | 1175/2422 = 48.5% | 0 events | 1.0000 | 641/800 = 80.1% | +63.2pp |
+
+Pooled accuracy is roughly flat here (none of the three differences are
+significant) even though NN recall quadruples-plus, because pair 1 is 33%
+NN by construction — large enough that the NN gain and the non-NN losses
+happen to net out close to zero on *this* set. Per the pre-registration,
+this alone is explicitly not sufficient and is not part of the gate; it is
+recorded because it clarifies the shape of the effect (see below), not
+because it passes anything.
+
+### Gate (applied mechanically, per the fixed criteria above)
+
+1. Median-over-3-seeds NN recall on `benchmark_new` dev beats 13.9% baseline:
+   **57.0% — PASS.**
+2. ≥2/3 seeds individually beat the 13.9% baseline: **3/3 — PASS.**
+3. No more-than-seed-noise regression on `benchmark_new` dev pooled collapsed
+   accuracy or on `benchmark/` dev: **FAIL, badly and consistently.** The
+   `benchmark_new` dev drop (14–20 events at n=242) is 1.4–2× the branch's
+   own measured seed-noise ceiling at that n (10 events,
+   `plans/signal-native-v2-resume-9.md`); the `benchmark/` dev drop (6–9
+   events at n=70) is 1.2–1.8× the measured ceiling there (5 events). Every
+   one of 6 seed×benchmark measurements regresses; none is within noise.
+
+**Overall: FAIL.** Condition 3 is not marginal — it fails by a wide margin,
+in the same direction, in all three seeds, on both gating benchmarks.
+
+### What the shape of the result suggests (an unverified hypothesis, not a claim)
+
+The regression is not a modest reallocation like Track D's — it is a
+uniform collapse of A3/A5/CSE/RI recall with **zero** compensating
+`new-only` wins on any of those classes, paired with a large NN recall gain
+that is *largest exactly where the benchmark is real BAM data* (`benchmark_new`
+dev +43pp, `ptbp1_arena` +64–68pp) and does not occur at all on sim-internal
+held-out folds (in-sim macro-F1 stayed at 0.905–0.911, unchanged from
+`e4_union2`'s training regime). The plausible mechanism: 474 real events out
+of 12,954 is a small fraction (3.7%), but they are the *only* real BAM
+records in the entire pool (every other row, positive or NN, is simulated)
+and are labelled NN uniformly. If the transformer can pick up on some
+real-vs-simulated BAM signature that is easier to learn than the intended
+splicing-vs-no-splicing distinction, the model would learn "looks like real
+data" -> NN, which explains every observation here: NN recall jumps hardest
+on real curated data, non-NN real events lose recall in exactly the
+direction of NN, and nothing moves on the in-sim held-out folds because
+those folds contain no real-vs-sim contrast to exploit. This is **not
+verified** by this attack — confirming it would need a diagnostic separate
+from Stage 14's scope (e.g. scoring real *positive* events, not just real
+NN, to see whether real-ness alone predicts the NN prediction independent of
+truth) — and is recorded as a hypothesis for whoever picks this up next, not
+as a finding.
+
+### Decision (Step 8, per the fixed gate above)
+
+**FAIL.** Per the plan's fail branch: this is not folded into any ensemble,
+`e4_union2.json` is untouched, and this is written up as a fourth negative
+result on the NN-recall line, alongside Track A's 0.804 annotation cap
+(`plans/signal-native-v2-real-supervision-results.md`), Track D's
+reallocation-not-improvement, and B3's seed-variance finding
+(`plans/signal-native-v2-resume-9.md`). Unlike those three, which found the
+NN gap resistant to attack, this one *does* move NN recall substantially —
+just at a cost this branch's own gate correctly rejects. `benchmark_new`'s
+test half stays reserved, untouched by this attack, per the standing
+constraint above.
+
+**For whoever picks this up next**: the "unweighted, as-is" mixing decision
+was fixed in Step 0 specifically because it is the cleanest to attribute —
+and it is now attributable: the failure is not from too much real data
+(474/12,954 is small) but plausibly from *homogeneous* real data (all real
+rows share one label). A follow-up attack with real events spanning multiple
+labels (would need real positives, not just real NN, undermining the
+"targeted NN fix, not a general real-data upgrade" framing this attack was
+scoped under) or a domain-adversarial term explicitly penalizing a
+real-vs-sim shortcut are two directions worth considering; neither is
+attempted here.
