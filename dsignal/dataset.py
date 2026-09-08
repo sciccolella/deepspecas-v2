@@ -341,8 +341,14 @@ def apply_feature_subset_meta(meta: dict, subset: str) -> dict:
 
 
 def read_labels(labels_path: str, npz_dir: str):
-    """[(ix, event_id, label, gene_id, npz_path)] for every labelled record
-    that actually has an .npz on disk."""
+    """[(ix, event_id, label, gene_id, npz_path, kind)] for every labelled
+    record that actually has an .npz on disk. ``kind`` is the labels TSV's
+    own provenance column (sim batches: "positive"/"nn_hard"/"nn_novel"/
+    "nn_plain"; real batches: "real_nn_aqr"/"real_pos_aqr", Stage 14/16) --
+    carried through so `JunctionSetDataset` can derive the Stage 17 domain
+    label (`is_real = kind.startswith("real_")`) without a labels-file
+    schema change. Every existing 5-element read of an entry (`e[1]`
+    through `e[4]`, `entries[i][4]`) is unaffected by the new 6th element."""
     index = {}
     for name in os.listdir(npz_dir):
         if name.endswith(".npz"):
@@ -352,7 +358,8 @@ def read_labels(labels_path: str, npz_dir: str):
         for row in csv.DictReader(f, delimiter="\t"):
             path = index.get(row["ix"])
             if path is not None:
-                out.append((row["ix"], row["event_id"], row["label"], gene_id_of(row["event_id"]), path))
+                out.append((row["ix"], row["event_id"], row["label"], gene_id_of(row["event_id"]),
+                            path, row.get("kind", "")))
     return out
 
 
@@ -411,7 +418,7 @@ class JunctionSetDataset(Dataset):
         self.epoch = epoch
 
     def __getitem__(self, i: int):
-        ix, event_id, label, gene_id, path = self.entries[i]
+        ix, event_id, label, gene_id, path, kind = self.entries[i]
         norm = self._normalized(i)
 
         if self.augment.any_enabled:
@@ -435,6 +442,9 @@ class JunctionSetDataset(Dataset):
             # left-right flip's A3<->A5 swap carries into the type head too
             "type_label": type_label,
             "is_diff": is_diff,
+            #: Stage 17 domain label: 1.0 for a real-BAM record (kind
+            #: "real_nn_aqr"/"real_pos_aqr"), 0.0 for every simulated kind.
+            "is_real": 1.0 if kind.startswith("real_") else 0.0,
             "event_id": event_id,
             "ix": ix,
         }
@@ -496,6 +506,7 @@ def collate(batch):
         # that path, so callers outside training need not know about them
         "type_label": torch.tensor([item.get("type_label", -1) for item in batch], dtype=torch.long),
         "is_diff": torch.tensor([item.get("is_diff", 0.0) for item in batch], dtype=torch.float32),
+        "is_real": torch.tensor([item.get("is_real", 0.0) for item in batch], dtype=torch.float32),
         "event_id": [item["event_id"] for item in batch],
         "ix": [item["ix"] for item in batch],
     }

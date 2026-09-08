@@ -63,6 +63,30 @@ def _class_layout():
 NN_INDEX, TYPE_CLASSES = _class_layout()
 
 
+class _GradientReversal(torch.autograd.Function):
+    """Identity forward, negated-and-scaled gradient backward (Ganin &
+    Lempitsky 2015). This is the whole mechanism a domain-adversarial term
+    needs: the domain head still gets a clean signal to learn "is this
+    real or simulated" from the pooled embedding, but every gradient it
+    sends back through that embedding into the encoder is flipped, so the
+    encoder is pushed to make the embedding *worse* for that task instead
+    of better -- the shortcut Stage 15 confirmed (`pooled` -> "looks real"
+    -> NN) is what this directly opposes."""
+
+    @staticmethod
+    def forward(ctx, x, lambd):
+        ctx.lambd = lambd
+        return x.view_as(x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return -ctx.lambd * grad_output, None
+
+
+def gradient_reversal(x: torch.Tensor, lambd: float) -> torch.Tensor:
+    return _GradientReversal.apply(x, lambd)
+
+
 @dataclass
 class ModelConfig:
     n_token_features: int = N_TOKEN_FEATURES
@@ -89,6 +113,11 @@ class ModelConfig:
     coverage_bins: int = 0
     #: channels in the coverage encoder's conv stack
     coverage_channels: int = 64
+    #: Stage 17: gradient-reversal domain head against the real-vs-simulated
+    #: shortcut (Stage 15). Defaults False so every checkpoint before this
+    #: field existed loads and behaves exactly as it did -- `domain_logits`
+    #: is simply unavailable on those models rather than silently wrong.
+    domain_adversarial: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -298,6 +327,8 @@ class JunctionSetTransformer(nn.Module):
             self.diff_head = nn.Linear(c.d_model, 1)
         else:
             self.head = nn.Linear(c.d_model, c.n_classes)
+        if c.domain_adversarial:
+            self.domain_head = nn.Linear(c.d_model, 1)
 
     def _attention_bias(self, s_rel, e_rel, pad_mask):
         """[B, H, L, L] with L = J + 1; row/col 0 is the CLS token, which
@@ -424,6 +455,37 @@ class JunctionSetTransformer(nn.Module):
             x, _ = layer(x, bias, full_pad, False)
         pooled = self.norm(x[:, 0])
         return self.type_head(pooled), self.diff_head(pooled).squeeze(-1)
+
+    def domain_logits(self, tokens, cls, s_rel, e_rel, pad_mask, coverage=None, grl_lambda: float = 1.0):
+        """``[B]`` domain logit (real=1 vs simulated=0), off the same pooled
+        CLS embedding `forward`/`forward_parts` read, through a gradient-
+        reversal layer (Stage 17 design doc,
+        plans/signal-native-v2-stage17-domain-adversarial.md).
+
+        Recomputes the encoder pass rather than sharing `forward`'s
+        activations -- the same duplicate-pass pattern `forward_parts`
+        already uses -- so `forward`'s contract (return shape, call sites in
+        predict.py/score_benchmark.py/train.evaluate) is untouched. The
+        cost is an extra encoder pass per training step when the domain
+        term is enabled; inference never calls this method at all.
+
+        ``grl_lambda`` only scales the *backward* gradient (see
+        `_GradientReversal`); it has no effect on the value returned or on
+        the forward computation, so calling this with any `grl_lambda` on a
+        model in `eval()`/`no_grad()` context is a no-op probe, and the
+        loss this feeds is controlled separately by `--domain-lambda`
+        (dsignal/train.py's `two_head_loss`-style loss weight, not this
+        scale)."""
+        if not self.cfg.domain_adversarial:
+            raise ValueError("domain_logits is only defined for domain_adversarial models")
+        x = torch.cat([self._cls_embedding(cls, coverage).unsqueeze(1), self.token_proj(tokens)], dim=1)
+        cls_pad = torch.zeros(x.shape[0], 1, dtype=torch.bool, device=pad_mask.device)
+        full_pad = torch.cat([cls_pad, pad_mask], dim=1)
+        bias = self._attention_bias(s_rel, e_rel, pad_mask)
+        for layer in self.layers:
+            x, _ = layer(x, bias, full_pad, False)
+        pooled = self.norm(x[:, 0])
+        return self.domain_head(gradient_reversal(pooled, grl_lambda)).squeeze(-1)
 
     def n_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)

@@ -135,6 +135,22 @@ def two_head_loss(model, batch, device, type_weights, pos_weight, diff_lambda: f
     return loss_type + diff_lambda * loss_diff
 
 
+def domain_loss(model, batch, device, pos_weight=None, grl_lambda: float = 1.0):
+    """Stage 17: BCE on `model.domain_logits` against `batch["is_real"]`.
+
+    Unweighted by class-imbalance-of-domain by default (`pos_weight=None`):
+    the real fraction is small (~7% in Stage 16's mix) but that imbalance is
+    exactly what the domain head is *supposed* to have a hard time with --
+    down-weighting it away would blunt the adversarial signal the encoder
+    is meant to resist. Kept as a parameter, not hardcoded, in case a run
+    needs it."""
+    domain_logit = model.domain_logits(**batch_inputs(batch, device), grl_lambda=grl_lambda)
+    is_real = batch["is_real"].to(device)
+    return torch.nn.functional.binary_cross_entropy_with_logits(
+        domain_logit, is_real, pos_weight=pos_weight
+    )
+
+
 def evaluate(model, loader, device):
     """(predictions [n], labels [n], event_ids [n]) over a loader."""
     model.eval()
@@ -228,6 +244,7 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
         two_head=args.two_head, n_types=len(TYPE_CLASSES),
         use_distance_bias=not args.no_distance_bias, use_relation_bias=not args.no_relation_bias,
         coverage_bins=args.coverage_bins, coverage_channels=args.coverage_channels,
+        domain_adversarial=args.domain_lambda > 0,
     )
     model = JunctionSetTransformer(mcfg).to(device)
     if fold == 0:
@@ -258,6 +275,8 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
             else:
                 logits, _ = model(**batch_inputs(batch, device))
                 loss = criterion(logits, batch["label"].to(device))
+            if args.domain_lambda > 0:
+                loss = loss + args.domain_lambda * domain_loss(model, batch, device)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
             opt.step()
@@ -326,6 +345,8 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
                 else:
                     logits, _ = model(**batch_inputs(batch, device))
                     loss = criterion(logits, batch["label"].to(device))
+                if args.domain_lambda > 0:
+                    loss = loss + args.domain_lambda * domain_loss(model, batch, device)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
                 opt.step()
@@ -501,6 +522,12 @@ def _build_argparser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--diff-lambda", type=float, default=1.0,
                     help="weight on the is-differential term of the two-head loss")
+    ap.add_argument("--domain-lambda", type=float, default=0.0,
+                    help="Stage 17: weight on the gradient-reversal domain-adversarial "
+                    "loss term (dsignal/model.py's domain_head, against real-vs-simulated "
+                    "shortcuts). 0.0 (default) disables it entirely -- no domain_head is "
+                    "even constructed -- and training is byte-for-byte the pre-Stage-17 "
+                    "model")
 
     ap.add_argument(
         "--class-weight-boost", nargs=2, metavar=("CLASS", "FACTOR"), action="append", default=None,
@@ -593,6 +620,7 @@ def main(argv=None) -> None:
                     "select_on": args.select_on, "inner_val_frac": args.inner_val_frac,
                     "refit": args.refit, "avg_last_k": args.avg_last_k,
                     "two_head": args.two_head, "diff_lambda": args.diff_lambda,
+                    "domain_lambda": args.domain_lambda,
                     "class_weight_boost": args.class_weight_boost,
                     "per_fold_macro_f1": fold_f1,
                     "per_fold_inner_val_macro_f1": fold_val_f1,
