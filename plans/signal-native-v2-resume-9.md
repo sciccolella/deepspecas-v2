@@ -1,4 +1,4 @@
-# signal-native-v2 — START HERE (2026-09-07, Stage 12)
+# signal-native-v2 — START HERE (2026-09-08, Stage 14)
 
 Resume document. Branch `signal-native-v2`, **nothing pushed** (per repo
 convention — pushing is the user's call).
@@ -6,11 +6,49 @@ convention — pushing is the user's call).
 Supersedes `plans/signal-native-v2-resume-8.md` as the entry point.
 `plans/signal-native-v2-real-supervision.md` is the Stage 12 plan and
 `plans/signal-native-v2-real-supervision-results.md` is its full
-stage-by-stage record.
+stage-by-stage record. Stage 13 (B3) is
+`plans/signal-native-v2-arena-b3-plan.md` / `plans/signal-native-v2-arena-b3.md`.
+Stage 14 (the NN attack) is `plans/signal-native-v2-stage14-nn-attack-plan.md`
+/ `plans/signal-native-v2-arena-nn-attack.md` — **read that Results section
+before touching NN recall again**, its finding is the most important thing
+in this file.
 
 ---
 
-## The three things to know
+## The thing to know before the other three: Stage 14 (the NN attack) failed its gate
+
+**Real NN hard negatives move NN recall a lot, but the model pays for it
+everywhere else, badly and consistently across 3 seeds — the pre-registered
+gate correctly rejects it.** 474 real NN events from a second automated arena
+(AQR knockdown, `aqr_arena/`, gene-disjoint from `ptbp1_arena`/`benchmark`/
+`benchmark_new`) were merged unweighted onto the 12,480-event sim pool
+(`npz_union2_realnn`, NN share 27.7%) and trained at 3 seeds. On `benchmark_new`
+dev NN recall jumps 13.9% → median 57.0% (passes), but pooled collapsed
+accuracy **drops** 58.7% → median 52.1% (14-20 fewer correct out of 242,
+1.4-2× the branch's own measured seed-noise ceiling at that n) with **zero**
+`new-only` wins on A3/A5/CSE/RI in any seed — every other class just gets
+worse. Same story on `benchmark/` dev (regression guard): 53/70 → median
+45/70, also beyond noise, in all 3 seeds. **Gate fails on condition 3, badly
+and uniformly.** Not folded into any ensemble; `e4_union2.json` is untouched.
+
+The interesting part is *why*, even though it's unverified: the 474 real rows
+are the **only** real BAM data in the entire 12,954-event pool (everything
+else, positive or NN, is simulated) and are labelled NN uniformly. NN recall
+gains are largest exactly where the eval set is real BAM data (`benchmark_new`
+dev +43pp, `ptbp1_arena` confirmatory +64-68pp) and **in-sim held-out macro-F1
+doesn't move at all** (0.905-0.911, same as before) — consistent with the
+model having learned "looks like real, not simulated, data" → NN, rather than
+the intended splicing-vs-no-splicing distinction. Full numbers, per-seed
+table and the confirmatory `ptbp1_arena` read (pooled accuracy roughly flat
+there — NN gain and other-class losses happen to net out on a 33%-NN set) are
+in `plans/signal-native-v2-arena-nn-attack.md`'s Results section. This is the
+fourth negative result on the NN-recall line, after Track A's 0.804 cap,
+Track D's reallocation, and B3's seed-variance finding — but the first one
+that actually *moves* NN recall, which is why the mixing hypothesis above is
+worth testing before writing off real-data injection entirely (see the "for
+whoever picks this up next" note at the end of that doc).
+
+## The three things to know (Stage 12/13, still current)
 
 **1. `benchmark_new`'s "descriptive, not pre-registered" caveat is retracted.**
 The curator (the user) states the `v1_pred`/`v2_pred` columns were visible in
@@ -54,11 +92,15 @@ ever compared. Seed 0 alone would have supported a +9-event claim at
 p=0.023; three seeds cut it to +6 on one benchmark and +1 on the other.
 **Seed-replicate any future comparison before believing it.**
 
-## What is running right now (updated 2026-09-07)
+## What is running right now (updated 2026-09-08)
 
-**Nothing.** The PTBP1 arena is built, verified and committed; pasteur is idle
-of this branch's work. `ptbp1_work/fastq` still holds 79G of FASTQ and
-`ptbp1_work/align` the merged BAMs, if a rebuild is ever needed.
+**Nothing.** Stage 14 is complete (built, trained, scored, written up,
+committed); pasteur is idle of this branch's work. `ptbp1_work/fastq` (79G)
+and `aqr_work/fastq`+`align` still hold pair 1's and pair 2's FASTQ/BAMs on
+pasteur, if a rebuild is ever needed — neither leaves pasteur per CLAUDE.md.
+The 3 Stage 14 checkpoints (`runs/nn_attack_realnn_seed{0,1,2}/`) are local
+only (gitignored like every other `runs/*/` dir); their `.json`/`.log` and
+all scored `.tsv` outputs are committed.
 
 ## Track B state — B2 and B3 both complete
 
@@ -80,6 +122,13 @@ purely a modelling failure. Per the pre-registered decision rule: **Stage 14
 is the NN attack** — build arena pair 2 from a different KD experiment and
 use its NN as hard negatives, holding pair 1 (this arena) as eval, checking
 any resulting move against curated `benchmark_new` dev before trusting it.
+
+**Stage 14 ran and failed its gate** (`plans/signal-native-v2-arena-nn-attack.md`) —
+see the top section of this doc for the headline and the hypothesis for
+next steps. `aqr_arena/` (pair 2, AQR knockdown, 2,016 events / 800 NN) is
+built, verified and committed the same way `ptbp1_arena` was, but is never
+itself scored — its only role was supplying 474 gene-disjoint real NN rows.
+Pair 3 is not built; nothing currently plans to.
 
 ### Three bugs the first arena build hit, all fixed in the committed scripts
 
@@ -127,11 +176,12 @@ rewarded on one set and punished on the other.
 * **B2 done**: `benchmark_build/run_arena.sh` scripts what Stage 8 did
   interactively (an arena that cannot be rebuilt is not renewable), and
   `benchmark_build/make_nn_candidates.py` adds the NN half.
-* **B3 not started** — see above; it spends the arena's single use.
+* **B3 done** — see above; it spent the arena's single use.
   The NN half's own noise level remains **unmeasured**, unlike the positives'
   67.2% purity: there is no curated set of automatically-derived NN to check
-  it against.
-* Pairs 2-3 deliberately not frozen — pair 1's throughput and disk first.
+  it against. Same caveat applies unchanged to pair 2's (`aqr_arena`) NN half.
+* Pair 2 (AQR, `aqr_arena/`) built for Stage 14, real NN only. Pair 3 not
+  frozen — nothing currently plans to build it.
 
 ## Numbers measured this stage, so they are not re-derived
 
@@ -169,6 +219,12 @@ solving per row for the target metric, never by raising the knob uniformly.**
    criterion rather than reading one off that table.
 4. **Track D's 88.1% dev figure must not be quoted as a headline.** It is what
    a class-mix-favourable benchmark says about a model that got worse at RI.
+5. **Stage 14's real-vs-simulated-shortcut mechanism is a hypothesis, not a
+   verified finding.** It is consistent with every observation made (NN gain
+   concentrated on real eval data, in-sim macro-F1 unchanged, zero
+   compensating wins on other classes) but was not isolated by a dedicated
+   diagnostic (e.g. scoring real positives, not just real NN, for the same
+   shortcut). Do not cite it as established without running that check first.
 
 ## Conventions (unchanged)
 
