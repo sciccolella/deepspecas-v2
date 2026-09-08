@@ -1,4 +1,4 @@
-# signal-native-v2 — START HERE (2026-09-08, Stage 14)
+# signal-native-v2 — START HERE (2026-09-08, Stage 15)
 
 Resume document. Branch `signal-native-v2`, **nothing pushed** (per repo
 convention — pushing is the user's call).
@@ -11,7 +11,10 @@ stage-by-stage record. Stage 13 (B3) is
 Stage 14 (the NN attack) is `plans/signal-native-v2-stage14-nn-attack-plan.md`
 / `plans/signal-native-v2-arena-nn-attack.md` — **read that Results section
 before touching NN recall again**, its finding is the most important thing
-in this file.
+in this file. Stage 15 (`plans/signal-native-v2-stage15-17-shortcut-attack-plan.md`
+/ `plans/signal-native-v2-stage15-shortcut-diagnostic.md`) confirms Stage
+14's failure mechanism; Stage 16/17 (same parent plan) attack it and are
+in progress — see "What is running right now" below.
 
 ---
 
@@ -94,13 +97,15 @@ p=0.023; three seeds cut it to +6 on one benchmark and +1 on the other.
 
 ## What is running right now (updated 2026-09-08)
 
-**Nothing.** Stage 14 is complete (built, trained, scored, written up,
-committed); pasteur is idle of this branch's work. `ptbp1_work/fastq` (79G)
-and `aqr_work/fastq`+`align` still hold pair 1's and pair 2's FASTQ/BAMs on
-pasteur, if a rebuild is ever needed — neither leaves pasteur per CLAUDE.md.
-The 3 Stage 14 checkpoints (`runs/nn_attack_realnn_seed{0,1,2}/`) are local
-only (gitignored like every other `runs/*/` dir); their `.json`/`.log` and
-all scored `.tsv` outputs are committed.
+Stage 15 is complete (diagnostic, no training; confirmed the shortcut
+mechanism, see caveat #5 above). Stage 16/17 are in progress — this session
+is working through `plans/signal-native-v2-stage15-17-shortcut-attack-plan.md`.
+`ptbp1_work/fastq` (79G) and `aqr_work/fastq`+`align` still hold pair 1's and
+pair 2's FASTQ/BAMs on pasteur, if a rebuild is ever needed — neither leaves
+pasteur per CLAUDE.md. The 3 Stage 14 checkpoints
+(`runs/nn_attack_realnn_seed{0,1,2}/`) are local only (gitignored like every
+other `runs/*/` dir); their `.json`/`.log` and all scored `.tsv` outputs are
+committed.
 
 ## Track B state — B2 and B3 both complete
 
@@ -219,12 +224,13 @@ solving per row for the target metric, never by raising the knob uniformly.**
    criterion rather than reading one off that table.
 4. **Track D's 88.1% dev figure must not be quoted as a headline.** It is what
    a class-mix-favourable benchmark says about a model that got worse at RI.
-5. **Stage 14's real-vs-simulated-shortcut mechanism is a hypothesis, not a
-   verified finding.** It is consistent with every observation made (NN gain
-   concentrated on real eval data, in-sim macro-F1 unchanged, zero
-   compensating wins on other classes) but was not isolated by a dedicated
-   diagnostic (e.g. scoring real positives, not just real NN, for the same
-   shortcut). Do not cite it as established without running that check first.
+5. **Stage 14's real-vs-simulated-shortcut mechanism is confirmed** (Stage 15,
+   `plans/signal-native-v2-stage15-shortcut-diagnostic.md`). NN-prediction
+   rate on 1,622 real non-NN-truth `ptbp1_arena` events: baseline 2.3%, all 3
+   Stage-14 seeds 48.0-53.3% (McNemar p < 1e-220 each, `b=0` — no event moves
+   away from NN), uniform across A3/A5/CSE/RI. The 474 real NN rows being the
+   only real BAM data in the pool, labelled NN uniformly, is the mechanism,
+   not a plausible story.
 
 ## Conventions (unchanged)
 
