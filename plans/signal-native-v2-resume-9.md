@@ -1,4 +1,4 @@
-# signal-native-v2 — START HERE (2026-09-08, Stage 16)
+# signal-native-v2 — START HERE (2026-09-08, Stage 17)
 
 Resume document. Branch `signal-native-v2`, **nothing pushed** (per repo
 convention — pushing is the user's call).
@@ -22,9 +22,20 @@ events/seed on `benchmark_new` dev, none individually significant but
 consistent across 3 seeds) **and simultaneously erases its NN-recall gain
 completely** (58.2/57.0/57.0% -> 10.1/7.6/8.9%, `b`=38-39 `c`=0 in every
 seed vs. Stage 14 directly) — exactly what happens if that recall gain was
-never anything but the shortcut. Stage 17 (domain-adversarial architecture,
-same parent plan) is designed/implemented/pre-registered and training now —
-see "What is running right now" below.
+never anything but the shortcut. **Stage 17** (domain-adversarial
+architecture, same parent plan,
+`plans/signal-native-v2-stage17-domain-adversarial.md`) also **FAILs its
+gate** (same regression-beyond-noise failure mode as Stage 14, on the same
+single-label data) but gets a genuine, 3-seed-consistent partial mitigation
+when compared directly against Stage 14 on identical data: NN-recall
+overshoot roughly halved (57.0% → 38.0% median) with pooled-accuracy damage
+about the same or smaller. Two untried follow-ups noted in that doc
+(`grl_lambda` ramp schedule, combining with Stage 16's data) before
+concluding the architecture doesn't work. **Neither Stage 16 nor Stage 17
+is folded into `e4_union2.json`** — this whole line (Stage 14-17) is now
+closed pending one of those follow-ups; the branch's real-data NN-recall
+work is otherwise as it stood after Stage 13/B3 (16.9% recall at the
+deployed operating point, 56.0% prior-free).
 
 ---
 
@@ -107,16 +118,16 @@ p=0.023; three seeds cut it to +6 on one benchmark and +1 on the other.
 
 ## What is running right now (updated 2026-09-08)
 
-Stage 15 and Stage 16 are both complete (see above). Stage 17 is designed,
-implemented, verified (`--domain-lambda 0` regresses byte-for-byte) and
-pre-registered; its 3-seed training run is starting now on Stage 14's mix
-(`npz_union2_realnn`), per `plans/signal-native-v2-stage17-domain-adversarial.md`.
-`ptbp1_work/fastq` (79G) and `aqr_work/fastq`+`align` still hold pair 1's and
-pair 2's FASTQ/BAMs on pasteur, if a rebuild is ever needed — neither leaves
-pasteur per CLAUDE.md. Local-only checkpoints (gitignored like every
+**Nothing.** Stages 15, 16 and 17 are all complete (built, trained, scored,
+written up, committed); the whole Stage 15-17 plan
+(`plans/signal-native-v2-stage15-17-shortcut-attack-plan.md`) is done.
+`ptbp1_work/fastq` (79G) and `aqr_work/fastq`+`align` still hold pair 1's
+and pair 2's FASTQ/BAMs on pasteur, if a rebuild is ever needed — neither
+leaves pasteur per CLAUDE.md. Local-only checkpoints (gitignored like every
 `runs/*/` dir): `runs/nn_attack_realnn_seed{0,1,2}/` (Stage 14),
-`runs/stage16_realmix_seed{0,1,2}/` (Stage 16); their `.json`/`.log` and all
-scored `.tsv` outputs are committed.
+`runs/stage16_realmix_seed{0,1,2}/` (Stage 16),
+`runs/stage17_domainadv_seed{0,1,2}/` (Stage 17); their `.json`/`.log` and
+all scored `.tsv` outputs are committed.
 
 ## Track B state — B2 and B3 both complete
 
