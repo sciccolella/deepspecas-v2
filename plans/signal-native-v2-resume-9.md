@@ -1,4 +1,4 @@
-# signal-native-v2 — START HERE (2026-09-08, Stage 15)
+# signal-native-v2 — START HERE (2026-09-08, Stage 16)
 
 Resume document. Branch `signal-native-v2`, **nothing pushed** (per repo
 convention — pushing is the user's call).
@@ -9,12 +9,22 @@ Supersedes `plans/signal-native-v2-resume-8.md` as the entry point.
 stage-by-stage record. Stage 13 (B3) is
 `plans/signal-native-v2-arena-b3-plan.md` / `plans/signal-native-v2-arena-b3.md`.
 Stage 14 (the NN attack) is `plans/signal-native-v2-stage14-nn-attack-plan.md`
-/ `plans/signal-native-v2-arena-nn-attack.md` — **read that Results section
-before touching NN recall again**, its finding is the most important thing
-in this file. Stage 15 (`plans/signal-native-v2-stage15-17-shortcut-attack-plan.md`
+/ `plans/signal-native-v2-arena-nn-attack.md` — its finding is now
+superseded/explained by Stage 15/16 below, but still worth reading for the
+setup. Stage 15 (`plans/signal-native-v2-stage15-17-shortcut-attack-plan.md`
 / `plans/signal-native-v2-stage15-shortcut-diagnostic.md`) confirms Stage
-14's failure mechanism; Stage 16/17 (same parent plan) attack it and are
-in progress — see "What is running right now" below.
+14's failure mechanism (a real-vs-simulated shortcut, not a splicing-content
+one). **Stage 16 (`plans/signal-native-v2-stage16-multilabel-real.md`)
+ran and failed its own gate, but in doing so gives the cleanest evidence
+yet for the shortcut**: adding real positives across all four non-NN
+classes recovers essentially all of Stage 14's regression (+16 to +19
+events/seed on `benchmark_new` dev, none individually significant but
+consistent across 3 seeds) **and simultaneously erases its NN-recall gain
+completely** (58.2/57.0/57.0% -> 10.1/7.6/8.9%, `b`=38-39 `c`=0 in every
+seed vs. Stage 14 directly) — exactly what happens if that recall gain was
+never anything but the shortcut. Stage 17 (domain-adversarial architecture,
+same parent plan) is designed/implemented/pre-registered and training now —
+see "What is running right now" below.
 
 ---
 
@@ -97,15 +107,16 @@ p=0.023; three seeds cut it to +6 on one benchmark and +1 on the other.
 
 ## What is running right now (updated 2026-09-08)
 
-Stage 15 is complete (diagnostic, no training; confirmed the shortcut
-mechanism, see caveat #5 above). Stage 16/17 are in progress — this session
-is working through `plans/signal-native-v2-stage15-17-shortcut-attack-plan.md`.
+Stage 15 and Stage 16 are both complete (see above). Stage 17 is designed,
+implemented, verified (`--domain-lambda 0` regresses byte-for-byte) and
+pre-registered; its 3-seed training run is starting now on Stage 14's mix
+(`npz_union2_realnn`), per `plans/signal-native-v2-stage17-domain-adversarial.md`.
 `ptbp1_work/fastq` (79G) and `aqr_work/fastq`+`align` still hold pair 1's and
 pair 2's FASTQ/BAMs on pasteur, if a rebuild is ever needed — neither leaves
-pasteur per CLAUDE.md. The 3 Stage 14 checkpoints
-(`runs/nn_attack_realnn_seed{0,1,2}/`) are local only (gitignored like every
-other `runs/*/` dir); their `.json`/`.log` and all scored `.tsv` outputs are
-committed.
+pasteur per CLAUDE.md. Local-only checkpoints (gitignored like every
+`runs/*/` dir): `runs/nn_attack_realnn_seed{0,1,2}/` (Stage 14),
+`runs/stage16_realmix_seed{0,1,2}/` (Stage 16); their `.json`/`.log` and all
+scored `.tsv` outputs are committed.
 
 ## Track B state — B2 and B3 both complete
 

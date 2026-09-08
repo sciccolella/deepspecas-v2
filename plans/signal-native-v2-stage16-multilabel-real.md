@@ -104,4 +104,118 @@ Identical to Stage 14 for comparability: 3 seeds (0, 1, 2),
 
 ## Results
 
-(filled in after scoring)
+Steps 2-3, 5 executed exactly as pre-registered (510/1,216 `aqr_arena`
+positives kept after gene-disjointness, exclusion set 2,102 genes;
+`dsignal.verify` 1,020/1,020 both checks; merged onto `npz_union2` +
+Stage 14's 474 real NN rows -> `npz_union2_realmix`, 13,464 events, real
+share 7.3%). 3 seeds trained (Step 4-6), in-sim macro-F1 0.906-0.911 (5-class
+uncollapsed), pooled collapsed macro-F1 0.909, per-class F1 A 0.927 / CSE
+0.886 / NN 0.882 / RI 0.937 -- close to Stage 14's own in-sim numbers
+(0.905-0.911), so the mix isn't harder to fit in simulation, only different
+zero-shot.
+
+### benchmark_new dev (primary gate)
+
+| seed | pooled collapsed | vs baseline (142/242=58.7%) | McNemar p | NN recall | vs baseline (11/79=13.9%) |
+|---|---:|---:|---:|---:|---:|
+| 0 | 144/242 = 59.5% | +2 events | 0.878 | 8/79 = 10.1% | −3 events |
+| 1 | 141/242 = 58.3% | −1 event | 1.000 | 6/79 = 7.6% | −5 events |
+| 2 | 145/242 = 59.9% | +3 events | 0.761 | 7/79 = 8.9% | −4 events |
+| **median** | **59.5%** | **+2** | | **8.9%** | **−4** |
+
+**Gate: FAIL on conditions 1 and 2.** Median NN recall (8.9%) does not beat
+the 13.9% baseline -- it drops below it -- and 0/3 seeds individually beat
+it. Condition 3 (no regression) trivially passes, since pooled collapsed
+accuracy doesn't regress at all here (+2/−1/+3 events, all within noise) --
+but the gate requires all three conditions, so this is an unambiguous
+**FAIL**, on the opposite condition from Stage 14's.
+
+Per-class detail (seed medians vs. baseline): CSE 83.2% -> ~94-97% (a real
+gain, McNemar p=0.002-0.013 in each seed), A5 75.0% -> 50-58%, RI 67.9% ->
+57-61%, A3 87.5% -> 75%. Macro-recall over the 5 classes drops 65.5% ->
+57.5-59.6% -- CSE's gain is large enough to hold pooled accuracy flat while
+NN and the other three classes all lose ground individually; no single
+comparison but CSE's is McNemar-significant on its own.
+
+### benchmark/ dev (regression guard)
+
+| seed | pooled collapsed | vs baseline (53/70=75.7%) | McNemar p |
+|---|---:|---:|---:|
+| 0 | 57/70 = 81.4% | +4 events | 0.481 |
+| 1 | 57/70 = 81.4% | +4 events | 0.481 |
+| 2 | 59/70 = 84.3% | +6 events | 0.238 |
+
+**No regression -- a consistent gain**, 3/3 seeds, none individually
+significant but all in the same direction and one (+6) at the branch's own
+measured noise ceiling. Same shape as `benchmark_new` dev: CSE gains hard
+(25/33 -> 32-33/33, p=0.008-0.016 every seed), A5 drops (14/15 -> 10/15 in
+2 of 3 seeds), RI ticks up.
+
+### ptbp1_arena pair 1 (confirmatory only, not gating)
+
+| seed | pooled collapsed | vs baseline (1175/2422=48.5%) | NN recall | vs baseline (135/800=16.9%) |
+|---|---:|---:|---:|---:|
+| 0 | 1668/2422 = 68.9% | +493 events | 296/800 = 37.0% | +161 events |
+| 1 | 1685/2422 = 69.6% | +510 events | 313/800 = 39.1% | +178 events |
+| 2 | 1672/2422 = 69.0% | +497 events | 313/800 = 39.1% | +178 events |
+
+A large, consistent gain on both axes -- but per the pre-registration and
+Trap 2 (B3 doc), **this is not sufficient on its own**: `ptbp1_arena`'s NN
+half is built by the identical automated rMATS x SUPPA2 procedure as
+`aqr_arena`'s (`benchmark_build/make_nn_candidates.py`, same thresholds),
+so a large chunk of this gain is plausibly the model learning to recognize
+*that construction's* NN signature specifically, generalizing between two
+automated arenas built the same way, rather than "no splicing happening" in
+general -- exactly the caveat that made this arena confirmatory-only rather
+than gating in the first place. It does confirm the mixing changed the
+model's real-data behavior substantially, consistent with the direct
+Stage 14 comparison below.
+
+### Direct comparison against Stage 14's own seeds (informative, not gating)
+
+Same benchmark, same seed indices, `benchmark_new` dev:
+
+| seed | Stage14 pooled collapsed | Stage16 pooled collapsed | McNemar p | Stage14 NN recall | Stage16 NN recall | McNemar p (NN pred) |
+|---|---:|---:|---:|---:|---:|---:|
+| 0 | 128/242 = 52.9% | 144/242 = 59.5% | 0.121 | 46/79 = 58.2% | 8/79 = 10.1% | b=38,c=0, p=4e-12 |
+| 1 | 122/242 = 50.4% | 141/242 = 58.3% | 0.073 | 45/79 = 57.0% | 6/79 = 7.6% | b=39,c=0, p=2e-12 |
+| 2 | 126/242 = 52.1% | 145/242 = 59.9% | 0.064 | 45/79 = 57.0% | 7/79 = 8.9% | b=38,c=0, p=4e-12 |
+
+**This is the cleanest evidence in the whole Stage 15-17 line.** Adding
+multi-label real data recovers essentially all of Stage 14's pooled-accuracy
+regression (+16 to +19 events per seed vs. Stage 14, none individually
+significant at n=242 but consistent in direction and magnitude across all
+3 seeds) -- and it does so by **completely erasing** Stage 14's NN-recall
+gain in the same motion (`b` = 38-39, `c` = 0 in every seed: every event
+Stage 14 called correctly-NN and Stage 16 doesn't, none the other way).
+That is exactly what Stage 15 predicts if the NN-recall gain **was never
+disambiguating splicing from no-splicing** -- it was the model keying on
+"real BAM data" and decorrelating that signal from the NN label removes
+both the shortcut and the phantom recall gain in the same step, leaving
+behind a small, non-significant net CSE-favoring shift (real positives are
+majority CSE, 338/510) rather than a genuine NN classifier.
+
+## Verdict: FAIL, but confirms Stage 15 rather than merely failing to fix it
+
+The pre-registered gate fails cleanly: this mix does not move NN recall in
+the intended direction, at all, in any seed. But unlike Stage 14, it also
+does not cost anything -- `benchmark_new` dev and `benchmark/` dev pooled
+collapsed accuracy both hold or improve. The mechanism is legible: NN
+recall and the regression were the *same* phenomenon (the shortcut), and
+removing the confound removes both together, landing very close to (in
+pooled-accuracy terms, slightly above) the pre-Stage-14 baseline with a
+CSE-favoring composition shift from the added real positives (already
+majority-CSE by construction). Real NN data still does not teach genuine
+"no splicing happened" recognition on curated data; it only ever taught
+"this is a real BAM record from the one real cohort in the pool."
+
+**For whoever picks this up next**: this closes the "just add more real
+labels" branch of the real-data attack -- Stage 16's own data confirms
+Stage 14's NN gain was entirely the shortcut, not partially. A future real-
+NN attempt would need either (a) real NN data spanning genuinely multiple
+*cohorts* (not just multiple labels within one cohort) so "real" itself
+stops being a learnable feature, or (b) Stage 17's architectural route,
+which attacks the shortcut directly rather than trying to dilute it with
+more data. `runs/ensembles/e4_union2.json` stays untouched; this mix is not
+folded into any ensemble.
+
