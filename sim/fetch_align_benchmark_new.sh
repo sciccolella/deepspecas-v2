@@ -16,6 +16,14 @@
 #   C1_REP1=SRR3469390 C1_REP2=SRR3469391 \
 #   C2_REP1=SRR3469516 C2_REP2=SRR3469517 OUT_PREFIX=ptbp1 \
 #   sim/fetch_align_benchmark_new.sh <work_dir> <star_index> 12
+#
+# Stage 20.1 (2026-09-11): every STAR call now writes an @RG header line and
+# tags each read with `RG:Z:<srr>` (`--outSAMattrRGline ID:<srr> SM:<name>`),
+# so a merged BAM keeps its replicate identity for Stage 19's per-library
+# extraction (`dsignal/extract.py` `library_of(read)`). `samtools merge`
+# preserves distinct @RG lines. Pairs 1 and 2 (ptbp1/aqr) were aligned before
+# this line existed and carry no RG tag -- their replicate is still
+# recoverable from the `SRR<run>.<n>` read names.
 set -euo pipefail
 
 WORK_DIR=$1
@@ -62,6 +70,7 @@ for name in "${!RUNS[@]}"; do
     --readFilesIn "$FASTQ_DIR/${srr}_1.fastq" "$FASTQ_DIR/${srr}_2.fastq" \
     --outSAMattributes All \
     --outSAMtype BAM SortedByCoordinate \
+    --outSAMattrRGline "ID:$srr" "SM:$name" \
     --outFileNamePrefix "$sample_out" \
     > "$ALIGN_DIR/${name}.star.log" 2>&1
   samtools index "${sample_out}Aligned.sortedByCoord.out.bam"
