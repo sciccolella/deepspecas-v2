@@ -65,20 +65,91 @@ DEFAULT_BAM1 = "benchmark_new/c1.bam"
 DEFAULT_BAM2 = "benchmark_new/c2.bam"
 
 
-def _dev_rows(split_path: str):
-    """[(csv_stem, region, truth, cluster)] for the dev half of split_path,
-    sorted for a deterministic build order."""
+def _dev_rows(split_path: str, half: str = "dev"):
+    """[(csv_stem, region, truth, cluster)] for one half (or "both") of
+    split_path, sorted for a deterministic build order."""
     with open(split_path, newline="") as f:
-        rows = [r for r in csv.DictReader(f, delimiter="\t") if r["half"] == "dev"]
+        rows = [r for r in csv.DictReader(f, delimiter="\t")
+                if half == "both" or r["half"] == half]
     rows.sort(key=lambda r: (r["csv"], r["region"]))
     return [(r["csv"], r["region"], r["truth"], r["cluster"]) for r in rows]
+
+
+def _consensus_gene_ids(consensus_tsv: str, curation_tsv: str) -> dict:
+    """region -> ENSG for `benchmark_new` (Stage 18.0). `benchmark_build/
+    consensus.tsv` carries `gene_id`; its padded window (per the source
+    class's `make_candidate_csvs.PAD`) is the curated region, and
+    `curation.tsv`'s `csv_source` says which class CSV a region was drawn
+    from (the split's own `csv` column is the *truth* CSV, which differs for
+    the 87 dev rows whose curated truth is not the caller's class)."""
+    from benchmark_build.make_candidate_csvs import CSV_NAME, PAD
+
+    by_key = {}
+    with open(consensus_tsv, newline="") as f:
+        for r in csv.DictReader(f, delimiter="\t"):
+            pad = PAD[r["class"]]
+            s = max(1, int(r["region_start"]) - pad)
+            e = int(r["region_end"]) + pad
+            by_key[(CSV_NAME[r["class"]], f"{r['chr']}:{s}-{e}")] = r["gene_id"]
+    out = {}
+    with open(curation_tsv, newline="") as f:
+        for r in csv.DictReader(f, delimiter="\t"):
+            gid = by_key.get((r["csv_source"], r["region"]))
+            if gid is not None:
+                out[r["region"]] = gid
+    return out
+
+
+def _catalogue_gene_ids(rows, ioe_dir: str) -> dict:
+    """region -> ENSG for `benchmark/` (Stage 18.0), by best boundary
+    agreement with a SUPPA catalogue event of the truth's type on the same
+    chromosome -- the `audit_noise.padding_report` matching rule. Regions
+    with no overlapping catalogue event of that type (rMATS-only calls) are
+    absent from the result and fall back to their cluster id."""
+    from sim.catalogue import build_catalogue
+
+    events = build_catalogue(ioe_dir, types=("SE", "A3", "A5", "RI"))
+    by_key = {}
+    for e in events:
+        by_key.setdefault((e.chrom, e.label), []).append(e)
+    out = {}
+    for _stem, region, truth, _cluster in rows:
+        chrom, span = region.split(":")
+        ws, we = (int(x) for x in span.split("-"))
+        best = None
+        for e in by_key.get((chrom, truth), ()):
+            if min(we, e.region_end) - max(ws, e.region_start) <= 0:
+                continue
+            cost = abs(e.region_start - ws) + abs(e.region_end - we)
+            if best is None or cost < best[0]:
+                best = (cost, e)
+        if best is not None:
+            out[region] = best[1].gene_id
+    return out
 
 
 def cmd_build(args) -> None:
     from os import makedirs
 
-    rows = _dev_rows(args.split)
-    print(f"{len(rows)} dev events from {args.split}", file=sys.stderr)
+    split = args.split or pjoin(args.benchmark_dir, "split.tsv")
+    bam1 = args.bam1 or pjoin(args.benchmark_dir, "c1.bam")
+    bam2 = args.bam2 or pjoin(args.benchmark_dir, "c2.bam")
+    if "benchmark_new" in split and args.half != "dev":
+        # benchmark_new's test half (243) is reserved for one final spend and
+        # is never extracted, let alone trained on (parent plan, Stage 18.0).
+        raise SystemExit(f"refusing --half {args.half} on {split}: benchmark_new test is never extracted")
+
+    rows = _dev_rows(split, args.half)
+    print(f"{len(rows)} {args.half} events from {split}", file=sys.stderr)
+
+    gene_of = {}
+    if args.gene_source == "consensus":
+        gene_of = _consensus_gene_ids(args.consensus, args.curation)
+    elif args.gene_source == "catalogue":
+        gene_of = _catalogue_gene_ids(rows, args.ioe_dir)
+    n_gene = sum(1 for r in rows if r[1] in gene_of)
+    print(f"gene ids: {n_gene}/{len(rows)} from {args.gene_source}, "
+          f"{len(rows) - n_gene} fall back to the split's cluster id", file=sys.stderr)
 
     makedirs(args.out_dir, exist_ok=True)
     extract_csv = pjoin(args.out_dir, "extract.csv")
@@ -86,13 +157,19 @@ def cmd_build(args) -> None:
     npz_dir = pjoin(args.out_dir, "npz")
     makedirs(npz_dir, exist_ok=True)
 
+    # event_id is "<group>;<region>": sim.gene_split.gene_id_of splits on the
+    # first ';', so train.py's by-gene grouping groups by ENSG where one is
+    # known and by the split's 50 kb cluster otherwise. The extra `cluster`/
+    # `csv` columns are ignored by every reader (DictReader) and exist so the
+    # domain probe can group by cluster without re-deriving it.
     with open(extract_csv, "w", newline="") as fcsv, open(labels_path, "w", newline="") as flab:
         cw = csv.writer(fcsv)
         lw = csv.writer(flab, delimiter="\t")
-        lw.writerow(["ix", "event_id", "label", "kind"])
+        lw.writerow(["ix", "event_id", "label", "kind", "cluster", "csv"])
         for ix, (stem, region, truth, cluster) in enumerate(rows):
-            cw.writerow([region, args.bam1, args.bam2])
-            lw.writerow([f"{ix:05d}", f"{cluster};{region}", truth, "real_dev"])
+            group = gene_of.get(region, cluster)
+            cw.writerow([region, bam1, bam2])
+            lw.writerow([f"{ix:05d}", f"{group};{region}", truth, args.kind, cluster, stem])
 
     print(f"wrote {extract_csv} and {labels_path}", file=sys.stderr)
 
@@ -176,10 +253,27 @@ def main(argv=None) -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    b = sub.add_parser("build", help="extract benchmark_new dev to npz + write labels.tsv")
-    b.add_argument("--split", default=DEFAULT_SPLIT)
-    b.add_argument("--bam1", default=DEFAULT_BAM1)
-    b.add_argument("--bam2", default=DEFAULT_BAM2)
+    b = sub.add_parser("build", help="extract a curated benchmark half to npz + write labels.tsv")
+    b.add_argument("--benchmark-dir", default="benchmark_new",
+                   help="Stage 18.0: the curated set to extract (benchmark_new or benchmark); "
+                   "--split/--bam1/--bam2 default to its split.tsv/c1.bam/c2.bam")
+    b.add_argument("--split", default=None)
+    b.add_argument("--bam1", default=None)
+    b.add_argument("--bam2", default=None)
+    b.add_argument("--half", choices=("dev", "test", "both"), default="dev",
+                   help="benchmark_new is refused for anything but dev (test is never extracted); "
+                   "benchmark/'s test half is spent and may be extracted as a domain sample")
+    b.add_argument("--kind", default="real_dev",
+                   help="labels.tsv `kind` (must start with 'real_'): real_dev (historical), "
+                   "real_bnew_dev, real_tra2 ...")
+    b.add_argument("--gene-source", choices=("cluster", "consensus", "catalogue"), default="cluster",
+                   help="what precedes ';' in event_id: the split's 50 kb cluster (historical "
+                   "default), ENSG from benchmark_build/consensus.tsv keyed through "
+                   "curation.tsv (benchmark_new), or the best-boundary SUPPA catalogue match "
+                   "(benchmark/, needs sim/events); unmatched rows fall back to the cluster")
+    b.add_argument("--consensus", default="benchmark_build/consensus.tsv")
+    b.add_argument("--curation", default=DEFAULT_CURATION)
+    b.add_argument("--ioe-dir", default="sim/events")
     b.add_argument("--out-dir", required=True)
     b.add_argument("--min-anchor", type=int, default=5)
     b.add_argument("--max-nh", type=int, default=10)

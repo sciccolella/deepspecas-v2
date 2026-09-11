@@ -123,16 +123,31 @@ def main(argv=None) -> None:
     ap.add_argument("--arena-dir", required=True, help="e.g. aqr_arena")
     ap.add_argument("--bam1", required=True)
     ap.add_argument("--bam2", required=True)
-    ap.add_argument("--other-arena-consensus", required=True, help="e.g. ptbp1_arena/consensus.tsv")
-    ap.add_argument("--other-arena-nn", required=True, help="e.g. ptbp1_arena/candidates/nn_candidates.tsv")
-    ap.add_argument("--curated-csv", nargs="+", required=True)
+    ap.add_argument("--other-arena-consensus", default=None, help="e.g. ptbp1_arena/consensus.tsv")
+    ap.add_argument("--other-arena-nn", default=None, help="e.g. ptbp1_arena/candidates/nn_candidates.tsv")
+    ap.add_argument("--curated-csv", nargs="+", default=None)
     ap.add_argument("--link", type=int, default=50000,
                      help="single-linkage gap for the same-locus proxy (default: 50000, "
                      "matching dsignal.benchmark_split's own default)")
+    ap.add_argument("--no-exclude", action="store_true",
+                     help="Stage 18.0: skip gene exclusion and keep every row -- for a "
+                     "cohort extracted as a *domain sample* (ptbp1_arena shares 92 genes "
+                     "with benchmark_new dev and can never be a training pool for a model "
+                     "scored on benchmark_new test). --other-arena-*/--curated-csv/"
+                     "--exclude-out are then unused")
+    ap.add_argument("--kind", default="real_nn_aqr",
+                     help="labels.tsv `kind` value (default %(default)s); must start with "
+                     "'real_' -- dsignal.dataset derives the domain label from that prefix")
     ap.add_argument("--out", required=True)
     ap.add_argument("--labels-out", required=True)
-    ap.add_argument("--exclude-out", required=True)
+    ap.add_argument("--exclude-out", default=None)
     args = ap.parse_args(argv)
+    if not args.kind.startswith("real_"):
+        ap.error("--kind must start with 'real_'")
+    if not args.no_exclude and not (args.other_arena_consensus and args.other_arena_nn
+                                    and args.curated_csv and args.exclude_out):
+        ap.error("--other-arena-consensus, --other-arena-nn, --curated-csv and --exclude-out "
+                 "are required unless --no-exclude")
 
     nn_tsv = f"{args.arena_dir}/candidates/nn_candidates.tsv"
     nn_csv = f"{args.arena_dir}/candidates/NN.csv"
@@ -154,15 +169,19 @@ def main(argv=None) -> None:
             f"{region!r} -- the two files are not row-aligned")
     print(f"verified {len(nn_rows)} rows 1:1 between {nn_tsv} and {nn_csv}", file=sys.stderr)
 
-    exclude = build_exclusion_set(
-        nn_rows, args.other_arena_consensus, args.other_arena_nn, args.curated_csv, args.link)
+    if args.no_exclude:
+        exclude = set()
+        print("--no-exclude: keeping every row (domain sample, not a training pool)", file=sys.stderr)
+    else:
+        exclude = build_exclusion_set(
+            nn_rows, args.other_arena_consensus, args.other_arena_nn, args.curated_csv, args.link)
 
-    with open(args.exclude_out, "w", newline="") as f:
-        w = csv.writer(f, delimiter="\t")
-        w.writerow(["gene_id"])
-        for gid in sorted(exclude):
-            w.writerow([gid])
-    print(f"wrote {args.exclude_out}: {len(exclude)} genes", file=sys.stderr)
+        with open(args.exclude_out, "w", newline="") as f:
+            w = csv.writer(f, delimiter="\t")
+            w.writerow(["gene_id"])
+            for gid in sorted(exclude):
+                w.writerow([gid])
+        print(f"wrote {args.exclude_out}: {len(exclude)} genes", file=sys.stderr)
 
     kept = [(tsv_row, region) for tsv_row, (region, _b1, _b2) in zip(nn_rows, nn_csv_rows)
             if tsv_row["gene_id"] not in exclude]
@@ -181,7 +200,7 @@ def main(argv=None) -> None:
         writer = csv.writer(f, delimiter="\t")
         writer.writerow(["ix", "event_id", "label", "kind"])
         for ix, (tsv_row, _region) in enumerate(kept):
-            writer.writerow([f"{ix:05d}", tsv_row["suppa_event_id"], "NN", "real_nn_aqr"])
+            writer.writerow([f"{ix:05d}", tsv_row["suppa_event_id"], "NN", args.kind])
 
     print(f"wrote {len(kept)} rows to {args.out} and {args.labels_out}")
 

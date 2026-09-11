@@ -99,17 +99,29 @@ def main(argv=None) -> None:
     ap.add_argument("--arena-dir", required=True, help="e.g. aqr_arena")
     ap.add_argument("--bam1", required=True)
     ap.add_argument("--bam2", required=True)
-    ap.add_argument("--other-arena-consensus", required=True, help="e.g. ptbp1_arena/consensus.tsv")
-    ap.add_argument("--other-arena-nn", required=True, help="e.g. ptbp1_arena/candidates/nn_candidates.tsv")
-    ap.add_argument("--curated-csv", nargs="+", required=True)
+    ap.add_argument("--other-arena-consensus", default=None, help="e.g. ptbp1_arena/consensus.tsv")
+    ap.add_argument("--other-arena-nn", default=None, help="e.g. ptbp1_arena/candidates/nn_candidates.tsv")
+    ap.add_argument("--curated-csv", nargs="+", default=None)
     ap.add_argument("--link", type=int, default=50000)
     ap.add_argument("--union-with", default=None,
                      help="an existing gene-exclusion TSV to union into the result "
                      "(e.g. Stage 14's exclude_genes_nn_attack.tsv)")
+    ap.add_argument("--no-exclude", action="store_true",
+                     help="Stage 18.0: skip gene exclusion and keep every row -- for a "
+                     "cohort extracted as a *domain sample*, never a training pool "
+                     "(see sim/build_real_nn_extract_csv.py)")
+    ap.add_argument("--kind", default="real_pos_aqr",
+                     help="labels.tsv `kind` value (default %(default)s); must start with 'real_'")
     ap.add_argument("--out", required=True)
     ap.add_argument("--labels-out", required=True)
-    ap.add_argument("--exclude-out", required=True)
+    ap.add_argument("--exclude-out", default=None)
     args = ap.parse_args(argv)
+    if not args.kind.startswith("real_"):
+        ap.error("--kind must start with 'real_'")
+    if not args.no_exclude and not (args.other_arena_consensus and args.other_arena_nn
+                                    and args.curated_csv and args.exclude_out):
+        ap.error("--other-arena-consensus, --other-arena-nn, --curated-csv and --exclude-out "
+                 "are required unless --no-exclude")
 
     consensus_tsv = f"{args.arena_dir}/consensus.tsv"
     with open(consensus_tsv, newline="") as f:
@@ -139,22 +151,26 @@ def main(argv=None) -> None:
         print(f"verified {len(rows)} rows 1:1 between {consensus_tsv} (class={cls}) "
               f"and {cand_csv}", file=sys.stderr)
 
-    exclude = build_exclusion_set(
-        all_rows, args.other_arena_consensus, args.other_arena_nn, args.curated_csv, args.link)
+    if args.no_exclude:
+        exclude = set()
+        print("--no-exclude: keeping every row (domain sample, not a training pool)", file=sys.stderr)
+    else:
+        exclude = build_exclusion_set(
+            all_rows, args.other_arena_consensus, args.other_arena_nn, args.curated_csv, args.link)
 
-    if args.union_with:
-        prior = _gene_ids(args.union_with)
-        n_before = len(exclude)
-        exclude |= prior
-        print(f"unioned with {args.union_with}: {len(prior)} genes, "
-              f"{len(exclude) - n_before} new -> {len(exclude)} total", file=sys.stderr)
+        if args.union_with:
+            prior = _gene_ids(args.union_with)
+            n_before = len(exclude)
+            exclude |= prior
+            print(f"unioned with {args.union_with}: {len(prior)} genes, "
+                  f"{len(exclude) - n_before} new -> {len(exclude)} total", file=sys.stderr)
 
-    with open(args.exclude_out, "w", newline="") as f:
-        w = csv.writer(f, delimiter="\t")
-        w.writerow(["gene_id"])
-        for gid in sorted(exclude):
-            w.writerow([gid])
-    print(f"wrote {args.exclude_out}: {len(exclude)} genes", file=sys.stderr)
+        with open(args.exclude_out, "w", newline="") as f:
+            w = csv.writer(f, delimiter="\t")
+            w.writerow(["gene_id"])
+            for gid in sorted(exclude):
+                w.writerow([gid])
+        print(f"wrote {args.exclude_out}: {len(exclude)} genes", file=sys.stderr)
 
     kept = [(tsv_row, region) for tsv_row, region in aligned_rows
             if tsv_row["gene_id"] not in exclude]
@@ -173,7 +189,7 @@ def main(argv=None) -> None:
         writer = csv.writer(f, delimiter="\t")
         writer.writerow(["ix", "event_id", "label", "kind"])
         for ix, (tsv_row, _region) in enumerate(kept):
-            writer.writerow([f"{ix:05d}", tsv_row["suppa_event_id"], tsv_row["class"], "real_pos_aqr"])
+            writer.writerow([f"{ix:05d}", tsv_row["suppa_event_id"], tsv_row["class"], args.kind])
 
     print(f"wrote {len(kept)} rows to {args.out} and {args.labels_out}")
 
