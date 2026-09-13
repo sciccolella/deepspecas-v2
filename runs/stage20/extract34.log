@@ -1,0 +1,18 @@
+Running scope as unit: run-r9ddfe23d946a4c30a234600a2a21cc76.scope
+prpf4 pos extracted: 285 of 285
+verify prpf4 pos exit 0
+[coverage parity] 570/570 regions match
+[junction parity] 570/570 regions match
+prpf4 nn extracted: 447 of 447
+verify prpf4 nn exit 0
+[coverage parity] 894/894 regions match
+[junction parity] 894/894 regions match
+u2af2 pos extracted: 1109 of 1109
+verify u2af2 pos exit 0
+[coverage parity] 2218/2218 regions match
+[junction parity] 2218/2218 regions match
+u2af2 nn extracted: 480 of 480
+verify u2af2 nn exit 0
+[coverage parity] 960/960 regions match
+[junction parity] 960/960 regions match
+EXTRACT34_DONE

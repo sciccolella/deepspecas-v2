@@ -1,0 +1,60 @@
+=== Sun Sep 13 21:42:09 CEST 2026 loadavg before: 9.81 8.44 7.83 8/1815 1845389 ===
+=== fetch + align (prpf4) ===
+  merged BAMs exist, skipping
+=== Sun Sep 13 21:42:09 CEST 2026 loadavg after align: 9.81 8.44 7.83 8/1815 1845391 ===
+=== build arena (salmon/SUPPA2/rMATS/consensus) ===
+=== 1/6 salmon quant ===
+  cond1_rep1: already quantified
+  cond1_rep2: already quantified
+  cond2_rep1: already quantified
+  cond2_rep2: already quantified
+=== 2/6 TPM matrices ===
+=== 3/6 SUPPA2 psiPerEvent ===
+=== 4/6 SUPPA2 diffSplice ===
+=== 5/6 rMATS ===
+=== 6/6 consensus + candidate CSVs ===
+A3: 122 matched -> 103 after dedup -> 82 after direction filter
+A5: 84 matched -> 70 after dedup -> 55 after direction filter
+CSE: 898 matched -> 556 after dedup -> 434 after direction filter
+RI: 133 matched -> 114 after dedup -> 93 after direction filter
+wrote prpf4_arena/consensus.tsv: 664 consensus events
+class
+CSE    434
+RI      93
+A3      82
+A5      55
+Name: count, dtype: int64
+wrote prpf4_arena/candidates/A3.csv: 82 events
+wrote prpf4_arena/candidates/A5.csv: 55 events
+wrote prpf4_arena/candidates/ES.csv: 434 events
+wrote prpf4_arena/candidates/IR.csv: 93 events
+wrote prpf4_arena/candidates/events.bed: 664 regions
+ARENA_DONE prpf4_arena
+665 prpf4_arena/consensus.tsv
+=== NN candidates ===
+loaded TPM for 227109 transcripts
+A3: 1318 unchanged-consensus loci -> 1261 after dropping positives
+A5: 829 unchanged-consensus loci -> 776 after dropping positives
+CSE: 4894 unchanged-consensus loci -> 4692 after dropping positives
+RI: 1026 unchanged-consensus loci -> 982 after dropping positives
+selected 800 NN candidates (target 800)
+source_class
+CSE    523
+RI     112
+A3      99
+A5      66
+Name: count, dtype: int64
+wrote prpf4_arena/candidates/NN.csv: 800 events
+
+width check (NN must not be separable from positives by width alone):
+  percentile   positives         NN
+         10         474        486
+         25         951       1159
+         50        2944       3248
+         75        8550       8706
+         90       18338      19929
+=== Sun Sep 13 21:44:17 CEST 2026 loadavg at end: 10.41 8.87 8.05 7/1811 1846969 ===
+PAIR_DONE prpf4_arena
+   665 prpf4_arena/consensus.tsv
+   801 prpf4_arena/candidates/nn_candidates.tsv
+  1466 total

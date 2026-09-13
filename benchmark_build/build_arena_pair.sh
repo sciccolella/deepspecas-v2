@@ -55,7 +55,7 @@ benchmark_build/run_arena.sh "$WORK_DIR" "$OUT_DIR" "$PREFIX"
 echo "=== NN candidates ==="
 IOE_DIR=$ROOT/sim/events
 if [[ ! -f "$OUT_DIR/candidates/nn_candidates.tsv" ]]; then
-  /data/conda/ciccolella/envs/DSpoly2v2/bin/python benchmark_build/make_nn_candidates.py \
+  PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" /data/conda/ciccolella/envs/DSpoly2v2/bin/python benchmark_build/make_nn_candidates.py \
     "$OUT_DIR/rmats_out" "$OUT_DIR" "$IOE_DIR" "$OUT_DIR/consensus.tsv" "$OUT_DIR" "$OUT_DIR/candidates" \
     "$WORK_DIR/align/c1_${PREFIX}.bam" "$WORK_DIR/align/c2_${PREFIX}.bam" \
     --n-total 800 --seed 0

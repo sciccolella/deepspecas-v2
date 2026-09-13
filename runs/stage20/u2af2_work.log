@@ -1,0 +1,60 @@
+=== Sun Sep 13 21:44:17 CEST 2026 loadavg before: 10.41 8.87 8.05 7/1811 1846973 ===
+=== fetch + align (u2af2) ===
+  merged BAMs exist, skipping
+=== Sun Sep 13 21:44:17 CEST 2026 loadavg after align: 10.41 8.87 8.05 7/1811 1846975 ===
+=== build arena (salmon/SUPPA2/rMATS/consensus) ===
+=== 1/6 salmon quant ===
+  cond1_rep1: already quantified
+  cond1_rep2: already quantified
+  cond2_rep1: already quantified
+  cond2_rep2: already quantified
+=== 2/6 TPM matrices ===
+=== 3/6 SUPPA2 psiPerEvent ===
+=== 4/6 SUPPA2 diffSplice ===
+=== 5/6 rMATS ===
+=== 6/6 consensus + candidate CSVs ===
+A3: 421 matched -> 320 after dedup -> 270 after direction filter
+A5: 218 matched -> 183 after dedup -> 147 after direction filter
+CSE: 3042 matched -> 1729 after dedup -> 1443 after direction filter
+RI: 480 matched -> 388 after dedup -> 341 after direction filter
+wrote u2af2_arena/consensus.tsv: 2201 consensus events
+class
+CSE    1443
+RI      341
+A3      270
+A5      147
+Name: count, dtype: int64
+wrote u2af2_arena/candidates/A3.csv: 270 events
+wrote u2af2_arena/candidates/A5.csv: 147 events
+wrote u2af2_arena/candidates/ES.csv: 1443 events
+wrote u2af2_arena/candidates/IR.csv: 341 events
+wrote u2af2_arena/candidates/events.bed: 2201 regions
+ARENA_DONE u2af2_arena
+2202 u2af2_arena/consensus.tsv
+=== NN candidates ===
+loaded TPM for 227109 transcripts
+A3: 1132 unchanged-consensus loci -> 953 after dropping positives
+A5: 771 unchanged-consensus loci -> 640 after dropping positives
+CSE: 5065 unchanged-consensus loci -> 4442 after dropping positives
+RI: 641 unchanged-consensus loci -> 547 after dropping positives
+selected 799 NN candidates (target 800)
+source_class
+CSE    524
+RI     124
+A3      98
+A5      53
+Name: count, dtype: int64
+wrote u2af2_arena/candidates/NN.csv: 799 events
+
+width check (NN must not be separable from positives by width alone):
+  percentile   positives         NN
+         10         493        444
+         25        1025       1284
+         50        2985       3903
+         75        7389       9185
+         90       17495      21685
+=== Sun Sep 13 21:47:53 CEST 2026 loadavg at end: 11.37 9.36 8.36 7/1792 1849621 ===
+PAIR_DONE u2af2_arena
+  2202 u2af2_arena/consensus.tsv
+   800 u2af2_arena/candidates/nn_candidates.tsv
+  3002 total

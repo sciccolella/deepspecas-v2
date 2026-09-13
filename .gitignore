@@ -31,3 +31,6 @@ ptbp1_arena/build/
 # from committed npz + labels with `dsignal.domain_probe build`.
 !runs/domain_probe/
 runs/domain_probe/*.npz
+
+# Stage 20.1 arena build / extraction logs for pairs 3 and 4 (small)
+!runs/stage20/
