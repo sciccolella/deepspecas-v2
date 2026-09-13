@@ -358,14 +358,16 @@ def apply_feature_subset_meta(meta: dict, subset: str) -> dict:
 
 
 def read_labels(labels_path: str, npz_dir: str):
-    """[(ix, event_id, label, gene_id, npz_path, kind)] for every labelled
-    record that actually has an .npz on disk. ``kind`` is the labels TSV's
-    own provenance column (sim batches: "positive"/"nn_hard"/"nn_novel"/
-    "nn_plain"; real batches: "real_nn_aqr"/"real_pos_aqr", Stage 14/16) --
-    carried through so `JunctionSetDataset` can derive the Stage 17 domain
-    label (`is_real = kind.startswith("real_")`) without a labels-file
-    schema change. Every existing 5-element read of an entry (`e[1]`
-    through `e[4]`, `entries[i][4]`) is unaffected by the new 6th element."""
+    """[(ix, event_id, label, gene_id, npz_path, kind, weight)] for every
+    labelled record that actually has an .npz on disk. ``kind`` is the labels
+    TSV's own provenance column (sim batches: "positive"/"nn_hard"/
+    "nn_novel"/"nn_plain"; real batches: "real_nn_aqr"/"real_pos_aqr", Stage
+    14/16) -- carried through so `JunctionSetDataset` can derive the Stage 17
+    domain label (`is_real = kind.startswith("real_")`) without a labels-file
+    schema change. ``weight`` (Stage 20.2) is the optional per-row loss
+    weight column, 1.0 when absent or empty; `train.py` may also overwrite it
+    in-train (`--balance-real-cells`). Every existing positional read of an
+    entry (`e[1]` through `e[5]`) is unaffected by the new 7th element."""
     index = {}
     for name in os.listdir(npz_dir):
         if name.endswith(".npz"):
@@ -375,8 +377,9 @@ def read_labels(labels_path: str, npz_dir: str):
         for row in csv.DictReader(f, delimiter="\t"):
             path = index.get(row["ix"])
             if path is not None:
+                w = row.get("weight", "")
                 out.append((row["ix"], row["event_id"], row["label"], gene_id_of(row["event_id"]),
-                            path, row.get("kind", "")))
+                            path, row.get("kind", ""), float(w) if w not in ("", None) else 1.0))
     return out
 
 
@@ -421,6 +424,13 @@ class JunctionSetDataset(Dataset):
     def gene_ids(self):
         return [e[3] for e in self.entries]
 
+    @property
+    def has_row_weights(self) -> bool:
+        """True when any entry carries a weight other than 1.0 -- the
+        training loss switches to its weighted form only then, so a run
+        without weights is bit-identical to the pre-Stage-20 loss."""
+        return any(e[6] != 1.0 for e in self.entries)
+
     def _normalized(self, i: int) -> NormalizedRecord:
         if self.cache and i in self._cache:
             return self._cache[i]
@@ -435,7 +445,7 @@ class JunctionSetDataset(Dataset):
         self.epoch = epoch
 
     def __getitem__(self, i: int):
-        ix, event_id, label, gene_id, path, kind = self.entries[i]
+        ix, event_id, label, gene_id, path, kind, weight = self.entries[i]
         norm = self._normalized(i)
 
         if self.augment.any_enabled:
@@ -462,6 +472,9 @@ class JunctionSetDataset(Dataset):
             #: Stage 17 domain label: 1.0 for a real-BAM record (kind
             #: "real_nn_aqr"/"real_pos_aqr"), 0.0 for every simulated kind.
             "is_real": 1.0 if kind.startswith("real_") else 0.0,
+            #: Stage 20.2 per-row loss weight (1.0 unless the labels file or
+            #: --balance-real-cells says otherwise)
+            "weight": float(weight),
             "event_id": event_id,
             "ix": ix,
         }
@@ -524,6 +537,7 @@ def collate(batch):
         "type_label": torch.tensor([item.get("type_label", -1) for item in batch], dtype=torch.long),
         "is_diff": torch.tensor([item.get("is_diff", 0.0) for item in batch], dtype=torch.float32),
         "is_real": torch.tensor([item.get("is_real", 0.0) for item in batch], dtype=torch.float32),
+        "weight": torch.tensor([item.get("weight", 1.0) for item in batch], dtype=torch.float32),
         "event_id": [item["event_id"] for item in batch],
         "ix": [item["ix"] for item in batch],
     }

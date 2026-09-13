@@ -54,6 +54,9 @@ import sys
 import time
 from os.path import join as pjoin
 
+import math
+from dataclasses import replace as dc_replace
+
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
@@ -151,6 +154,141 @@ def domain_loss(model, batch, device, pos_weight=None, grl_lambda: float = 1.0):
     )
 
 
+# --------------------------------------------------------------------------
+# Stage 20.2: fine-tuning path (plans/signal-native-v2-stage18-22-accuracy-plan.md §20.2)
+# --------------------------------------------------------------------------
+
+#: parameters that are *not* the encoder, for --freeze encoder
+_HEAD_PREFIXES = ("head.", "type_head.", "diff_head.", "domain_head.")
+
+
+def _wmean(losses, denom, w):
+    """Row-weighted mean: ``sum(l_i w_i) / sum(d_i w_i)``. With ``denom`` the
+    per-row class weight this equals PyTorch's weighted-mean cross-entropy
+    exactly when ``w == 1``; with ``denom == 1`` it is a weighted BCE mean."""
+    return (losses * w).sum() / (denom * w).sum().clamp_min(1e-12)
+
+
+def weighted_ce(logits, target, class_w, row_w):
+    """Class- and row-weighted cross-entropy. ``class_w`` may be None (no
+    class balancing, `--class-weights none`)."""
+    ce = torch.nn.functional.cross_entropy(logits, target, weight=class_w, reduction="none")
+    denom = class_w[target] if class_w is not None else torch.ones_like(ce)
+    return _wmean(ce, denom, row_w)
+
+
+def two_head_loss_weighted(model, batch, device, type_weights, pos_weight, diff_lambda, row_w):
+    """`two_head_loss` with per-row weights; identical to it when ``row_w == 1``."""
+    type_logits, diff_logit = model.forward_parts(**batch_inputs(batch, device))
+    type_target = batch["type_label"].to(device)
+    is_diff = batch["is_diff"].to(device)
+    has_type = type_target >= 0
+    if has_type.any():
+        loss_type = weighted_ce(type_logits[has_type], type_target[has_type], type_weights, row_w[has_type])
+    else:
+        loss_type = type_logits.sum() * 0.0
+    bce = torch.nn.functional.binary_cross_entropy_with_logits(
+        diff_logit, is_diff, pos_weight=pos_weight, reduction="none")
+    return loss_type + diff_lambda * _wmean(bce, torch.ones_like(bce), row_w)
+
+
+def domain_loss_weighted(model, batch, device, row_w, grl_lambda: float = 1.0):
+    domain_logit = model.domain_logits(**batch_inputs(batch, device), grl_lambda=grl_lambda)
+    bce = torch.nn.functional.binary_cross_entropy_with_logits(
+        domain_logit, batch["is_real"].to(device), reduction="none")
+    return _wmean(bce, torch.ones_like(bce), row_w)
+
+
+def grl_lambda_at(step: int, total: int, schedule: str) -> float:
+    """`const` -> 1.0 (Stage 17 as run). `ramp` -> the DANN schedule
+    ``2 / (1 + exp(-10 p)) - 1`` over training progress ``p`` (Stage 17's
+    flagged follow-up: let the encoder learn the task before it is asked to
+    resist the domain head)."""
+    if schedule == "const":
+        return 1.0
+    p = min(max(step / max(total, 1), 0.0), 1.0)
+    return 2.0 / (1.0 + math.exp(-10.0 * p)) - 1.0
+
+
+def balance_real_cells(entries, frac: float):
+    """Per-row weights so that every real ``(kind, label)`` cell carries equal
+    total weight, and the real rows together sum to ``frac`` x the simulated
+    rows' total (which stays at 1 per row). With no simulated rows (a
+    real-only fine-tune) or ``frac <= 0`` the cells are still equalized and
+    the real total is set to the number of real rows, i.e. mean weight 1.
+
+    Returns new entry tuples (7th element replaced). Computed on the fold's
+    *training* entries only, by the caller, so a held-out fold never
+    influences the weights."""
+    real = [e for e in entries if e[5].startswith("real_")]
+    if not real:
+        return list(entries)
+    n_sim = len(entries) - len(real)
+    cells = {}
+    for e in real:
+        cells.setdefault((e[5], e[2]), []).append(e)
+    real_total = frac * n_sim if (frac > 0 and n_sim > 0) else float(len(real))
+    per_cell = real_total / len(cells)
+    w_of = {}
+    for members in cells.values():
+        for e in members:
+            w_of[e[0]] = per_cell / len(members)
+    return [e[:6] + (w_of.get(e[0], e[6]),) for e in entries]
+
+
+def make_scheduler(opt, args):
+    """`--warmup-epochs 0` is bit-identical to the historical
+    CosineAnnealingLR; N > 0 prepends a linear warm-up over N epochs and
+    cosine-anneals the remaining ``epochs - N``."""
+    if args.warmup_epochs <= 0:
+        return torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
+    n = min(args.warmup_epochs, max(args.epochs - 1, 1))
+    warm = torch.optim.lr_scheduler.LinearLR(opt, start_factor=1e-3, end_factor=1.0, total_iters=n)
+    cos = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=max(args.epochs - n, 1))
+    return torch.optim.lr_scheduler.SequentialLR(opt, [warm, cos], milestones=[n])
+
+
+def load_parent(args, fold: int, cfg, device):
+    """`--init-from DIR`: fold ``k`` starts from ``DIR/fold{k}.pt``. Returns
+    ``(model_config, model_state, scaler, path)`` after asserting the parent
+    was trained on the same classes, feature subset and feature config --
+    a fine-tune that silently changed the representation would be a
+    different model wearing the parent's name."""
+    path = pjoin(args.init_from, f"fold{fold}.pt")
+    ck = torch.load(path, map_location="cpu", weights_only=False)
+    if tuple(ck["classes"]) != tuple(CLASSES):
+        raise ValueError(f"{path}: classes {ck['classes']} != {CLASSES}")
+    if ck["feature_subset"] != args.feature_subset:
+        raise ValueError(f"{path}: feature_subset {ck['feature_subset']!r} != --feature-subset {args.feature_subset!r}")
+    parent_cfg = FeatureConfig(**ck["feature_config"])
+    if parent_cfg != cfg:
+        raise ValueError(f"{path}: feature_config {parent_cfg} != this run's {cfg} "
+                         "(pass the parent's --flank/--max-junctions/--depth-norm/--event-groups)")
+    mcfg = ModelConfig(**ck["model_config"])
+    # parent configs predate domain_adversarial; the fine-tune decides it
+    mcfg = dc_replace(mcfg, domain_adversarial=args.domain_lambda > 0)
+    from dsignal.dataset import FeatureScaler
+
+    return mcfg, ck["model_state"], FeatureScaler.from_state_dict(ck["scaler"]), path
+
+
+def build_model(args, mcfg, device, parent_state=None):
+    model = JunctionSetTransformer(mcfg).to(device)
+    if parent_state is not None:
+        missing, unexpected = model.load_state_dict(parent_state, strict=False)
+        bad = [k for k in missing if not k.startswith("domain_head.")]
+        if bad or unexpected:
+            raise ValueError(f"--init-from state mismatch: missing {bad}, unexpected {list(unexpected)}")
+    if args.freeze == "encoder":
+        for name, p in model.named_parameters():
+            p.requires_grad_(name.startswith(_HEAD_PREFIXES))
+    return model
+
+
+def trainable_params(model):
+    return [p for p in model.parameters() if p.requires_grad]
+
+
 def evaluate(model, loader, device):
     """(predictions [n], labels [n], event_ids [n]) over a loader."""
     model.eval()
@@ -199,114 +337,181 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
         )
         if not val_entries:
             raise ValueError(f"--inner-val-frac {args.inner_val_frac} left fold {fold} no inner val set")
+    elif args.select_on == "none":
+        # Stage 20.2 fixed-epoch mode: no inner split, no early stopping,
+        # exactly --epochs epochs on the whole training fold (a fine-tune
+        # has its epoch budget pre-registered, not selected). The held-out
+        # fold is still scored exactly once at the end.
+        train_entries, val_entries = fold_entries, []
     else:  # "held-out": the old, optimistic protocol, kept to reproduce old runs
         train_entries, val_entries = fold_entries, test_entries
+
+    # Stage 20.2 per-row weights, computed on this fold's training entries
+    # only (the refit below recomputes them on the whole fold)
+    if args.balance_real_cells is not None:
+        train_entries = balance_real_cells(train_entries, args.balance_real_cells)
 
     # scaler is fit on unaugmented training-fold records only, then reused for
     # the held-out fold -- fitting it on everything would leak fold statistics.
     # It is fit on the whole training fold, inner val included: that is still
     # training-fold data, so nothing about the reported fold enters it.
-    fit_ds = JunctionSetDataset(
-        fold_entries, cfg=cfg, feature_subset=args.feature_subset, cache=not args.no_cache, coverage_bins=args.coverage_bins
-    )
-    scaler = fit_ds.fit_scaler()
+    # Under --init-from the scaler is the *parent's*, never refit: the parent's
+    # weights were trained against that exact transform.
+    parent_state = parent_path = None
+    if args.init_from:
+        mcfg, parent_state, scaler, parent_path = load_parent(args, fold, cfg, device)
+    else:
+        fit_ds = JunctionSetDataset(
+            fold_entries, cfg=cfg, feature_subset=args.feature_subset, cache=not args.no_cache, coverage_bins=args.coverage_bins
+        )
+        scaler = fit_ds.fit_scaler()
+        mcfg = ModelConfig(
+            n_classes=len(CLASSES), d_model=args.d_model, n_heads=args.n_heads,
+            n_layers=args.n_layers, d_ff=args.d_ff, dropout=args.dropout,
+            two_head=args.two_head, n_types=len(TYPE_CLASSES),
+            use_distance_bias=not args.no_distance_bias, use_relation_bias=not args.no_relation_bias,
+            coverage_bins=args.coverage_bins, coverage_channels=args.coverage_channels,
+            domain_adversarial=args.domain_lambda > 0,
+            n_event_features=len(event_feature_names(cfg)),
+        )
+    if mcfg.two_head != args.two_head:
+        raise ValueError(f"--init-from parent two_head={mcfg.two_head} but --two-head={args.two_head}")
 
-    train_ds = JunctionSetDataset(
-        train_entries, cfg=cfg, augment=aug, scaler=scaler,
-        feature_subset=args.feature_subset, cache=not args.no_cache, coverage_bins=args.coverage_bins, seed=args.seed,
-    )
-    test_ds = JunctionSetDataset(
-        test_entries, cfg=cfg, scaler=scaler,
-        feature_subset=args.feature_subset, cache=not args.no_cache, coverage_bins=args.coverage_bins, seed=args.seed,
-    )
+    def make_ds(ents, augment=None):
+        return JunctionSetDataset(
+            ents, cfg=cfg, augment=augment, scaler=scaler,
+            feature_subset=args.feature_subset, cache=not args.no_cache, coverage_bins=args.coverage_bins, seed=args.seed,
+        )
+
+    def make_loader(ds, shuffle):
+        return DataLoader(ds, batch_size=args.batch_size, shuffle=shuffle, collate_fn=collate,
+                          num_workers=args.num_workers, drop_last=False)
+
+    train_ds = make_ds(train_entries, aug)
+    test_ds = make_ds(test_entries)
     # must come after test_ds: under "held-out" the val set *is* the test set
-    val_ds = JunctionSetDataset(
-        val_entries, cfg=cfg, scaler=scaler,
-        feature_subset=args.feature_subset, cache=not args.no_cache, coverage_bins=args.coverage_bins, seed=args.seed,
-    ) if args.select_on == "inner" else test_ds
+    val_ds = make_ds(val_entries) if args.select_on == "inner" else test_ds
 
-    train_loader = DataLoader(
-        train_ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate,
-        num_workers=args.num_workers, drop_last=False,
-    )
-    test_loader = DataLoader(
-        test_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate,
-        num_workers=args.num_workers,
-    )
-    val_loader = DataLoader(
-        val_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate,
-        num_workers=args.num_workers,
-    ) if args.select_on == "inner" else test_loader
+    train_loader = make_loader(train_ds, True)
+    test_loader = make_loader(test_ds, False)
+    val_loader = make_loader(val_ds, False) if args.select_on == "inner" else test_loader
 
-    mcfg = ModelConfig(
-        n_classes=len(CLASSES), d_model=args.d_model, n_heads=args.n_heads,
-        n_layers=args.n_layers, d_ff=args.d_ff, dropout=args.dropout,
-        two_head=args.two_head, n_types=len(TYPE_CLASSES),
-        use_distance_bias=not args.no_distance_bias, use_relation_bias=not args.no_relation_bias,
-        coverage_bins=args.coverage_bins, coverage_channels=args.coverage_channels,
-        domain_adversarial=args.domain_lambda > 0,
-        n_event_features=len(event_feature_names(cfg)),
-    )
-    model = JunctionSetTransformer(mcfg).to(device)
+    model = build_model(args, mcfg, device, parent_state)
     if fold == 0:
-        print(f"model: {model.n_parameters():,} trainable parameters", file=sys.stderr)
+        n_train = sum(p.numel() for p in trainable_params(model))
+        print(f"model: {n_train:,} trainable parameters"
+              + (f" of {sum(p.numel() for p in model.parameters()):,} (freeze={args.freeze})" if args.freeze != "none" else "")
+              + (f", initialised from {parent_path}" if parent_path else ""), file=sys.stderr)
 
-    weights = class_weights(train_ds.labels, CLASSES, device, boost=args.class_weight_boost)
-    criterion = torch.nn.CrossEntropyLoss(weight=weights)
-    # two-head: class-balance the type head over the four types, and balance the
-    # differential head by the positive:negative ratio of the training fold
-    type_weights = pos_weight = None
-    if args.two_head:
-        type_weights, pos_weight = aux_weights(train_ds, device)
-    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
+    def loss_terms(ds):
+        """(class_weights or None, type_weights, pos_weight) counted on ``ds``."""
+        cw = (class_weights(ds.labels, CLASSES, device, boost=args.class_weight_boost)
+              if args.class_weights == "balanced" else None)
+        tw, pw = aux_weights(ds, device) if args.two_head else (None, None)
+        return cw, tw, pw
+
+    def compute_loss(model, batch, cw, tw, pw, weighted, grl_lambda):
+        if weighted:
+            w = batch["weight"].to(device)
+            if args.two_head:
+                loss = two_head_loss_weighted(model, batch, device, tw, pw, args.diff_lambda, w)
+            else:
+                logits, _ = model(**batch_inputs(batch, device))
+                loss = weighted_ce(logits, batch["label"].to(device), cw, w)
+            if args.domain_lambda > 0:
+                loss = loss + args.domain_lambda * domain_loss_weighted(model, batch, device, w, grl_lambda)
+            return loss
+        # the pre-Stage-20 path, kept verbatim so unweighted runs stay bit-identical
+        if args.two_head:
+            loss = two_head_loss(model, batch, device, tw, pw, args.diff_lambda)
+        else:
+            logits, _ = model(**batch_inputs(batch, device))
+            loss = torch.nn.functional.cross_entropy(logits, batch["label"].to(device), weight=cw)
+        if args.domain_lambda > 0:
+            loss = loss + args.domain_lambda * domain_loss(model, batch, device, grl_lambda=grl_lambda)
+        return loss
+
+    def run_epochs(model, ds, loader, n_epochs, weighted, collect_tail: bool):
+        """Train ``n_epochs`` epochs; returns (per-epoch hook callable results, tail states)."""
+        cw, tw, pw = loss_terms(ds)
+        opt = torch.optim.AdamW(trainable_params(model), lr=args.lr, weight_decay=args.weight_decay)
+        sched = make_scheduler(opt, args)
+        total_steps = args.epochs * max(len(loader), 1)
+        step = 0
+        tail = []
+        for epoch in range(n_epochs):
+            ds.set_epoch(epoch)
+            model.train()
+            total_loss, n_seen = 0.0, 0
+            for batch in loader:
+                opt.zero_grad(set_to_none=True)
+                lam = grl_lambda_at(step, total_steps, args.grl_schedule)
+                loss = compute_loss(model, batch, cw, tw, pw, weighted, lam)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+                opt.step()
+                step += 1
+                total_loss += float(loss) * len(batch["label"])
+                n_seen += len(batch["label"])
+            sched.step()
+            if collect_tail and args.avg_last_k > 1 and epoch >= n_epochs - args.avg_last_k:
+                tail.append({k: v.detach().cpu().clone().float() for k, v in model.state_dict().items()})
+            yield epoch, total_loss / max(n_seen, 1), tail
+
+    def snapshot(model):
+        return {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+
+    def averaged(tail, model):
+        # Tail averaging (SWA without the extra schedule): the run stops at
+        # one arbitrary epoch, and 1.2 showed the transfer cost of this
+        # protocol lives in exactly that arbitrariness. Averaging the final
+        # weights over the last k epochs spends nothing extra and removes the
+        # dependence on the last epoch's noise.
+        if len(tail) > 1:
+            avg = {k: sum(t[k] for t in tail) / len(tail) for k in tail[0]}
+            print(f"  fold {fold}: averaged the last {len(tail)} epochs' weights", file=sys.stderr)
+            return {k: v.to(dtype=tail[0][k].dtype) for k, v in avg.items()}
+        return snapshot(model)
+
+    weighted = train_ds.has_row_weights
+    if weighted and fold == 0:
+        ws = [e[6] for e in train_entries]
+        print(f"row weights active: min {min(ws):.4g} max {max(ws):.4g}, "
+              f"real total {sum(w for e, w in zip(train_entries, ws) if e[5].startswith('real_')):.1f} "
+              f"of {sum(ws):.1f}", file=sys.stderr)
 
     best = {"val_macro_f1": -1.0, "epoch": -1, "state": None}
     since_best = 0
 
-    for epoch in range(args.epochs):
-        train_ds.set_epoch(epoch)
-        model.train()
-        total_loss, n_seen = 0.0, 0
-        for batch in train_loader:
-            opt.zero_grad(set_to_none=True)
-            if args.two_head:
-                loss = two_head_loss(model, batch, device, type_weights, pos_weight,
-                                     args.diff_lambda)
+    if args.select_on == "none":
+        # fixed-epoch mode: exactly args.epochs, tail-averaged if asked, no selection
+        tail = []
+        for epoch, mean_loss, tail in run_epochs(model, train_ds, train_loader, args.epochs, weighted, True):
+            if args.verbose or epoch % 10 == 0:
+                print(f"  fold {fold} epoch {epoch:3d}  loss {mean_loss:.4f}  (fixed-epoch, no selection)",
+                      file=sys.stderr)
+        best = {"val_macro_f1": float("nan"), "epoch": args.epochs - 1, "state": averaged(tail, model)}
+    else:
+        for epoch, mean_loss, _ in run_epochs(model, train_ds, train_loader, args.epochs, weighted, False):
+            val_pred, val_gold, _ = evaluate(model, val_loader, device)
+            f1 = macro_f1(val_pred, val_gold, len(CLASSES))
+            if f1 > best["val_macro_f1"]:
+                best = {"val_macro_f1": f1, "epoch": epoch, "state": snapshot(model)}
+                since_best = 0
             else:
-                logits, _ = model(**batch_inputs(batch, device))
-                loss = criterion(logits, batch["label"].to(device))
-            if args.domain_lambda > 0:
-                loss = loss + args.domain_lambda * domain_loss(model, batch, device)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
-            opt.step()
-            total_loss += float(loss) * len(batch["label"])
-            n_seen += len(batch["label"])
-        sched.step()
+                since_best += 1
 
-        val_pred, val_gold, _ = evaluate(model, val_loader, device)
-        f1 = macro_f1(val_pred, val_gold, len(CLASSES))
-        if f1 > best["val_macro_f1"]:
-            best = {
-                "val_macro_f1": f1, "epoch": epoch,
-                "state": {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
-            }
-            since_best = 0
-        else:
-            since_best += 1
-
-        if args.verbose or epoch % 10 == 0:
-            which = "inner-val" if args.select_on == "inner" else "held-out"
-            print(
-                f"  fold {fold} epoch {epoch:3d}  loss {total_loss / max(n_seen, 1):.4f}  "
-                f"{which} macro-F1 {f1:.3f}  (best {best['val_macro_f1']:.3f} @ {best['epoch']})",
-                file=sys.stderr,
-            )
-        if since_best >= args.patience:
-            print(f"  fold {fold}: early stop at epoch {epoch} "
-                  f"(no improvement for {args.patience} epochs)", file=sys.stderr)
-            break
+            if args.verbose or epoch % 10 == 0:
+                which = "inner-val" if args.select_on == "inner" else "held-out"
+                print(
+                    f"  fold {fold} epoch {epoch:3d}  loss {mean_loss:.4f}  "
+                    f"{which} macro-F1 {f1:.3f}  (best {best['val_macro_f1']:.3f} @ {best['epoch']})",
+                    file=sys.stderr,
+                )
+            if since_best >= args.patience:
+                print(f"  fold {fold}: early stop at epoch {epoch} "
+                      f"(no improvement for {args.patience} epochs)", file=sys.stderr)
+                break
 
     # --refit: keep the honest epoch choice but give the final model the whole
     # training fold back, by retraining from scratch for exactly that many
@@ -317,56 +522,18 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
         n_epochs = best["epoch"] + 1
         print(f"  fold {fold}: refitting on the full training fold for {n_epochs} epochs",
               file=sys.stderr)
-        full_ds = JunctionSetDataset(
-            fold_entries, cfg=cfg, augment=aug, scaler=scaler,
-            feature_subset=args.feature_subset, cache=not args.no_cache, coverage_bins=args.coverage_bins, seed=args.seed,
-        )
-        full_loader = DataLoader(
-            full_ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate,
-            num_workers=args.num_workers, drop_last=False,
-        )
-        model = JunctionSetTransformer(mcfg).to(device)
-        criterion = torch.nn.CrossEntropyLoss(
-            weight=class_weights(full_ds.labels, CLASSES, device, boost=args.class_weight_boost)
-        )
-        refit_type_weights, refit_pos_weight = (
-            aux_weights(full_ds, device) if args.two_head else (None, None))
-        opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-        # same schedule shape as the selection run, so epoch n means the same thing
-        sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
-        tail = []  # weights of the last --avg-last-k epochs, for tail averaging
-        for epoch in range(n_epochs):
-            full_ds.set_epoch(epoch)
-            model.train()
-            for batch in full_loader:
-                opt.zero_grad(set_to_none=True)
-                if args.two_head:
-                    loss = two_head_loss(model, batch, device, refit_type_weights,
-                                         refit_pos_weight, args.diff_lambda)
-                else:
-                    logits, _ = model(**batch_inputs(batch, device))
-                    loss = criterion(logits, batch["label"].to(device))
-                if args.domain_lambda > 0:
-                    loss = loss + args.domain_lambda * domain_loss(model, batch, device)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
-                opt.step()
-            sched.step()
-            if args.avg_last_k > 1 and epoch >= n_epochs - args.avg_last_k:
-                tail.append({k: v.detach().cpu().clone().float()
-                             for k, v in model.state_dict().items()})
-        if len(tail) > 1:
-            # Tail averaging (SWA without the extra schedule): the refit run
-            # stops at one arbitrary epoch, and 1.2 showed the transfer cost of
-            # this protocol lives in exactly that arbitrariness. Averaging the
-            # final weights over the last k epochs spends nothing extra and
-            # removes the dependence on the last epoch's noise.
-            avg = {k: sum(t[k] for t in tail) / len(tail) for k in tail[0]}
-            best["state"] = {k: v.to(dtype=tail[0][k].dtype) for k, v in avg.items()}
-            print(f"  fold {fold}: averaged the last {len(tail)} epochs' weights", file=sys.stderr)
-        else:
-            best["state"] = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
-        train_entries = fold_entries  # the prior stored below is what this model saw
+        refit_entries = fold_entries
+        if args.balance_real_cells is not None:
+            refit_entries = balance_real_cells(fold_entries, args.balance_real_cells)
+        full_ds = make_ds(refit_entries, aug)
+        full_loader = make_loader(full_ds, True)
+        model = build_model(args, mcfg, device, parent_state)
+        tail = []
+        for _epoch, _loss, tail in run_epochs(model, full_ds, full_loader, n_epochs,
+                                              full_ds.has_row_weights, True):
+            pass
+        best["state"] = averaged(tail, model)
+        train_entries = refit_entries  # the prior stored below is what this model saw
 
     # the held-out fold is scored exactly once, with the epoch the inner split
     # chose -- so this number is an estimate, not a maximum over epochs
@@ -391,7 +558,8 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
                 "fold": fold,
                 "held_out_macro_f1": best["macro_f1"],
                 # which number chose the epoch -- under select_on="inner" the
-                # two are independent, under "held-out" they are the same set
+                # two are independent, under "held-out" they are the same set,
+                # under "none" nothing chose it (NaN)
                 "inner_val_macro_f1": best["val_macro_f1"],
                 "select_on": args.select_on,
                 "best_epoch": best["epoch"],
@@ -399,8 +567,19 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
                 # (dsignal.predict.PriorCorrection) does not need the labels
                 # TSV. Checkpoints written before this field exist -- callers
                 # must tolerate its absence. Under --select-on inner this counts
-                # the inner-train subset, i.e. exactly what the model saw.
+                # the inner-train subset, i.e. exactly what the model saw. For a
+                # fine-tune this is the *fine-tune set's* prior; score with an
+                # explicit --train-labels chosen in the pre-registration.
                 "train_class_counts": {c: int(sum(1 for e in train_entries if e[2] == c)) for c in CLASSES},
+                # Stage 20.2 provenance
+                "parent_checkpoint": parent_path,
+                "freeze": args.freeze,
+                "class_weights": args.class_weights,
+                "balance_real_cells": args.balance_real_cells,
+                "row_weights_active": bool(weighted),
+                "warmup_epochs": args.warmup_epochs,
+                "grl_schedule": args.grl_schedule,
+                "epochs": args.epochs,
             },
             pjoin(args.out_dir, f"fold{fold}.pt"),
         )
@@ -489,14 +668,17 @@ def _build_argparser() -> argparse.ArgumentParser:
     )
 
     ap.add_argument(
-        "--select-on", choices=("inner", "held-out"), default="inner",
+        "--select-on", choices=("inner", "held-out", "none"), default="inner",
         help="where the best epoch and early stopping are decided. 'inner' "
         "(default since 2026-08-17) carves a gene-disjoint validation split out "
         "of each training fold; the held-out fold is then scored exactly once, "
         "with the chosen epoch. 'held-out' is the old protocol, which chose the "
         "epoch on the fold it then reported -- a best-of-N maximum, not an "
         "estimate. Every sim-CV number from before that date is on 'held-out' "
-        "and reads about 0.02 macro-F1 high; use this flag to reproduce one.",
+        "and reads about 0.02 macro-F1 high; use this flag to reproduce one. "
+        "'none' (Stage 20.2) is fixed-epoch mode for fine-tuning: no inner "
+        "split, no early stopping, exactly --epochs epochs (tail-averaged with "
+        "--avg-last-k), the held-out fold scored once; --refit is an error with it.",
     )
     ap.add_argument("--inner-val-frac", type=float, default=0.15,
                     help="fraction of each training fold's genes held out for epoch selection")
@@ -547,13 +729,36 @@ def _build_argparser() -> argparse.ArgumentParser:
         "features or architecture.",
     )
 
+    # ---- Stage 20.2 fine-tuning path (plans/signal-native-v2-stage18-22-accuracy-plan.md §20.2)
+    ap.add_argument("--init-from", default=None, metavar="DIR",
+                    help="initialise fold k from DIR/fold{k}.pt: model config and weights "
+                    "(load_state_dict strict=False, only a missing domain_head is tolerated), "
+                    "and the parent's scaler -- never refit. classes/feature_subset/"
+                    "feature_config must match the parent")
+    ap.add_argument("--freeze", choices=("none", "encoder"), default="none",
+                    help="'encoder' trains only head.*/type_head.*/diff_head.*/domain_head.*")
+    ap.add_argument("--warmup-epochs", type=int, default=0,
+                    help="linear LR warm-up over N epochs before the cosine schedule; 0 is "
+                    "bit-identical to the historical CosineAnnealingLR")
+    ap.add_argument("--balance-real-cells", type=float, default=None, metavar="FRAC",
+                    help="per-row weights: every real (kind, label) cell gets equal total "
+                    "weight and real rows sum to FRAC x the simulated total (FRAC <= 0 or no "
+                    "sim rows: cells equal, mean weight 1). Computed per fold on the training "
+                    "entries. Off by default (weights from the labels file's optional "
+                    "'weight' column, 1.0 when absent)")
+    ap.add_argument("--class-weights", choices=("balanced", "none"), default="balanced",
+                    help="'balanced' is the historical class-balanced cross-entropy; 'none' "
+                    "avoids double balancing when --balance-real-cells already sets the mix")
+    ap.add_argument("--grl-schedule", choices=("const", "ramp"), default="const",
+                    help="gradient-reversal strength for --domain-lambda: 'const' (=1, Stage 17 "
+                    "as run) or the DANN ramp 2/(1+e^-10p)-1 over global steps")
     ap.add_argument("--num-workers", type=int, default=0)
     ap.add_argument("--no-cache", action="store_true", help="do not hold normalized records in RAM")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--json-out", default=None, help="write the aggregate metrics here")
     ap.add_argument("--dump-oof", default=None,
-                    help="write per-event out-of-fold predictions (ix, event_id, truth, "
+                    help="write per-event out-of-fold predictions (ix, event_id, kind, truth, "
                     "pred) to this TSV -- lets a caller re-score under a different "
                     "labeling convention (e.g. dsignal.score_benchmark.apply_trash_as_nn) "
                     "without retraining")
@@ -561,7 +766,14 @@ def _build_argparser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> None:
-    args = _build_argparser().parse_args(argv)
+    ap = _build_argparser()
+    args = ap.parse_args(argv)
+    if args.select_on == "none" and args.refit:
+        ap.error("--refit selects an epoch on an inner split; --select-on none has no selection")
+    if args.epochs < 0:
+        ap.error("--epochs must be >= 0")
+    if args.freeze != "none" and not args.init_from:
+        ap.error("--freeze without --init-from would train a head on random encoder features")
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     device = torch.device(args.device)
@@ -597,7 +809,9 @@ def main(argv=None) -> None:
             oof_pred[i] = CLASSES[best["pred"][pos]]
             oof_gold[i] = CLASSES[best["gold"][pos]]
         sel = (f" (epoch chosen on inner val, macro-F1 {best['val_macro_f1']:.3f})"
-               if args.select_on == "inner" else " (epoch chosen on this same fold)")
+               if args.select_on == "inner" else
+               " (fixed epoch budget, no selection)" if args.select_on == "none" else
+               " (epoch chosen on this same fold)")
         print(f"fold {fold}: held-out macro-F1 {best['macro_f1']:.3f} "
               f"at epoch {best['epoch']}{sel}", file=sys.stderr)
 
@@ -614,9 +828,9 @@ def main(argv=None) -> None:
     if args.dump_oof:
         with open(args.dump_oof, "w", newline="") as f:
             w = csv.writer(f, delimiter="\t")
-            w.writerow(["ix", "event_id", "truth", "pred"])
-            for (ix, event_id, _label, _gene_id, _path), truth, pred in zip(entries, oof_gold, oof_pred):
-                w.writerow([ix, event_id, truth, pred])
+            w.writerow(["ix", "event_id", "kind", "truth", "pred"])
+            for e, truth, pred in zip(entries, oof_gold, oof_pred):
+                w.writerow([e[0], e[1], e[5], truth, pred])
         print(f"wrote out-of-fold predictions to {args.dump_oof}", file=sys.stderr)
 
     if args.json_out:
@@ -631,6 +845,12 @@ def main(argv=None) -> None:
                     "two_head": args.two_head, "diff_lambda": args.diff_lambda,
                     "domain_lambda": args.domain_lambda,
                     "class_weight_boost": args.class_weight_boost,
+                    "epochs": args.epochs, "lr": args.lr,
+                    "init_from": args.init_from, "freeze": args.freeze,
+                    "warmup_epochs": args.warmup_epochs,
+                    "balance_real_cells": args.balance_real_cells, "class_weights": args.class_weights,
+                    "grl_schedule": args.grl_schedule,
+                    "event_groups": list(args.event_groups or []),
                     "per_fold_macro_f1": fold_f1,
                     "per_fold_inner_val_macro_f1": fold_val_f1,
                     "elapsed_min": elapsed / 60,

@@ -38,7 +38,9 @@ from os.path import basename, join as pjoin
 
 import numpy as np
 
-FIELDS = ["ix", "event_id", "label", "kind"]
+#: `weight` (Stage 20.2, per-row loss weight) is carried when a batch has it
+#: and written empty otherwise -- dsignal.dataset.read_labels reads "" as 1.0.
+FIELDS = ["ix", "event_id", "label", "kind", "weight"]
 
 
 def _link(src: str, dst: str) -> None:
