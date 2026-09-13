@@ -152,25 +152,37 @@ def _npz_index(npz_dir: str) -> dict:
     return index
 
 
-def build_dataset(npz_dir: str, labels_path: str, cfg: FeatureConfig | None = None):
-    """(X [n, F], y [n], event_ids, gene_ids) over every labelled record."""
+def build_dataset(npz_dir: str, labels_path: str, cfg: FeatureConfig | None = None,
+                  return_meta: bool = False):
+    """(X [n, F], y [n], event_ids, gene_ids) over every labelled record.
+
+    With ``return_meta`` a fifth element is appended: one dict per row with
+    the labels TSV's ``kind`` (provenance, "" when the file has no such
+    column) and the record's own ``chrom``/``start``/``end`` -- what
+    ``dsignal.domain_probe`` clusters on, since gene ids are not consistent
+    across real cohorts."""
     cfg = cfg or FeatureConfig()
     with open(labels_path) as f:
         rows = list(csv.DictReader(f, delimiter="\t"))
     index = _npz_index(npz_dir)
 
-    X, y, event_ids, gene_ids = [], [], [], []
+    X, y, event_ids, gene_ids, meta = [], [], [], [], []
     for row in rows:
         path = index.get(row["ix"])
         if path is None:
             continue
-        _, _, gbm_row, _ = build_all(load_record(path), cfg)
+        record = load_record(path)
+        _, _, gbm_row, _ = build_all(record, cfg)
         X.append(gbm_row)
         y.append(row["label"])
         event_ids.append(row["event_id"])
         gene_ids.append(gene_id_of(row["event_id"]))
+        if return_meta:
+            meta.append({"kind": row.get("kind", ""), "ix": row["ix"],
+                         "chrom": record["chrom"], "start": record["start"], "end": record["end"]})
 
-    return np.asarray(X, dtype=np.float32), np.asarray(y), event_ids, gene_ids
+    out = (np.asarray(X, dtype=np.float32), np.asarray(y), event_ids, gene_ids)
+    return out + (meta,) if return_meta else out
 
 
 def grouped_folds(X, y, gene_ids, n_folds: int, verbose: bool = True):

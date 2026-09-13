@@ -1,0 +1,17 @@
+k	removed_family	auc_after
+0		0.9986
+1	log1p_count_2	0.9986
+2	log1p_nhw_2	0.9986
+3	log1p_count_1	0.9986
+4	log1p_min_anchor	0.9983
+5	log1p_nhw_1	0.9982
+6	present_2	0.9982
+7	present_1	0.9980
+8	acc_group_frac_delta	0.9978
+9	donor_group_frac_delta	0.9980
+10	max_abs_acc_group_frac_delta	0.9978
+11	max_abs_donor_group_frac_delta	0.9979
+12	log10_intron_len	0.9980
+13	log1p_n_junctions	0.9979
+14	is_top	0.9979
+15	count_frac_2	0.9979

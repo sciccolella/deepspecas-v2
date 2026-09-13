@@ -1,0 +1,52 @@
+real-vs-sim on 7576 rows (3788 real / 3788 sim), subset 'all', table runs/domain_probe/table.npz
+
+wrote runs/domain_probe/rvs_all/{oof,features,removal_curve}.tsv and summary.json
+
+pooled OOF AUC (real vs sim): 0.999
+  cohort aqr       vs sim: AUC 1.000  (n_real 984)
+  cohort bnew_dev  vs sim: AUC 0.997  (n_real 242)
+  cohort ptbp1     vs sim: AUC 0.999  (n_real 2422)
+  cohort tra2      vs sim: AUC 0.996  (n_real 140)
+  class A3  : AUC 0.999  (n 482)
+  class A5  : AUC 0.997  (n 380)
+  class CSE : AUC 0.999  (n 3166)
+  class NN  : AUC 0.999  (n 2706)
+  class RI  : AUC 0.999  (n 842)
+  leave-aqr-out: AUC 0.999 (train 5093 rows from the other cohorts + sim)
+  leave-bnew_dev-out: AUC 0.996 (train 6222 rows from the other cohorts + sim)
+  leave-ptbp1-out: AUC 0.996 (train 3164 rows from the other cohorts + sim)
+  leave-tra2-out: AUC 0.993 (train 6457 rows from the other cohorts + sim)
+
+top 15 by gain:
+  mean__log1p_count_2                           gain    70550.4  MW-AUC 0.026
+  mean__log1p_count_1                           gain     7988.6  MW-AUC 0.030
+  mean__log1p_min_anchor                        gain     7623.8  MW-AUC 0.974
+  log1p_n_junctions                             gain     3732.8  MW-AUC 0.853
+  wmean__disjoint_from_top                      gain     2735.5  MW-AUC 0.695
+  wmean__log1p_interior_cov_2                   gain     1364.9  MW-AUC 0.259
+  log1p_cov_max_1                               gain      802.5  MW-AUC 0.243
+  wmean__motif_1                                gain      717.9  MW-AUC 0.383
+  wmean__in_window                              gain      622.0  MW-AUC 0.468
+  wmean__present_2                              gain      530.0  MW-AUC 0.062
+  max__in_window                                gain      506.2  MW-AUC 0.568
+  wmean__n_sharing_donor                        gain      429.4  MW-AUC 0.728
+  wmean__interior_nonzero_frac_2                gain      424.1  MW-AUC 0.333
+  max__log1p_min_anchor                         gain      396.8  MW-AUC 0.934
+  max__count_frac_delta                         gain      387.0  MW-AUC 0.390
+
+removal curve (families; k=0 AUC 0.999):
+  k= 1 removed log1p_count_2                            -> AUC 0.999
+  k= 2 removed log1p_nhw_2                              -> AUC 0.999
+  k= 3 removed log1p_count_1                            -> AUC 0.999
+  k= 4 removed log1p_min_anchor                         -> AUC 0.998
+  k= 5 removed log1p_nhw_1                              -> AUC 0.998
+  k= 6 removed present_2                                -> AUC 0.998
+  k= 7 removed present_1                                -> AUC 0.998
+  k= 8 removed acc_group_frac_delta                     -> AUC 0.998
+  k= 9 removed donor_group_frac_delta                   -> AUC 0.998
+  k=10 removed max_abs_acc_group_frac_delta             -> AUC 0.998
+  k=11 removed max_abs_donor_group_frac_delta           -> AUC 0.998
+  k=12 removed log10_intron_len                         -> AUC 0.998
+  k=13 removed log1p_n_junctions                        -> AUC 0.998
+  k=14 removed is_top                                   -> AUC 0.998
+  k=15 removed count_frac_2                             -> AUC 0.998

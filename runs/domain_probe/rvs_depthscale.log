@@ -1,0 +1,68 @@
+feature subset 'no-geometry': zeroed 14 geometry columns
+real-vs-sim on 7576 rows (3788 real / 3788 sim), subset 'no-geometry', table runs/domain_probe/table_depthscale.npz
+
+wrote runs/domain_probe/rvs_depthscale/{oof,features,removal_curve}.tsv and summary.json
+
+pooled OOF AUC (real vs sim): 0.998
+  cohort aqr       vs sim: AUC 0.999  (n_real 984)
+  cohort bnew_dev  vs sim: AUC 0.994  (n_real 242)
+  cohort ptbp1     vs sim: AUC 0.998  (n_real 2422)
+  cohort tra2      vs sim: AUC 0.995  (n_real 140)
+  class A3  : AUC 1.000  (n 482)
+  class A5  : AUC 0.996  (n 380)
+  class CSE : AUC 0.998  (n 3166)
+  class NN  : AUC 0.998  (n 2706)
+  class RI  : AUC 0.998  (n 842)
+  leave-aqr-out: AUC 0.999 (train 5093 rows from the other cohorts + sim)
+  leave-bnew_dev-out: AUC 0.993 (train 6222 rows from the other cohorts + sim)
+  leave-ptbp1-out: AUC 0.994 (train 3164 rows from the other cohorts + sim)
+  leave-tra2-out: AUC 0.992 (train 6457 rows from the other cohorts + sim)
+
+top 15 by gain:
+  mean__log1p_min_anchor                        gain    78825.3  MW-AUC 0.974
+  wmean__present_2                              gain     5629.7  MW-AUC 0.062
+  log1p_n_junctions                             gain     3393.8  MW-AUC 0.853
+  wmean__interior_nonzero_frac_2                gain     2221.6  MW-AUC 0.333
+  wmean__disjoint_from_top                      gain     2077.7  MW-AUC 0.695
+  wmean__present_1                              gain     1180.9  MW-AUC 0.097
+  wmean__motif_1                                gain      834.5  MW-AUC 0.383
+  wmean__log1p_min_anchor                       gain      792.2  MW-AUC 0.830
+  log1p_cov_median_1                            gain      716.9  MW-AUC 0.636
+  mean__present_1                               gain      709.6  MW-AUC 0.122
+  wmean__n_sharing_donor                        gain      596.1  MW-AUC 0.728
+  wmean__log1p_interior_cov_2                   gain      590.7  MW-AUC 0.434
+  wmean__log10_intron_len                       gain      480.4  MW-AUC 0.408
+  mean__overlaps_top                            gain      428.7  MW-AUC 0.487
+  wmean__acc_group_frac_1                       gain      365.1  MW-AUC 0.567
+
+removal curve (families; k=0 AUC 0.998):
+  k= 1 removed log1p_min_anchor                         -> AUC 0.997
+  k= 2 removed present_2                                -> AUC 0.996
+  k= 3 removed present_1                                -> AUC 0.995
+  k= 4 removed acc_group_frac_delta                     -> AUC 0.995
+  k= 5 removed donor_group_frac_delta                   -> AUC 0.995
+  k= 6 removed max_abs_acc_group_frac_delta             -> AUC 0.995
+  k= 7 removed max_abs_donor_group_frac_delta           -> AUC 0.995
+  k= 8 removed log1p_nhw_2                              -> AUC 0.995
+  k= 9 removed log1p_count_2                            -> AUC 0.995
+  k=10 removed log1p_nhw_1                              -> AUC 0.995
+  k=11 removed log1p_count_1                            -> AUC 0.994
+  k=12 removed log10_intron_len                         -> AUC 0.994
+  k=13 removed log1p_n_junctions                        -> AUC 0.994
+  k=14 removed donor_group_frac_2                       -> AUC 0.994
+  k=15 removed is_top                                   -> AUC 0.994
+  k=16 removed count_frac_2                             -> AUC 0.994
+  k=17 removed count_frac_1                             -> AUC 0.994
+  k=18 removed acc_group_frac_2                         -> AUC 0.993
+  k=19 removed motif_other                              -> AUC 0.993
+  k=20 removed donor_group_frac_1                       -> AUC 0.992
+  k=21 removed motif_1                                  -> AUC 0.991
+  k=22 removed log1p_n_junctions_1                      -> AUC 0.991
+  k=23 removed contains_top                             -> AUC 0.991
+  k=24 removed acc_group_frac_1                         -> AUC 0.989
+  k=25 removed interior_nonzero_frac_2                  -> AUC 0.988
+  k=26 removed log1p_cov_median_1                       -> AUC 0.987
+  k=27 removed log1p_interior_cov_1                     -> AUC 0.987
+  k=28 removed log1p_flank_donor_cov_2                  -> AUC 0.987
+  k=29 removed log1p_flank_acc_cov_2                    -> AUC 0.987
+  k=30 removed max_n_sharing_donor                      -> AUC 0.987

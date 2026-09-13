@@ -1,0 +1,215 @@
+{
+  "table": "runs/domain_probe/table_depthscale.npz",
+  "feature_subset": "no-geometry",
+  "n": 7576,
+  "n_real": 3788,
+  "pooled_auc": 0.9980578361724738,
+  "per_cohort_auc": {
+    "aqr": 0.999412189541642,
+    "bnew_dev": 0.9944147241833716,
+    "ptbp1": 0.9980605013703144,
+    "tra2": 0.9947899381505506
+  },
+  "class_conditional_auc": {
+    "A3": 0.999517914636456,
+    "A5": 0.9958448753462604,
+    "CSE": 0.9982780562107898,
+    "NN": 0.9979241880707459,
+    "RI": 0.9979970774256521
+  },
+  "loco_auc": {
+    "aqr": 0.9986378359825814,
+    "bnew_dev": 0.9929893804923788,
+    "ptbp1": 0.99418315833967,
+    "tra2": 0.9919619298906898
+  },
+  "top_gain": [
+    "mean__log1p_min_anchor",
+    "wmean__present_2",
+    "log1p_n_junctions",
+    "wmean__interior_nonzero_frac_2",
+    "wmean__disjoint_from_top",
+    "wmean__present_1",
+    "wmean__motif_1",
+    "wmean__log1p_min_anchor",
+    "log1p_cov_median_1",
+    "mean__present_1",
+    "wmean__n_sharing_donor",
+    "wmean__log1p_interior_cov_2",
+    "wmean__log10_intron_len",
+    "mean__overlaps_top",
+    "wmean__acc_group_frac_1",
+    "wmean__contains_top",
+    "mean__interior_nonzero_frac_2",
+    "mean__count_frac_1",
+    "max_abs_log2_count_ratio",
+    "log1p_cov_mean_2",
+    "mean__motif_2",
+    "max__log10_intron_len",
+    "log1p_cov_mean_1",
+    "wmean__interior_nonzero_frac_1",
+    "wmean__log1p_flank_donor_cov_1",
+    "wmean__log1p_count_1",
+    "wmean__interior_flank_ratio_2",
+    "max__count_frac_delta",
+    "wmean__log1p_flank_acc_cov_1",
+    "wmean__motif_other"
+  ],
+  "removal_curve": [
+    {
+      "k": 0,
+      "removed": "",
+      "auc": 0.9980578361724738
+    },
+    {
+      "k": 1,
+      "removed": "log1p_min_anchor",
+      "auc": 0.9967464504705016
+    },
+    {
+      "k": 2,
+      "removed": "present_2",
+      "auc": 0.9960614523270842
+    },
+    {
+      "k": 3,
+      "removed": "present_1",
+      "auc": 0.9950638179367067
+    },
+    {
+      "k": 4,
+      "removed": "acc_group_frac_delta",
+      "auc": 0.9948964188584192
+    },
+    {
+      "k": 5,
+      "removed": "donor_group_frac_delta",
+      "auc": 0.9946856716424567
+    },
+    {
+      "k": 6,
+      "removed": "max_abs_acc_group_frac_delta",
+      "auc": 0.9948642910586313
+    },
+    {
+      "k": 7,
+      "removed": "max_abs_donor_group_frac_delta",
+      "auc": 0.9945814827906498
+    },
+    {
+      "k": 8,
+      "removed": "log1p_nhw_2",
+      "auc": 0.9945678232488746
+    },
+    {
+      "k": 9,
+      "removed": "log1p_count_2",
+      "auc": 0.99467445130457
+    },
+    {
+      "k": 10,
+      "removed": "log1p_nhw_1",
+      "auc": 0.9946701304291103
+    },
+    {
+      "k": 11,
+      "removed": "log1p_count_1",
+      "auc": 0.9943871827780497
+    },
+    {
+      "k": 12,
+      "removed": "log10_intron_len",
+      "auc": 0.9943767987386388
+    },
+    {
+      "k": 13,
+      "removed": "log1p_n_junctions",
+      "auc": 0.9943319173870913
+    },
+    {
+      "k": 14,
+      "removed": "donor_group_frac_2",
+      "auc": 0.9939652005053472
+    },
+    {
+      "k": 15,
+      "removed": "is_top",
+      "auc": 0.9941631244780104
+    },
+    {
+      "k": 16,
+      "removed": "count_frac_2",
+      "auc": 0.9940134967423386
+    },
+    {
+      "k": 17,
+      "removed": "count_frac_1",
+      "auc": 0.9936765381480337
+    },
+    {
+      "k": 18,
+      "removed": "acc_group_frac_2",
+      "auc": 0.9929845708506493
+    },
+    {
+      "k": 19,
+      "removed": "motif_other",
+      "auc": 0.9926343011722674
+    },
+    {
+      "k": 20,
+      "removed": "donor_group_frac_1",
+      "auc": 0.9918947345532884
+    },
+    {
+      "k": 21,
+      "removed": "motif_1",
+      "auc": 0.9910999025433509
+    },
+    {
+      "k": 22,
+      "removed": "log1p_n_junctions_1",
+      "auc": 0.9909665129364224
+    },
+    {
+      "k": 23,
+      "removed": "contains_top",
+      "auc": 0.9910242872228089
+    },
+    {
+      "k": 24,
+      "removed": "acc_group_frac_1",
+      "auc": 0.9885698208871678
+    },
+    {
+      "k": 25,
+      "removed": "interior_nonzero_frac_2",
+      "auc": 0.9884648654284245
+    },
+    {
+      "k": 26,
+      "removed": "log1p_cov_median_1",
+      "auc": 0.987085948624512
+    },
+    {
+      "k": 27,
+      "removed": "log1p_interior_cov_1",
+      "auc": 0.9868644689114404
+    },
+    {
+      "k": 28,
+      "removed": "log1p_flank_donor_cov_2",
+      "auc": 0.9869018235767036
+    },
+    {
+      "k": 29,
+      "removed": "log1p_flank_acc_cov_2",
+      "auc": 0.986774148676028
+    },
+    {
+      "k": 30,
+      "removed": "max_n_sharing_donor",
+      "auc": 0.9867754728152817
+    }
+  ]
+}

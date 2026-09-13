@@ -1,0 +1,215 @@
+{
+  "table": "runs/domain_probe/table.npz",
+  "feature_subset": "no-geometry",
+  "n": 7576,
+  "n_real": 3788,
+  "pooled_auc": 0.9986243586984519,
+  "per_cohort_auc": {
+    "aqr": 0.9997542517663826,
+    "bnew_dev": 0.9972531788073691,
+    "ptbp1": 0.998468805397897,
+    "tra2": 0.9957440790466134
+  },
+  "class_conditional_auc": {
+    "A3": 0.9996212186429297,
+    "A5": 0.9978947368421053,
+    "CSE": 0.9985765530715845,
+    "NN": 0.998686229555301,
+    "RI": 0.9987192579595014
+  },
+  "loco_auc": {
+    "aqr": 0.9990588197438702,
+    "bnew_dev": 0.9961185372555006,
+    "ptbp1": 0.9955944737008382,
+    "tra2": 0.9924990576705617
+  },
+  "top_gain": [
+    "mean__log1p_count_2",
+    "mean__log1p_count_1",
+    "mean__log1p_min_anchor",
+    "log1p_n_junctions",
+    "wmean__disjoint_from_top",
+    "wmean__log1p_interior_cov_2",
+    "log1p_cov_max_1",
+    "wmean__motif_1",
+    "wmean__present_2",
+    "wmean__log10_intron_len",
+    "wmean__n_sharing_donor",
+    "wmean__interior_nonzero_frac_2",
+    "zero_cov_frac_1",
+    "max__log1p_flank_acc_cov_2",
+    "max__count_frac_delta",
+    "max__log1p_min_anchor",
+    "log1p_cov_max_2",
+    "max_abs_log2_count_ratio",
+    "wmean__acc_group_frac_1",
+    "wmean__contains_top",
+    "mean__count_frac_1",
+    "mean__present_1",
+    "log1p_cov_mean_2",
+    "mean__present_2",
+    "mean__log10_intron_len",
+    "wmean__log1p_flank_acc_cov_2",
+    "wmean__log2_count_ratio",
+    "max__log10_intron_len",
+    "wmean__log1p_flank_donor_cov_1",
+    "mean__donor_group_frac_delta"
+  ],
+  "removal_curve": [
+    {
+      "k": 0,
+      "removed": "",
+      "auc": 0.9986243586984519
+    },
+    {
+      "k": 1,
+      "removed": "log1p_count_2",
+      "auc": 0.9985923702817434
+    },
+    {
+      "k": 2,
+      "removed": "log1p_nhw_2",
+      "auc": 0.9986219194945635
+    },
+    {
+      "k": 3,
+      "removed": "log1p_count_1",
+      "auc": 0.9985215636774385
+    },
+    {
+      "k": 4,
+      "removed": "log1p_min_anchor",
+      "auc": 0.9981528257410441
+    },
+    {
+      "k": 5,
+      "removed": "log1p_nhw_1",
+      "auc": 0.9980658506995358
+    },
+    {
+      "k": 6,
+      "removed": "present_2",
+      "auc": 0.997976436454139
+    },
+    {
+      "k": 7,
+      "removed": "present_1",
+      "auc": 0.99775230846256
+    },
+    {
+      "k": 8,
+      "removed": "acc_group_frac_delta",
+      "auc": 0.9976826866144295
+    },
+    {
+      "k": 9,
+      "removed": "donor_group_frac_delta",
+      "auc": 0.9976723722665584
+    },
+    {
+      "k": 10,
+      "removed": "max_abs_acc_group_frac_delta",
+      "auc": 0.9976801777190015
+    },
+    {
+      "k": 11,
+      "removed": "max_abs_donor_group_frac_delta",
+      "auc": 0.9976619882271476
+    },
+    {
+      "k": 12,
+      "removed": "log10_intron_len",
+      "auc": 0.9976922343553644
+    },
+    {
+      "k": 13,
+      "removed": "log1p_n_junctions",
+      "auc": 0.997736906632293
+    },
+    {
+      "k": 14,
+      "removed": "is_top",
+      "auc": 0.9976594793317195
+    },
+    {
+      "k": 15,
+      "removed": "count_frac_2",
+      "auc": 0.9976929312707611
+    },
+    {
+      "k": 16,
+      "removed": "count_frac_1",
+      "auc": 0.9975819823396064
+    },
+    {
+      "k": 17,
+      "removed": "donor_group_frac_2",
+      "auc": 0.997489292591845
+    },
+    {
+      "k": 18,
+      "removed": "motif_other",
+      "auc": 0.9974017600180193
+    },
+    {
+      "k": 19,
+      "removed": "acc_group_frac_2",
+      "auc": 0.9970606199313343
+    },
+    {
+      "k": 20,
+      "removed": "log1p_flank_acc_cov_2",
+      "auc": 0.9969786626806822
+    },
+    {
+      "k": 21,
+      "removed": "donor_group_frac_1",
+      "auc": 0.9967640127384984
+    },
+    {
+      "k": 22,
+      "removed": "log1p_n_junctions_1",
+      "auc": 0.9968045732145864
+    },
+    {
+      "k": 23,
+      "removed": "log1p_cov_max_1",
+      "auc": 0.9967576708083884
+    },
+    {
+      "k": 24,
+      "removed": "log1p_cov_max_2",
+      "auc": 0.9967775328971944
+    },
+    {
+      "k": 25,
+      "removed": "log1p_flank_acc_cov_1",
+      "auc": 0.9966575240658824
+    },
+    {
+      "k": 26,
+      "removed": "log1p_flank_donor_cov_2",
+      "auc": 0.9966589178966758
+    },
+    {
+      "k": 27,
+      "removed": "log1p_flank_donor_cov_1",
+      "auc": 0.9961031278678069
+    },
+    {
+      "k": 28,
+      "removed": "log1p_interior_cov_2",
+      "auc": 0.9961014552708549
+    },
+    {
+      "k": 29,
+      "removed": "motif_1",
+      "auc": 0.9957648451342483
+    },
+    {
+      "k": 30,
+      "removed": "contains_top",
+      "auc": 0.9959376104610903
+    }
+  ]
+}

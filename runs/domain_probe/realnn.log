@@ -1,0 +1,97 @@
+feature subset 'no-geometry': zeroed 14 geometry columns
+real-only: 3788 rows {'ptbp1': 2422, 'aqr': 984, 'bnew_dev': 242, 'tra2': 140}, subset 'no-geometry'
+
+wrote runs/domain_probe/realnn/dev_pred.tsv and summary.json
+
+=== (a) within ['ptbp1', 'aqr']: 3406 rows, 5-fold cluster-grouped ===
+
+=== real-only GBM, within arena cohorts ===
+              precision    recall  f1-score   support
+
+          A3      0.639     0.431     0.515       197
+          A5      0.528     0.189     0.279       148
+         CSE      0.765     0.858     0.809      1411
+          NN      0.734     0.724     0.729      1274
+          RI      0.702     0.713     0.707       376
+
+    accuracy                          0.738      3406
+   macro avg      0.674     0.583     0.608      3406
+weighted avg      0.729     0.738     0.728      3406
+
+confusion matrix (rows=true, cols=pred): ['A3', 'A5', 'CSE', 'NN', 'RI']
+[[  85    2   48   49   13]
+ [   5   28   59   47    9]
+ [  11    7 1210  172   11]
+ [  22   10  239  922   81]
+ [  10    6   26   66  268]]
+
+=== real-only GBM, within arena, A3+A5->A ===
+              precision    recall  f1-score   support
+
+           A      0.645     0.348     0.452       345
+         CSE      0.765     0.858     0.809      1411
+          NN      0.734     0.724     0.729      1274
+          RI      0.702     0.713     0.707       376
+
+    accuracy                          0.740      3406
+   macro avg      0.711     0.660     0.674      3406
+weighted avg      0.734     0.740     0.731      3406
+
+confusion matrix (rows=true, cols=pred): ['A', 'CSE', 'NN', 'RI']
+[[ 120  107   96   22]
+ [  18 1210  172   11]
+ [  32  239  922   81]
+ [  16   26   66  268]]
+  NN-vs-positive AUC 0.878; NN recall at 5% FPR 0.525, at 10% FPR 0.651 (n_NN 1274, n_pos 2132)
+
+=== (b) transfer ['ptbp1', 'aqr'] -> bnew_dev: 3177 train rows (229 dropped for sharing a cluster with a bnew_dev row), 242 dev rows ===
+
+=== real-only GBM -> bnew_dev ===
+              precision    recall  f1-score   support
+
+          A3      0.500     0.312     0.385        16
+          A5      0.400     0.167     0.235        12
+         CSE      0.577     0.944     0.716       107
+          NN      0.410     0.203     0.271        79
+          RI      0.538     0.250     0.341        28
+
+    accuracy                          0.541       242
+   macro avg      0.485     0.375     0.390       242
+weighted avg      0.504     0.541     0.482       242
+
+confusion matrix (rows=true, cols=pred): ['A3', 'A5', 'CSE', 'NN', 'RI']
+[[  5   0  10   1   0]
+ [  0   2   6   4   0]
+ [  1   0 101   4   1]
+ [  3   2  53  16   5]
+ [  1   1   5  14   7]]
+
+=== -> bnew_dev, A3+A5->A ===
+              precision    recall  f1-score   support
+
+           A      0.467     0.250     0.326        28
+         CSE      0.577     0.944     0.716       107
+          NN      0.410     0.203     0.271        79
+          RI      0.538     0.250     0.341        28
+
+    accuracy                          0.541       242
+   macro avg      0.498     0.412     0.414       242
+weighted avg      0.505     0.541     0.482       242
+
+confusion matrix (rows=true, cols=pred): ['A', 'CSE', 'NN', 'RI']
+[[  7  16   5   0]
+ [  1 101   4   1]
+ [  5  53  16   5]
+ [  2   5  14   7]]
+  NN-vs-positive AUC 0.581; NN recall at 5% FPR 0.101, at 10% FPR 0.152 (n_NN 79, n_pos 163)
+  NN recall at argmax: 16/79
+  also -> tra2: n 140, 5-class 0.707, collapsed 0.721
+
+=== (c) leave-one-arena-out ===
+  aqr -> ptbp1: 5-class acc 0.679, NN-vs-pos AUC 0.850 (train 750, test 2422)
+  ptbp1 -> aqr: 5-class acc 0.675, NN-vs-pos AUC 0.834 (train 2097, test 984)
+
+=== (d) vs Transformer ceiling (runs/real_supervision_ceiling/oof.tsv), 242 shared events ===
+  5-class correct: ceiling 99, real-only GBM 131; McNemar ceiling-only 27 / gbm-only 59, p=0.001
+  collapsed: McNemar ceiling-only 32 / gbm-only 58, p=0.008
+  NOTE: the ceiling was trained *within* bnew_dev (5-fold); this GBM never saw a bnew_dev row -- not the same protocol, so this is a bound comparison, not an A/B.

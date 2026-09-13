@@ -1,0 +1,36 @@
+feature subset 'no-geometry': zeroed 14 geometry columns
+real-vs-sim on 6740 rows (3788 real / 2952 sim), subset 'no-geometry', table runs/domain_probe/table_sim_geomwin.npz
+
+wrote runs/domain_probe/rvs_sim_geomwin/{oof,features,removal_curve}.tsv and summary.json
+
+pooled OOF AUC (real vs sim): 0.998
+  cohort aqr       vs sim: AUC 1.000  (n_real 984)
+  cohort bnew_dev  vs sim: AUC 0.997  (n_real 242)
+  cohort ptbp1     vs sim: AUC 0.998  (n_real 2422)
+  cohort tra2      vs sim: AUC 0.996  (n_real 140)
+  class A3  : AUC 0.998  (n 482)
+  class A5  : AUC 0.999  (n 380)
+  class CSE : AUC 0.998  (n 2483)
+  class NN  : AUC 0.998  (n 2553)
+  class RI  : AUC 0.999  (n 842)
+  leave-aqr-out: AUC 1.000 (train 4502 rows from the other cohorts + sim)
+  leave-bnew_dev-out: AUC 0.998 (train 5579 rows from the other cohorts + sim)
+  leave-ptbp1-out: AUC 0.996 (train 2600 rows from the other cohorts + sim)
+  leave-tra2-out: AUC 0.994 (train 5807 rows from the other cohorts + sim)
+
+top 15 by gain:
+  mean__log1p_count_2                           gain    48792.6  MW-AUC 0.027
+  mean__log1p_count_1                           gain    19942.3  MW-AUC 0.030
+  mean__log1p_min_anchor                        gain     7175.2  MW-AUC 0.970
+  wmean__disjoint_from_top                      gain     2718.5  MW-AUC 0.691
+  log1p_n_junctions                             gain     1684.0  MW-AUC 0.832
+  wmean__log1p_interior_cov_2                   gain     1441.6  MW-AUC 0.236
+  log1p_cov_max_1                               gain      693.8  MW-AUC 0.251
+  wmean__motif_1                                gain      667.7  MW-AUC 0.398
+  wmean__interior_nonzero_frac_2                gain      527.6  MW-AUC 0.308
+  mean__present_2                               gain      516.4  MW-AUC 0.070
+  mean__log1p_nhw_2                             gain      483.9  MW-AUC 0.029
+  wmean__n_sharing_donor                        gain      467.4  MW-AUC 0.713
+  max__log1p_min_anchor                         gain      418.0  MW-AUC 0.924
+  log1p_cov_max_2                               gain      409.6  MW-AUC 0.251
+  max_abs_log2_count_ratio                      gain      386.0  MW-AUC 0.552

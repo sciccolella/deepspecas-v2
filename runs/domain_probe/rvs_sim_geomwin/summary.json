@@ -1,0 +1,59 @@
+{
+  "table": "runs/domain_probe/table_sim_geomwin.npz",
+  "feature_subset": "no-geometry",
+  "n": 6740,
+  "n_real": 3788,
+  "pooled_auc": 0.9983598004538652,
+  "per_cohort_auc": {
+    "aqr": 0.9996726072443651,
+    "bnew_dev": 0.9969484198974221,
+    "ptbp1": 0.9981070650921207,
+    "tra2": 0.9959446380178087
+  },
+  "class_conditional_auc": {
+    "A3": 0.9976928771887537,
+    "A5": 0.998836565096953,
+    "CSE": 0.9981546992349266,
+    "NN": 0.9984478935698448,
+    "RI": 0.9989618654825916
+  },
+  "loco_auc": {
+    "aqr": 0.9995116448626415,
+    "bnew_dev": 0.997853477087441,
+    "ptbp1": 0.9960989295809284,
+    "tra2": 0.9940899202320521
+  },
+  "top_gain": [
+    "mean__log1p_count_2",
+    "mean__log1p_count_1",
+    "mean__log1p_min_anchor",
+    "wmean__disjoint_from_top",
+    "log1p_n_junctions",
+    "wmean__log1p_interior_cov_2",
+    "log1p_cov_max_1",
+    "wmean__motif_1",
+    "wmean__interior_nonzero_frac_2",
+    "mean__present_2",
+    "mean__log1p_nhw_2",
+    "wmean__n_sharing_donor",
+    "max__log1p_min_anchor",
+    "log1p_cov_max_2",
+    "max_abs_log2_count_ratio",
+    "max__log1p_flank_acc_cov_2",
+    "wmean__log10_intron_len",
+    "wmean__log1p_flank_donor_cov_1",
+    "wmean__contains_top",
+    "mean__log1p_nhw_1",
+    "wmean__present_2",
+    "mean__present_1",
+    "wmean__interior_nonzero_frac_1",
+    "wmean__n_sharing_acceptor",
+    "mean__motif_2",
+    "wmean__acc_group_frac_2",
+    "zero_cov_frac_1",
+    "wmean__log1p_interior_cov_1",
+    "mean__log10_intron_len",
+    "max__count_frac_delta"
+  ],
+  "removal_curve": []
+}

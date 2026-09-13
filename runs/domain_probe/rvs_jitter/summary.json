@@ -1,0 +1,140 @@
+{
+  "table": "runs/domain_probe/table_jitter.npz",
+  "feature_subset": "no-geometry",
+  "n": 7576,
+  "n_real": 3788,
+  "pooled_auc": 0.998455565789371,
+  "per_cohort_auc": {
+    "aqr": 0.9997137408676093,
+    "bnew_dev": 0.9962528471816174,
+    "ptbp1": 0.9984470059303271,
+    "tra2": 0.9935680343943278
+  },
+  "class_conditional_auc": {
+    "A3": 0.999276871954684,
+    "A5": 0.9973961218836566,
+    "CSE": 0.9987373742412373,
+    "NN": 0.9985157944705834,
+    "RI": 0.9971733402542301
+  },
+  "loco_auc": {
+    "aqr": 0.999062841881717,
+    "bnew_dev": 0.9949846267908153,
+    "ptbp1": 0.9951565356265892,
+    "tra2": 0.9923200150772711
+  },
+  "top_gain": [
+    "mean__log1p_count_2",
+    "mean__log1p_count_1",
+    "mean__log1p_min_anchor",
+    "log1p_n_junctions",
+    "wmean__disjoint_from_top",
+    "wmean__motif_1",
+    "log1p_cov_max_1",
+    "wmean__log1p_flank_donor_cov_1",
+    "wmean__present_2",
+    "max__log1p_flank_acc_cov_1",
+    "wmean__log1p_interior_cov_2",
+    "wmean__contains_top",
+    "mean__log1p_flank_donor_cov_1",
+    "max__log1p_flank_donor_cov_1",
+    "max__count_frac_delta",
+    "max_abs_log2_count_ratio",
+    "wmean__n_sharing_donor",
+    "log1p_cov_max_2",
+    "mean__present_1",
+    "wmean__acc_group_frac_1",
+    "mean__count_frac_1",
+    "log1p_cov_mean_2",
+    "wmean__interior_flank_ratio_2",
+    "wmean__log10_intron_len",
+    "max__log10_intron_len",
+    "wmean__motif_other",
+    "wmean__log2_count_ratio",
+    "wmean__log1p_flank_acc_cov_1",
+    "mean__present_2",
+    "max__log1p_min_anchor"
+  ],
+  "removal_curve": [
+    {
+      "k": 0,
+      "removed": "",
+      "auc": 0.998455565789371
+    },
+    {
+      "k": 1,
+      "removed": "log1p_count_2",
+      "auc": 0.9985175912596774
+    },
+    {
+      "k": 2,
+      "removed": "log1p_nhw_2",
+      "auc": 0.9984846968529532
+    },
+    {
+      "k": 3,
+      "removed": "log1p_min_anchor",
+      "auc": 0.9981913651624817
+    },
+    {
+      "k": 4,
+      "removed": "log1p_count_1",
+      "auc": 0.9980043130700071
+    },
+    {
+      "k": 5,
+      "removed": "log1p_nhw_1",
+      "auc": 0.9979082084368021
+    },
+    {
+      "k": 6,
+      "removed": "present_2",
+      "auc": 0.9977043606832671
+    },
+    {
+      "k": 7,
+      "removed": "present_1",
+      "auc": 0.9975721558325128
+    },
+    {
+      "k": 8,
+      "removed": "acc_group_frac_delta",
+      "auc": 0.9975562661614681
+    },
+    {
+      "k": 9,
+      "removed": "donor_group_frac_delta",
+      "auc": 0.9976044927069198
+    },
+    {
+      "k": 10,
+      "removed": "max_abs_acc_group_frac_delta",
+      "auc": 0.9975297136848538
+    },
+    {
+      "k": 11,
+      "removed": "max_abs_donor_group_frac_delta",
+      "auc": 0.9974805114578466
+    },
+    {
+      "k": 12,
+      "removed": "log10_intron_len",
+      "auc": 0.9974867140048773
+    },
+    {
+      "k": 13,
+      "removed": "log1p_n_junctions",
+      "auc": 0.9975083880737148
+    },
+    {
+      "k": 14,
+      "removed": "is_top",
+      "auc": 0.9975058791782866
+    },
+    {
+      "k": 15,
+      "removed": "count_frac_2",
+      "auc": 0.9975180751977287
+    }
+  ]
+}

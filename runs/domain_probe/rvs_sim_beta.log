@@ -1,0 +1,36 @@
+feature subset 'no-geometry': zeroed 14 geometry columns
+real-vs-sim on 4748 rows (3788 real / 960 sim), subset 'no-geometry', table runs/domain_probe/table_sim_beta.npz
+
+wrote runs/domain_probe/rvs_sim_beta/{oof,features,removal_curve}.tsv and summary.json
+
+pooled OOF AUC (real vs sim): 0.998
+  cohort aqr       vs sim: AUC 1.000  (n_real 984)
+  cohort bnew_dev  vs sim: AUC 0.998  (n_real 242)
+  cohort ptbp1     vs sim: AUC 0.998  (n_real 2422)
+  cohort tra2      vs sim: AUC 0.995  (n_real 140)
+  class A3  : AUC 0.998  (n 421)
+  class A5  : AUC 0.996  (n 370)
+  class CSE : AUC 0.999  (n 1763)
+  class NN  : AUC 0.999  (n 1593)
+  class RI  : AUC 0.999  (n 601)
+  leave-aqr-out: AUC 1.000 (train 3126 rows from the other cohorts + sim)
+  leave-bnew_dev-out: AUC 0.997 (train 4064 rows from the other cohorts + sim)
+  leave-ptbp1-out: AUC 0.996 (train 1461 rows from the other cohorts + sim)
+  leave-tra2-out: AUC 0.993 (train 4266 rows from the other cohorts + sim)
+
+top 15 by gain:
+  mean__log1p_count_1                           gain    30004.4  MW-AUC 0.027
+  mean__log1p_count_2                           gain    17138.4  MW-AUC 0.026
+  mean__log1p_min_anchor                        gain     7388.0  MW-AUC 0.977
+  wmean__disjoint_from_top                      gain     2749.0  MW-AUC 0.702
+  log1p_n_junctions                             gain     1877.3  MW-AUC 0.829
+  wmean__log1p_interior_cov_2                   gain      728.9  MW-AUC 0.224
+  log1p_cov_max_1                               gain      603.6  MW-AUC 0.241
+  wmean__motif_1                                gain      569.6  MW-AUC 0.390
+  max_abs_acc_group_frac_delta                  gain      537.9  MW-AUC 0.823
+  mean__log1p_nhw_2                             gain      399.6  MW-AUC 0.026
+  mean__log10_intron_len                        gain      210.5  MW-AUC 0.693
+  log1p_cov_max_2                               gain      207.4  MW-AUC 0.241
+  mean__motif_2                                 gain      144.6  MW-AUC 0.633
+  wmean__log10_intron_len                       gain      137.2  MW-AUC 0.491
+  wmean__contains_top                           gain      135.3  MW-AUC 0.493
