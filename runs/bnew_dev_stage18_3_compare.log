@@ -1,0 +1,44 @@
+=== beta_allaug vs e4_union2
+half=dev  n=242   runs/bnew_dev_e4_union2.tsv -> runs/bnew_dev_beta_allaug.tsv
+  5-class   base 142/242 = 58.7%   new  98/242 = 40.5%   base-only 57  new-only 13  McNemar p = 0.0000
+  collapsed base 142/242 = 58.7%   new 102/242 = 42.1%   base-only 54  new-only 14  McNemar p = 0.0000
+per-class recall (collapsed correctness, 5 truth strata):
+  A3   n=  16  base   14/16   = 87.5%   new   14/16   = 87.5%   base-only  1  new-only  1  McNemar p = 1.0000
+  A5   n=  12  base    9/12   = 75.0%   new   10/12   = 83.3%   base-only  0  new-only  1  McNemar p = 1.0000
+  CSE  n= 107  base   89/107  = 83.2%   new   52/107  = 48.6%   base-only 41  new-only  4  McNemar p = 0.0000
+  NN   n=  79  base   11/79   = 13.9%   new    7/79   =  8.9%   base-only  8  new-only  4  McNemar p = 0.3877
+  RI   n=  28  base   19/28   = 67.9%   new   19/28   = 67.9%   base-only  4  new-only  4  McNemar p = 1.0000
+  macro-recall (unweighted over 5 classes):  base 65.5%   new 59.2%
+=== beta_depthscale vs e4_union2
+half=dev  n=242   runs/bnew_dev_e4_union2.tsv -> runs/bnew_dev_beta_depthscale.tsv
+  5-class   base 142/242 = 58.7%   new  80/242 = 33.1%   base-only 74  new-only 12  McNemar p = 0.0000
+  collapsed base 142/242 = 58.7%   new  83/242 = 34.3%   base-only 72  new-only 13  McNemar p = 0.0000
+per-class recall (collapsed correctness, 5 truth strata):
+  A3   n=  16  base   14/16   = 87.5%   new   13/16   = 81.2%   base-only  2  new-only  1  McNemar p = 1.0000
+  A5   n=  12  base    9/12   = 75.0%   new   10/12   = 83.3%   base-only  0  new-only  1  McNemar p = 1.0000
+  CSE  n= 107  base   89/107  = 83.2%   new   38/107  = 35.5%   base-only 54  new-only  3  McNemar p = 0.0000
+  NN   n=  79  base   11/79   = 13.9%   new    5/79   =  6.3%   base-only  9  new-only  3  McNemar p = 0.1460
+  RI   n=  28  base   19/28   = 67.9%   new   17/28   = 60.7%   base-only  7  new-only  5  McNemar p = 0.7744
+  macro-recall (unweighted over 5 classes):  base 65.5%   new 53.4%
+=== stage3 vs e4_union2
+half=dev  n=242   runs/bnew_dev_e4_union2.tsv -> runs/bnew_dev_stage3.tsv
+  5-class   base 142/242 = 58.7%   new  94/242 = 38.8%   base-only 64  new-only 16  McNemar p = 0.0000
+  collapsed base 142/242 = 58.7%   new  96/242 = 39.7%   base-only 63  new-only 17  McNemar p = 0.0000
+per-class recall (collapsed correctness, 5 truth strata):
+  A3   n=  16  base   14/16   = 87.5%   new    9/16   = 56.2%   base-only  6  new-only  1  McNemar p = 0.1250
+  A5   n=  12  base    9/12   = 75.0%   new    9/12   = 75.0%   base-only  1  new-only  1  McNemar p = 1.0000
+  CSE  n= 107  base   89/107  = 83.2%   new   43/107  = 40.2%   base-only 47  new-only  1  McNemar p = 0.0000
+  NN   n=  79  base   11/79   = 13.9%   new   10/79   = 12.7%   base-only  7  new-only  6  McNemar p = 1.0000
+  RI   n=  28  base   19/28   = 67.9%   new   25/28   = 89.3%   base-only  2  new-only  8  McNemar p = 0.1094
+  macro-recall (unweighted over 5 classes):  base 65.5%   new 54.7%
+=== ens_union2_twohead vs e4_union2
+half=dev  n=242   runs/bnew_dev_e4_union2.tsv -> runs/bnew_dev_ens_union2_twohead.tsv
+  5-class   base 142/242 = 58.7%   new 135/242 = 55.8%   base-only 11  new-only  4  McNemar p = 0.1185
+  collapsed base 142/242 = 58.7%   new 136/242 = 56.2%   base-only 11  new-only  5  McNemar p = 0.2101
+per-class recall (collapsed correctness, 5 truth strata):
+  A3   n=  16  base   14/16   = 87.5%   new   12/16   = 75.0%   base-only  3  new-only  1  McNemar p = 0.6250
+  A5   n=  12  base    9/12   = 75.0%   new    8/12   = 66.7%   base-only  1  new-only  0  McNemar p = 1.0000
+  CSE  n= 107  base   89/107  = 83.2%   new   86/107  = 80.4%   base-only  4  new-only  1  McNemar p = 0.3750
+  NN   n=  79  base   11/79   = 13.9%   new   14/79   = 17.7%   base-only  0  new-only  3  McNemar p = 0.2500
+  RI   n=  28  base   19/28   = 67.9%   new   16/28   = 57.1%   base-only  3  new-only  0  McNemar p = 0.2500
+  macro-recall (unweighted over 5 classes):  base 65.5%   new 59.4%
