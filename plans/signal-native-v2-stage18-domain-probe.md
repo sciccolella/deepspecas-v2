@@ -74,3 +74,127 @@ capped; load average 5.2 at launch. STAR now writes `@RG`/`RG:Z:<srr>`
 ## Results
 
 *(filled in as each step completes; nothing above this line changes)*
+
+### 18.0 — real pool extracted (2026-09-11)
+
+| cohort | kind | rows | source | gene id |
+|---|---|---:|---|---|
+| ptbp1 | `real_pos_ptbp1` / `real_nn_ptbp1` | 1,622 + 800 | `ptbp1_arena` (local BAMs), `--no-exclude` | ENSG (arena) |
+| aqr | `real_pos_aqr` / `real_nn_aqr` | 510 + 474 | Stage 14/16 npz, unchanged | ENSG (arena) |
+| bnew_dev | `real_bnew_dev` | 242 | `runs/real_dev_npz` (new build, dev only) | ENSG via `consensus.tsv` keyed through `curation.csv_source`, 242/242 |
+| tra2 | `real_tra2` | 140 | `runs/real_tra2_npz` (both halves; test is spent) | SUPPA catalogue best-boundary match 125/140, rest the split's cluster |
+
+3,788 rows; `dsignal.verify` 3244/3244 on the ptbp1 positives. A jittered-pad
+twin of every cohort (`npz_jitter/`, `sim/jitter_extract_csv.py`, U[0,100]
+per edge, seeded) was extracted for rule 2.
+
+### 18.1 — real-vs-sim discriminator (2026-09-13)
+
+Cluster-grouped (50 kb) 5-fold OOF LightGBM on the deployed
+`no-geometry` row, 3,788 real vs 3,788 class-matched `npz_union2` rows
+(`runs/domain_probe/rvs*.log`, `*/summary.json`, `*/features.tsv`,
+`*/removal_curve.tsv`):
+
+| variant | pooled AUC | aqr / bnew_dev / ptbp1 / tra2 | LOCO (held-out cohort) | AUC after removing 15 / 30 families |
+|---|---:|---|---|---|
+| deployed (`no-geometry`, union2) | **0.999** | 1.000 / 0.997 / 0.998 / 0.996 | 0.999 / 0.996 / 0.996 / 0.992 | 0.998 / **0.996** |
+| `all` | 0.999 | 1.000 / 0.997 / 0.999 / 0.996 | — | 0.998 / — |
+| `depth_norm=scale` rows | 0.998 | 0.999 / 0.994 / 0.998 / 0.995 | — | 0.994 / **0.987** |
+| jittered-pad real pool | 0.998 | 1.000 / 0.996 / 0.998 / 0.994 | — | 0.998 / — |
+| sim = `npz_beta` | 0.998 | 1.000 / 0.998 / 0.998 / 0.995 | — | — |
+| sim = `npz_stage3` | 0.997 | 0.999 / 0.995 / 0.997 / 0.992 | — | — |
+| sim = `npz_geomwin` | 0.998 | 1.000 / 0.997 / 0.998 / 0.996 | — | — |
+| + `covshape` + `delcov` groups (18.5) | 1.000 | 1.000 / 0.999 / 1.000 / 0.999 | — | — |
+
+Class-conditional AUC 0.998–1.000 for every class. Every past simulation
+is equally far from real data by this measure (0.997–0.998) — none of the
+realism knobs the branch has tried moved the axis this probe sees.
+
+**What carries it** (gain rank, univariate Mann-Whitney AUC real-vs-sim,
+real vs sim mean of the raw column):
+
+| feature | gain | MW-AUC | real mean | sim mean | reading |
+|---|---:|---:|---:|---:|---|
+| `mean__log1p_count_2` | 68,843 | 0.026 | 1.54 | 4.24 | mean per-junction reads e^1.5 ≈ 3.7 vs ≈ 68 |
+| `mean__log1p_count_1` | 9,133 | 0.031 | 1.67 | 4.23 | same |
+| `mean__log1p_min_anchor` | 8,096 | 0.974 | 2.62 | 1.98 | shallow junctions never reach the 5 bp anchor floor |
+| `log1p_n_junctions` | 4,033 | 0.853 | 2.86 | 2.03 | ≈ 16 junctions per real window vs ≈ 6.6 |
+| `wmean__disjoint_from_top` | 2,777 | 0.695 | 0.50 | 0.34 | more of the read mass sits on junctions unrelated to the event |
+| `wmean__log1p_interior_cov_2` | 1,608 | 0.259 | 0.99 | 2.03 | depth |
+| `wmean__present_2` (scale variant, top) | 5,630 | 0.062 | 0.978 | 0.989 | real junctions are often present in one condition only |
+
+The ~15× gap in the *mean* per-junction count is far larger than the
+3.5–5.7× depth ratio `audit_noise` measured: real windows carry ~2.5× as
+many distinct junctions, most of them at 1–3 reads, present in one
+condition, disjoint from the event. Depth-rescaling does not remove it
+(0.998; `present_*`, `n_junctions`, `interior_nonzero_frac` take over).
+**The dominant tell is the sparse junction tail — noise/novel junctions at
+realistic (very low) counts — not coverage shape**: `cov_autocorr` is
+MW-AUC 0.56, i.e. real and simulated coverage are about equally smooth at
+lag 50. `delcov` *is* a tell (MW-AUC 0.84): polyester writes no indels.
+
+**Rules.** Rule 1: AUC > 0.85 past k = 30 in every variant → **the gap is
+diffuse; the feature-side arm of Stage 19 is dropped as a *gap-closing*
+device and Stage 22b moves up behind Stage 20.** (Stage 19's feature
+groups — replicate concordance, read QC — remain justified as *curator
+information*, not as realism.) The Stage 19 sim-side target list that this
+probe does support is the junction tail (count distribution of
+noise/novel junctions, one-condition-only junctions) ahead of positional/GC
+coverage bias, which the coverage-autocorrelation column says is not where
+sim and real differ. Rule 2: jittered pad 0.998 vs 0.999 — **does not
+fire**; the window convention is not a measurable tell.
+
+### 18.2 — real-only NN expressibility (2026-09-13)
+
+`runs/domain_probe/realnn.log`, `realnn/summary.json`, `realnn/dev_pred.tsv`.
+Real rows only, same features.
+
+| setting | 5-class acc | collapsed | NN-vs-pos AUC | NN recall @5% / @10% FPR |
+|---|---:|---:|---:|---|
+| within ptbp1+aqr, 5-fold cluster-grouped (3,406) | 73.8% | 74.0% | **0.878** | 0.525 / 0.651 |
+| aqr → ptbp1 (LOCO) | 67.9% | — | 0.850 | — |
+| ptbp1 → aqr (LOCO) | 67.5% | — | 0.834 | — |
+| ptbp1+aqr (minus 229 cluster-overlapping rows) → **bnew_dev** (242) | 54.1% | 54.1% | **0.581** | 0.101 / 0.152 (argmax 16/79) |
+| same model → tra2 (140, no NN) | 70.7% | 72.1% | — | — |
+
+Arena NN is expressible and transfers between arenas (0.83–0.85); curated
+NN is not (0.58, barely above the 0.64 the zero-shot Transformer's `p_NN`
+reaches). **Rule 3 fires (< 0.70): the current features cannot express
+curated NN. Stage 19's new groups are the NN lever; Stage 20's NN
+expectation is "arena-NN and positives only".**
+
+Bound comparison vs the Transformer real-supervision ceiling
+(`runs/real_supervision_ceiling/oof.tsv`, trained *within* bnew_dev): the
+real-only GBM that never saw a bnew_dev row gets 131/242 5-class correct
+vs the ceiling's 99 (McNemar 59 vs 27, p = 0.001; collapsed 58 vs 32,
+p = 0.008). Different protocols (3.2k caller-labelled rows vs 5-fold on
+242 curated rows), so not an A/B — but it says the ceiling was
+data-limited, not that the Transformer's inductive bias helps on real
+labels.
+
+### 18.3 — free re-scores on `benchmark_new` dev (2026-09-13)
+
+`runs/bnew_dev_{beta_allaug,beta_depthscale,stage3,ens_union2_twohead}.{log,tsv}`,
+per-class in `runs/bnew_dev_stage18_3_compare.log`, vs `e4_union2` 142/242
+(NN 11/79, CSE 89/107, RI 19/28):
+
+| run | collapsed | p | NN | CSE | RI |
+|---|---:|---:|---:|---:|---:|
+| `beta_allaug` (dPSI realism) | 102 | <0.0001 | 7 | 52 | 19 |
+| `beta_depthscale` | 83 | <0.0001 | 5 | 38 | 17 |
+| `stage3` (effect-size realism) | 96 | <0.0001 | 10 | 43 | **25** (p = 0.11) |
+| `ens_union2_twohead` alone | 136 | 0.21 | 14 | 86 | 16 |
+
+None moves NN. The three older realism runs lose almost all of it on CSE.
+`stage3`'s RI 25/28 is the one per-class signal worth remembering when
+Stage 19 chooses its dPSI regime, at n = 28.
+
+### 18.5 — covshape / delcov groups (feature code done 2026-09-13; 3-seed runs pending)
+
+`FeatureConfig.event_groups` (opt-in; every existing checkpoint's 32-column
+vector is unchanged, verified bit-identical), `verify_features` check 7
+passes. Probe verdict above: `delcov` is a pure domain tell on the current
+sim (no indels in polyester reads), `covshape` is not.
+`runs/stage18_5_queue.sh` trains base seeds 1/2 on union2 n12480 (only
+seed 0 existed), `covshape` s0–2 and `covshape+delcov` s0–2, scoring each on
+both dev sets — results to be appended here under rule 4.
