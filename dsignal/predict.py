@@ -289,7 +289,7 @@ class Predictor:
 
     def _forward(self, model, scaler, tokens_raw, cls_raw, meta, need_weights: bool, cov=None):
         """One (fold, view) forward pass -> (softmax [C], attention or None)."""
-        tokens, cls = apply_feature_subset(tokens_raw, cls_raw, self.feature_subset)
+        tokens, cls = apply_feature_subset(tokens_raw, cls_raw, self.feature_subset, self.cfg)
         tokens, cls = scaler.transform(tokens, cls)
         batch = collate(
             [

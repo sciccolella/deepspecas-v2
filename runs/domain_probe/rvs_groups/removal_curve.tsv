@@ -1,0 +1,12 @@
+k	removed_family	auc_after
+0		0.9996
+1	log1p_count_2	0.9996
+2	log1p_nhw_2	0.9996
+3	log1p_count_1	0.9996
+4	log1p_min_anchor	0.9996
+5	log1p_nhw_1	0.9996
+6	present_2	0.9996
+7	present_1	0.9995
+8	acc_group_frac_delta	0.9995
+9	del_rate_1	0.9995
+10	log1p_delcov_mean_1	0.9995

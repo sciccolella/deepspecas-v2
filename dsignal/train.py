@@ -67,7 +67,7 @@ from dsignal.dataset import (
     collate,
     read_labels,
 )
-from dsignal.features import FeatureConfig
+from dsignal.features import EXTRA_EVENT_GROUPS, FeatureConfig, event_feature_names
 from dsignal.model import JunctionSetTransformer, ModelConfig, batch_inputs
 from sim.gene_split import assert_no_gene_leak, split_genes
 
@@ -172,7 +172,7 @@ def macro_f1(pred, gold, n_classes) -> float:
 
 def train_fold(args, entries, train_idx, test_idx, fold: int, device):
     cfg = FeatureConfig(flank=args.flank, max_junctions=args.max_junctions,
-                        depth_norm=args.depth_norm)
+                        depth_norm=args.depth_norm, event_groups=tuple(args.event_groups or ()))
     aug = AugmentConfig.from_names(args.augment, prob=args.augment_prob,
                                    subsample_low=args.subsample_low)
 
@@ -245,6 +245,7 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
         use_distance_bias=not args.no_distance_bias, use_relation_bias=not args.no_relation_bias,
         coverage_bins=args.coverage_bins, coverage_channels=args.coverage_channels,
         domain_adversarial=args.domain_lambda > 0,
+        n_event_features=len(event_feature_names(cfg)),
     )
     model = JunctionSetTransformer(mcfg).to(device)
     if fold == 0:
@@ -384,7 +385,8 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
                 "feature_config": {"flank": cfg.flank, "max_junctions": cfg.max_junctions,
                                    "canonicalize": cfg.canonicalize,
                                    "depth_norm": cfg.depth_norm,
-                                   "depth_target": cfg.depth_target},
+                                   "depth_target": cfg.depth_target,
+                                   "event_groups": list(cfg.event_groups)},
                 "feature_subset": args.feature_subset,
                 "fold": fold,
                 "held_out_macro_f1": best["macro_f1"],
@@ -438,9 +440,16 @@ def _build_argparser() -> argparse.ArgumentParser:
 
     ap.add_argument("--flank", type=int, default=50)
     ap.add_argument("--max-junctions", type=int, default=256)
+    ap.add_argument("--event-groups", nargs="*", default=None, choices=list(EXTRA_EVENT_GROUPS),
+                    help="Stage 18.5: opt-in event-feature groups appended to the CLS vector "
+                    "(covshape: lag-50 coverage autocorrelation; delcov: deletion-coverage "
+                    "summaries). Stored in the checkpoint's feature_config; off by default so "
+                    "the vector stays the historical 32 columns")
     ap.add_argument(
-        "--feature-subset", choices=("all", "geometry", "no-geometry"), default="no-geometry",
-        help="see dsignal/baseline_gbm.py for the full note. Window geometry is "
+        "--feature-subset", default="no-geometry",
+        help="'all', 'geometry' or 'no-geometry', optionally followed by ',no-covshape'/"
+        "',no-delcov' to zero an opted-in event group (Stage 18.5 ablation). "
+        "See dsignal/baseline_gbm.py for the full note. Window geometry is "
         "excluded by default -- originally because the v1 window sampler made it "
         "a pure simulation artifact. Under window sampler v3 the coupling is "
         "partly real (geometry alone recovers 13/17 curated IR events on the "

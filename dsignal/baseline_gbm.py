@@ -71,7 +71,7 @@ from os.path import join as pjoin
 import numpy as np
 
 from dsignal.extract import load_record
-from dsignal.features import FeatureConfig, build_all, gbm_feature_names
+from dsignal.features import EXTRA_EVENT_GROUPS, FeatureConfig, build_all, gbm_feature_names, parse_feature_subset
 from sim.gene_split import assert_no_gene_leak, gene_id_of
 
 #: Standing reference from sim/baseline_model.py, printed alongside every run so
@@ -116,10 +116,17 @@ def geometry_columns(feat_names: list[str]) -> np.ndarray:
 def apply_feature_subset(X: np.ndarray, feat_names: list[str], subset: str) -> np.ndarray:
     """Zero out columns rather than dropping them, so feature indices (and
     therefore the importance printout) stay aligned across subsets."""
-    if subset == "all":
+    base, drop = parse_feature_subset(subset)
+    if base == "all" and not drop:
         return X
     mask = geometry_columns(feat_names)
     X = X.copy()
+    if drop:
+        # Stage 18.5 event groups (event-level only; they have no token aggregates)
+        cols = [i for i, n in enumerate(feat_names) if any(n in EXTRA_EVENT_GROUPS[g] for g in drop)]
+        X[:, cols] = 0.0
+        print(f"feature subset: zeroed {len(cols)} columns of groups {list(drop)}", file=sys.stderr)
+    subset = base
     if subset == "geometry":
         # Only the *event-level* geometry features survive. The token-aggregate
         # geometry columns (max/mean/wmean of rel_start/rel_end/rel_mid/
@@ -137,8 +144,6 @@ def apply_feature_subset(X: np.ndarray, feat_names: list[str], subset: str) -> n
         X[:, mask] = 0.0
         print(f"feature subset 'no-geometry': zeroed {int(mask.sum())} geometry columns",
               file=sys.stderr)
-    else:
-        raise ValueError(f"unknown feature subset {subset!r}")
     return X
 
 
@@ -260,9 +265,10 @@ def main(argv=None) -> None:
     ap.add_argument("--n-estimators", type=int, default=400)
     ap.add_argument("--learning-rate", type=float, default=0.05)
     ap.add_argument("--num-leaves", type=int, default=31)
+    ap.add_argument("--event-groups", nargs="*", default=None, choices=list(EXTRA_EVENT_GROUPS),
+                    help="Stage 18.5 opt-in event-feature groups (covshape, delcov)")
     ap.add_argument(
         "--feature-subset",
-        choices=("all", "geometry", "no-geometry"),
         default="no-geometry",
         help="default 'no-geometry' zeroes the window-geometry columns, which "
         "carry a real simulation artifact (see module docstring); 'geometry' is "
@@ -278,9 +284,10 @@ def main(argv=None) -> None:
         flank=args.flank,
         max_junctions=args.max_junctions,
         canonicalize=not args.no_canonicalize,
+        event_groups=tuple(args.event_groups or ()),
     )
     X, y, event_ids, gene_ids = build_dataset(args.npz_dir, args.labels, cfg)
-    feat_names = gbm_feature_names()
+    feat_names = gbm_feature_names(cfg)
     X = apply_feature_subset(X, feat_names, args.feature_subset)
     print(f"loaded {len(y)} events, {X.shape[1]} features", file=sys.stderr)
     labels_sorted = sorted(set(y.tolist()))

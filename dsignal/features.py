@@ -71,6 +71,21 @@ class FeatureConfig:
     #: but shared by train and inference; chosen to sit in the numeric range
     #: the unnormalized features already occupied, so nothing else retunes.
     depth_target: float = 100.0
+    #: Stage 18.5: opt-in *event-level* feature groups appended after the 32
+    #: base columns (see `EXTRA_EVENT_GROUPS`). Empty by default so every
+    #: checkpoint written before this field -- whose scaler and `cls_proj`
+    #: are sized for exactly 32 -- keeps loading and scoring unchanged. A
+    #: checkpoint trained with groups stores them in its `feature_config`,
+    #: and `dsignal.predict` rebuilds the same vector from that.
+    event_groups: tuple = ()
+
+    def __post_init__(self):
+        unknown = set(self.event_groups) - set(EXTRA_EVENT_GROUPS)
+        if unknown:
+            raise ValueError(f"unknown event_groups {sorted(unknown)}; known: {list(EXTRA_EVENT_GROUPS)}")
+        # canonical order, so two configs naming the same groups build the
+        # same vector regardless of how they were spelled on the CLI
+        self.event_groups = tuple(g for g in EXTRA_EVENT_GROUPS if g in set(self.event_groups))
 
 
 def _token_feature_names(cfg: FeatureConfig) -> list[str]:
@@ -115,6 +130,49 @@ def _token_feature_names(cfg: FeatureConfig) -> list[str]:
         "disjoint_from_top",
     ]
     names += ["rel_start", "rel_end", "rel_mid", "in_window", "present_1", "present_2"]
+    return names
+
+
+#: Stage 18.5 optional event-feature groups, in the order they are appended.
+#: `covshape`: lag-50 autocorrelation of each condition's coverage profile --
+#: the *shape* of coverage along the window (ragged real coverage vs smooth
+#: simulated coverage, plans/signal-native-v2-stage18-22-accuracy-plan.md
+#: §18.5); `cov_cv_*` already carries the amplitude. `delcov`: summaries of
+#: the extractor's deletion-coverage array, stored since Phase 1 and never
+#: featurized (an alignment-QC signature the curator sees in IGV).
+COVSHAPE_LAG = 50
+EXTRA_EVENT_GROUPS = {
+    "covshape": ["cov_autocorr_1", "cov_autocorr_2"],
+    "delcov": ["log1p_delcov_mean_1", "del_rate_1", "delcov_nonzero_frac_1",
+               "log1p_delcov_mean_2", "del_rate_2", "delcov_nonzero_frac_2"],
+}
+
+
+def parse_feature_subset(subset: str):
+    """``"no-geometry,no-covshape"`` -> ``("no-geometry", ("covshape",))``.
+
+    The first token is the historical subset (``all``/``geometry``/
+    ``no-geometry``); any further ``no-<group>`` token zeroes that Stage 18.5
+    event group so a run can carry the group in its vector (and scaler) but
+    ablate it. Applied at all three call sites (`baseline_gbm.apply_feature_subset`,
+    `dataset.apply_feature_subset`, `dataset.apply_feature_subset_meta`)."""
+    parts = [t.strip() for t in subset.split(",") if t.strip()]
+    base = parts[0] if parts else "no-geometry"
+    if base not in ("all", "geometry", "no-geometry"):
+        raise ValueError(f"unknown feature subset {base!r}")
+    drop = []
+    for t in parts[1:]:
+        if not t.startswith("no-") or t[3:] not in EXTRA_EVENT_GROUPS:
+            raise ValueError(f"unknown feature-subset token {t!r}; want no-<{'|'.join(EXTRA_EVENT_GROUPS)}>")
+        drop.append(t[3:])
+    return base, tuple(drop)
+
+
+def event_feature_names(cfg: "FeatureConfig | None" = None) -> list[str]:
+    """The 32 base event features plus whatever `cfg.event_groups` opts into."""
+    names = _event_feature_names()
+    for g in (cfg.event_groups if cfg is not None else ()):
+        names += EXTRA_EVENT_GROUPS[g]
     return names
 
 
@@ -175,6 +233,8 @@ DEPTH_ABSOLUTE_TOKEN_FEATURES = (
 DEPTH_ABSOLUTE_EVENT_FEATURES = (
     "log1p_cov_mean_1", "log1p_cov_median_1", "log1p_cov_max_1",
     "log1p_cov_mean_2", "log1p_cov_median_2", "log1p_cov_max_2",
+    # Stage 18.5 `delcov` group: the mean is absolute, the rate/fraction are not
+    "log1p_delcov_mean_1", "log1p_delcov_mean_2",
 )
 
 # One feature is depth-dependent without being depth-*absolute*, and zeroing
@@ -203,10 +263,10 @@ DEPTH_ABSOLUTE_EVENT_FEATURES = (
 # one depth and structurally cannot test what invariance protects against.
 
 
-def depth_absolute_masks() -> tuple:
-    """(token_mask, event_mask) over TOKEN_/EVENT_FEATURE_NAMES."""
+def depth_absolute_masks(cfg: "FeatureConfig | None" = None) -> tuple:
+    """(token_mask, event_mask) over TOKEN_FEATURE_NAMES / event_feature_names(cfg)."""
     tok = np.array([n in DEPTH_ABSOLUTE_TOKEN_FEATURES for n in TOKEN_FEATURE_NAMES])
-    ev = np.array([n in DEPTH_ABSOLUTE_EVENT_FEATURES for n in EVENT_FEATURE_NAMES])
+    ev = np.array([n in DEPTH_ABSOLUTE_EVENT_FEATURES for n in event_feature_names(cfg)])
     return tok, ev
 
 
@@ -237,6 +297,16 @@ class NormalizedRecord:
     min_anchor: np.ndarray
     strand: str
     flipped: bool
+    #: deletion coverage (CIGAR D), same frame as cov_*; Stage 18.5. Zeros
+    #: when a record has none.
+    delcov_1: np.ndarray = None
+    delcov_2: np.ndarray = None
+
+    def __post_init__(self):
+        if self.delcov_1 is None:
+            self.delcov_1 = np.zeros_like(self.cov_1)
+        if self.delcov_2 is None:
+            self.delcov_2 = np.zeros_like(self.cov_2)
 
 
 def _union_junctions(j1: np.ndarray, j2: np.ndarray):
@@ -271,6 +341,8 @@ def normalize_record(record: dict, cfg: FeatureConfig | None = None, force_flip:
     rs = int(record["start"])
     cov_1 = np.asarray(record["cov_1"], dtype=np.float64)
     cov_2 = np.asarray(record["cov_2"], dtype=np.float64)
+    delcov_1 = np.asarray(record.get("delcov_1", np.zeros_like(cov_1)), dtype=np.float64)
+    delcov_2 = np.asarray(record.get("delcov_2", np.zeros_like(cov_2)), dtype=np.float64)
     n = int(record["end"]) - rs
     if n <= 0:  # degenerate window; fall back to whatever coverage we got
         n = max(len(cov_1), len(cov_2))
@@ -306,6 +378,8 @@ def normalize_record(record: dict, cfg: FeatureConfig | None = None, force_flip:
         s_rel, e_rel = (n - 1 - e_rel), (n - 1 - s_rel)
         cov_1 = cov_1[::-1].copy()
         cov_2 = cov_2[::-1].copy()
+        delcov_1 = delcov_1[::-1].copy()
+        delcov_2 = delcov_2[::-1].copy()
         motif = np.array([_MOTIF_FLIP.get(int(m), int(m)) for m in motif], dtype=np.int64)
         # lexicographic (start, end) -- sorting on start alone leaves
         # shared-donor/shared-acceptor ties in an arbitrary order, which makes
@@ -330,6 +404,8 @@ def normalize_record(record: dict, cfg: FeatureConfig | None = None, force_flip:
         min_anchor=min_anchor,
         strand=strand,
         flipped=flip,
+        delcov_1=delcov_1,
+        delcov_2=delcov_2,
     )
 
 
@@ -408,6 +484,8 @@ def rescale_depth(norm: NormalizedRecord, cfg: FeatureConfig) -> NormalizedRecor
         min_anchor=norm.min_anchor,
         strand=norm.strand,
         flipped=norm.flipped,
+        delcov_1=norm.delcov_1 * k,
+        delcov_2=norm.delcov_2 * k,
     )
 
 
@@ -432,6 +510,8 @@ def mirror(norm: NormalizedRecord) -> NormalizedRecord:
         min_anchor=norm.min_anchor[order],
         strand=norm.strand,
         flipped=not norm.flipped,
+        delcov_1=norm.delcov_1[::-1].copy(),
+        delcov_2=norm.delcov_2[::-1].copy(),
     )
 
 
@@ -620,7 +700,7 @@ def build_features(
         ]
         tokens = np.stack(cols, axis=1).astype(np.float32)
 
-    event = _build_event_vector(norm, tokens, n_dropped, dropped_count_frac, n)
+    event = _build_event_vector(norm, tokens, n_dropped, dropped_count_frac, n, cfg)
 
     if cfg.depth_norm == "drop":
         # The blunt ablation: zero the depth-absolute columns instead of
@@ -628,7 +708,7 @@ def build_features(
         # within-window magnitude too, not just the global scale), and it
         # exists to separate "absolute depth was actively misleading" from
         # "absolute depth was merely miscalibrated".
-        tok_mask, ev_mask = depth_absolute_masks()
+        tok_mask, ev_mask = depth_absolute_masks(cfg)
         if tokens.size:
             tokens[:, tok_mask] = 0.0
         event = np.asarray(event, dtype=np.float32)
@@ -649,7 +729,34 @@ def _col(name: str) -> int:
     return TOKEN_FEATURE_NAMES.index(name)
 
 
-def _build_event_vector(norm, tokens, n_dropped, dropped_count_frac, n):
+def _cov_autocorr(cov: np.ndarray, lag: int) -> float:
+    """Pearson correlation between the profile and itself shifted by ``lag``
+    bases. Exactly reversal-symmetric (the pair set is the same read either
+    way), invariant to depth scaling, 0 when the window is too short or the
+    profile is constant."""
+    if len(cov) <= lag + 1:
+        return 0.0
+    a, b = cov[:-lag], cov[lag:]
+    sa, sb = a.std(), b.std()
+    if sa <= 0 or sb <= 0:
+        return 0.0
+    return float(((a - a.mean()) * (b - b.mean())).mean() / (sa * sb))
+
+
+def _delcov_stats(cov: np.ndarray, delcov: np.ndarray) -> list:
+    """[log1p mean deletion coverage, deletion rate = del / (cov + del),
+    fraction of bases with any deletion]."""
+    if len(delcov) == 0:
+        return [0.0, 0.0, 0.0]
+    tot = float(cov.sum() + delcov.sum())
+    return [
+        float(np.log1p(delcov.mean())),
+        float(delcov.sum() / tot) if tot > 0 else 0.0,
+        float((delcov > 0).mean()),
+    ]
+
+
+def _build_event_vector(norm, tokens, n_dropped, dropped_count_frac, n, cfg=None):
     def cov_stats(cov):
         if len(cov) == 0:
             return [0.0, 0.0, 0.0, 0.0, 0.0]
@@ -700,6 +807,14 @@ def _build_event_vector(norm, tokens, n_dropped, dropped_count_frac, n):
         float(1.0 - tokens[:, _col("in_window")].mean()) if j else 0.0,
     ]
     assert len(vals) == N_EVENT_FEATURES, (len(vals), N_EVENT_FEATURES)
+    # Stage 18.5 opt-in groups, appended in EXTRA_EVENT_GROUPS order so the
+    # base 32 columns keep their positions for every existing checkpoint
+    for g in (cfg.event_groups if cfg is not None else ()):
+        if g == "covshape":
+            vals += [_cov_autocorr(norm.cov_1, COVSHAPE_LAG), _cov_autocorr(norm.cov_2, COVSHAPE_LAG)]
+        elif g == "delcov":
+            vals += _delcov_stats(norm.cov_1, norm.delcov_1) + _delcov_stats(norm.cov_2, norm.delcov_2)
+    assert len(vals) == len(event_feature_names(cfg)), (len(vals), len(event_feature_names(cfg)))
     return np.asarray(vals, dtype=np.float32)
 
 
@@ -710,8 +825,8 @@ def _build_event_vector(norm, tokens, n_dropped, dropped_count_frac, n):
 _AGG_STATS = ("max", "mean", "wmean")
 
 
-def gbm_feature_names() -> list[str]:
-    names = list(EVENT_FEATURE_NAMES)
+def gbm_feature_names(cfg: FeatureConfig | None = None) -> list[str]:
+    names = list(event_feature_names(cfg))
     for stat in _AGG_STATS:
         names += [f"{stat}__{n}" for n in TOKEN_FEATURE_NAMES]
     return names

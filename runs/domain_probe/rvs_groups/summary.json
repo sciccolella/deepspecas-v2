@@ -1,0 +1,115 @@
+{
+  "table": "runs/domain_probe/table_groups.npz",
+  "feature_subset": "no-geometry",
+  "n": 7576,
+  "n_real": 3788,
+  "pooled_auc": 0.9995977404330243,
+  "per_cohort_auc": {
+    "aqr": 0.9998280298932873,
+    "bnew_dev": 0.9992603873039698,
+    "ptbp1": 0.9995922409591068,
+    "tra2": 0.998657414391311
+  },
+  "class_conditional_auc": {
+    "A3": 0.9998450439902894,
+    "A5": 0.9984764542936289,
+    "CSE": 0.9995829823268308,
+    "NN": 0.9997093863299044,
+    "RI": 0.9997968867248548
+  },
+  "loco_auc": {
+    "aqr": 0.9994556706780788,
+    "bnew_dev": 0.9989097014762641,
+    "ptbp1": 0.9984541439617927,
+    "tra2": 0.9962495288352808
+  },
+  "top_gain": [
+    "mean__log1p_count_2",
+    "mean__log1p_min_anchor",
+    "mean__log1p_count_1",
+    "del_rate_1",
+    "log1p_n_junctions",
+    "del_rate_2",
+    "wmean__disjoint_from_top",
+    "wmean__log1p_interior_cov_2",
+    "log1p_delcov_mean_1",
+    "wmean__present_2",
+    "max__log1p_min_anchor",
+    "wmean__interior_nonzero_frac_2",
+    "log1p_cov_max_1",
+    "wmean__motif_1",
+    "log1p_cov_max_2",
+    "max__log1p_flank_acc_cov_2",
+    "mean__present_2",
+    "wmean__log10_intron_len",
+    "wmean__motif_other",
+    "wmean__log1p_flank_acc_cov_2",
+    "cov_autocorr_1",
+    "log1p_delcov_mean_2",
+    "cov_autocorr_2",
+    "max_abs_log2_count_ratio",
+    "max__log1p_count_2",
+    "mean__present_1",
+    "max__log1p_count_1",
+    "max__log1p_flank_donor_cov_1",
+    "max_interior_nonzero_frac_1",
+    "wmean__log1p_flank_donor_cov_1"
+  ],
+  "removal_curve": [
+    {
+      "k": 0,
+      "removed": "",
+      "auc": 0.9995977404330243
+    },
+    {
+      "k": 1,
+      "removed": "log1p_count_2",
+      "auc": 0.9995919560352315
+    },
+    {
+      "k": 2,
+      "removed": "log1p_nhw_2",
+      "auc": 0.9996355132475254
+    },
+    {
+      "k": 3,
+      "removed": "log1p_count_1",
+      "auc": 0.9996111909001806
+    },
+    {
+      "k": 4,
+      "removed": "log1p_min_anchor",
+      "auc": 0.9995719545633462
+    },
+    {
+      "k": 5,
+      "removed": "log1p_nhw_1",
+      "auc": 0.9995535559968733
+    },
+    {
+      "k": 6,
+      "removed": "present_2",
+      "auc": 0.9995890289905653
+    },
+    {
+      "k": 7,
+      "removed": "present_1",
+      "auc": 0.9995070020483737
+    },
+    {
+      "k": 8,
+      "removed": "acc_group_frac_delta",
+      "auc": 0.9994817040194734
+    },
+    {
+      "k": 9,
+      "removed": "del_rate_1",
+      "auc": 0.9994881853326628
+    },
+    {
+      "k": 10,
+      "removed": "log1p_delcov_mean_1",
+      "auc": 0.9994658840399684
+    }
+  ]
+}

@@ -16,6 +16,11 @@ Four independent checks, per plans/signal-native-v2-phase3-model.md:
    `cov[start - 1 - rs : end - rs]` slice mean, and the donor/acceptor flank
    means must equal the manual slices immediately outside it.
 
+Checks 5-6 (coverage signal, coverage profile symmetries) were added by
+Stage 12; check 7 (Stage 18.5: the opt-in covshape/delcov event groups keep
+the base 32 columns bit-identical and respect mirror / condition-swap /
+depth-scale symmetries) by Stage 18.
+
 Usage:
     python -m dsignal.verify_features [--npz-dir sim/experiment/npz_geomwin]
 """
@@ -335,6 +340,69 @@ def check_coverage_profile(npz_dir: str, n_records: int, verbose: bool) -> int:
     return 0 if ok else 1
 
 
+def check_extra_event_groups(npz_dir: str, n_records: int, verbose: bool) -> int:
+    """Check 7 (Stage 18.5): the opt-in `covshape`/`delcov` event groups
+    respect the representation's symmetries, and opting in leaves the 32 base
+    columns untouched:
+
+      * base 32 columns identical with and without the groups;
+      * mirror leaves every extra column unchanged (autocorrelation and
+        deletion summaries are reversal-invariant);
+      * condition swap exchanges the `_1`/`_2` columns exactly;
+      * depth rescaling ("scale") leaves autocorrelation, deletion rate and
+        nonzero fraction unchanged (log1p_delcov_mean is depth-absolute and
+        is on the DEPTH_ABSOLUTE list instead);
+      * a record with no deletions gives zero delcov columns.
+    """
+    from dsignal.dataset import augment_condition_swap
+    from dsignal.features import EXTRA_EVENT_GROUPS, event_feature_names, rescale_depth
+
+    cfg = FeatureConfig(event_groups=("covshape", "delcov"))
+    names = event_feature_names(cfg)
+    n_base = len(EVENT_FEATURE_NAMES)
+    extra = names[n_base:]
+    assert extra == EXTRA_EVENT_GROUPS["covshape"] + EXTRA_EVENT_GROUPS["delcov"], extra
+    paths = sorted(glob.glob(pjoin(npz_dir, "*.npz")))[:n_records]
+    if not paths:
+        print("check 7 SKIPPED: no records")
+        return 0
+    failed = 0
+    worst = {"base": 0.0, "mirror": 0.0, "swap": 0.0, "scale": 0.0}
+    n_with_del = 0
+    swap_pairs = [(names.index(n), names.index(n.replace("_1", "_2"))) for n in extra if n.endswith("_1")]
+    scale_inv = [names.index(n) for n in extra if not n.startswith("log1p_")]
+    for path in paths:
+        rec = load_record(path)
+        norm = normalize_record(rec, cfg)
+        _, ev, _ = build_features(cfg=cfg, norm=norm)
+        _, ev0, _ = build_features(cfg=FeatureConfig(), norm=normalize_record(rec, FeatureConfig()))
+        worst["base"] = max(worst["base"], float(np.abs(ev[:n_base] - ev0).max()))
+        _, ev_m, _ = build_features(cfg=cfg, norm=mirror(norm))
+        worst["mirror"] = max(worst["mirror"], float(np.abs(ev_m[n_base:] - ev[n_base:]).max()))
+        _, ev_s, _ = build_features(cfg=cfg, norm=augment_condition_swap(norm))
+        for a, b in swap_pairs:
+            worst["swap"] = max(worst["swap"], abs(float(ev_s[a] - ev[b])), abs(float(ev_s[b] - ev[a])))
+        scaled = rescale_depth(norm, FeatureConfig(depth_norm="scale", event_groups=cfg.event_groups))
+        _, ev_k, _ = build_features(cfg=cfg, norm=scaled)
+        worst["scale"] = max(worst["scale"], float(np.abs(ev_k[scale_inv] - ev[scale_inv]).max()))
+        if rec["delcov_1"].sum() + rec["delcov_2"].sum() > 0:
+            n_with_del += 1
+        elif np.abs(ev[[names.index(n) for n in EXTRA_EVENT_GROUPS["delcov"]]]).max() != 0:
+            print(f"FAIL {path}: no deletions but nonzero delcov columns")
+            failed += 1
+    tol = 1e-5
+    for k, v in worst.items():
+        if v > tol:
+            print(f"FAIL check 7 {k}: max deviation {v:g} > {tol}")
+            failed += 1
+    if verbose:
+        print(f"  extra columns {extra}; {n_with_del}/{len(paths)} records carry deletions; "
+              f"max deviations {worst}")
+    print(f"check 7 (Stage 18.5 covshape/delcov groups: base columns untouched, mirror-invariant, "
+          f"condition-swap exact, scale-invariant): {'OK' if not failed else f'{failed} FAILURES'}")
+    return failed
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--npz-dir", default="sim/experiment/npz_geomwin")
@@ -349,6 +417,7 @@ def main(argv=None) -> None:
     failed += check_coverage_offsets(args.npz_dir, args.n_records, args.verbose)
     failed += check_coverage_signal(args.npz_dir, args.n_records, args.verbose)
     failed += check_coverage_profile(args.npz_dir, args.n_records, args.verbose)
+    failed += check_extra_event_groups(args.npz_dir, args.n_records, args.verbose)
 
     print(f"\n{'ALL CHECKS PASSED' if not failed else f'{failed} CHECK FAILURES'}")
     sys.exit(1 if failed else 0)

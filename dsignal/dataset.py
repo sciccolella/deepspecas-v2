@@ -126,6 +126,7 @@ def _replace(norm: NormalizedRecord, **kw) -> NormalizedRecord:
         for f in (
             "n", "cov_1", "cov_2", "s_rel", "e_rel", "count_1", "count_2",
             "nhw_1", "nhw_2", "motif", "min_anchor", "strand", "flipped",
+            "delcov_1", "delcov_2",
         )
     }
     fields.update(kw)
@@ -138,6 +139,7 @@ def augment_condition_swap(norm: NormalizedRecord) -> NormalizedRecord:
     return _replace(
         norm,
         cov_1=norm.cov_2, cov_2=norm.cov_1,
+        delcov_1=norm.delcov_2, delcov_2=norm.delcov_1,
         count_1=norm.count_2, count_2=norm.count_1,
         nhw_1=norm.nhw_2, nhw_2=norm.nhw_1,
     )
@@ -154,6 +156,7 @@ def augment_subsample(norm: NormalizedRecord, rng: np.random.Generator, low: flo
     return _replace(
         norm,
         cov_1=norm.cov_1 * p, cov_2=norm.cov_2 * p,
+        delcov_1=norm.delcov_1 * p, delcov_2=norm.delcov_2 * p,
         count_1=count_1, count_2=count_2,
         nhw_1=norm.nhw_1 * p, nhw_2=norm.nhw_2 * p,
     )
@@ -202,6 +205,7 @@ def augment_jitter(norm: NormalizedRecord, rng: np.random.Generator, low: float)
         norm,
         n=new_n,
         cov_1=norm.cov_1[a:b], cov_2=norm.cov_2[a:b],
+        delcov_1=norm.delcov_1[a:b], delcov_2=norm.delcov_2[a:b],
         s_rel=s_rel[keep], e_rel=e_rel[keep],
         count_1=norm.count_1[keep], count_2=norm.count_2[keep],
         nhw_1=norm.nhw_1[keep], nhw_2=norm.nhw_2[keep],
@@ -280,7 +284,13 @@ class FeatureScaler:
 # --------------------------------------------------------------------------
 
 from dsignal.baseline_gbm import _GEOMETRY_EVENT_FEATURES, _GEOMETRY_TOKEN_FEATURES  # noqa: E402
-from dsignal.features import EVENT_FEATURE_NAMES, TOKEN_FEATURE_NAMES  # noqa: E402
+from dsignal.features import (  # noqa: E402
+    EVENT_FEATURE_NAMES,
+    EXTRA_EVENT_GROUPS,
+    TOKEN_FEATURE_NAMES,
+    event_feature_names,
+    parse_feature_subset,
+)
 
 GEOMETRY_TOKEN_COLS = np.array([TOKEN_FEATURE_NAMES.index(n) for n in _GEOMETRY_TOKEN_FEATURES])
 GEOMETRY_CLS_COLS = np.array([EVENT_FEATURE_NAMES.index(n) for n in _GEOMETRY_EVENT_FEATURES])
@@ -290,7 +300,7 @@ GEOMETRY_CLS_COLS = np.array([EVENT_FEATURE_NAMES.index(n) for n in _GEOMETRY_EV
 GEOMETRY_N_TOKENS = 4
 
 
-def apply_feature_subset(tokens: np.ndarray, cls: np.ndarray, subset: str):
+def apply_feature_subset(tokens: np.ndarray, cls: np.ndarray, subset: str, cfg=None):
     """'geometry' keeps window geometry and nothing else (the geometry-only
     control); 'no-geometry' zeroes the geometry columns and is the default.
     See dsignal/baseline_gbm.py for why -- and for why that reason changed with
@@ -307,20 +317,27 @@ def apply_feature_subset(tokens: np.ndarray, cls: np.ndarray, subset: str):
     nothing else. Callers must pass the meta coordinates through
     `apply_feature_subset_meta` so they match the emitted token count.
     """
-    if subset == "all":
+    base, drop = parse_feature_subset(subset)
+    if base == "all" and not drop:
         return tokens, cls
     tokens, cls = tokens.copy(), cls.copy()
-    if subset == "no-geometry":
+    if base == "no-geometry":
         if len(tokens):
             tokens[:, GEOMETRY_TOKEN_COLS] = 0.0
         cls[GEOMETRY_CLS_COLS] = 0.0
-    elif subset == "geometry":
-        keep_c = np.zeros(N_EVENT_FEATURES, dtype=bool)
+    elif base == "geometry":
+        keep_c = np.zeros(len(cls), dtype=bool)
         keep_c[GEOMETRY_CLS_COLS] = True
         cls[~keep_c] = 0.0
         tokens = np.zeros((GEOMETRY_N_TOKENS, N_TOKEN_FEATURES), dtype=np.float32)
-    else:
-        raise ValueError(f"unknown feature subset {subset!r}")
+    if drop:
+        # Stage 18.5: zero an opted-in event group in place (the vector keeps
+        # its width, so the checkpoint's scaler and cls_proj still fit)
+        names = event_feature_names(cfg)
+        for g in drop:
+            for n in EXTRA_EVENT_GROUPS[g]:
+                if n in names:
+                    cls[names.index(n)] = 0.0
     return tokens, cls
 
 
@@ -329,7 +346,7 @@ def apply_feature_subset_meta(meta: dict, subset: str) -> dict:
     model derives its relative-position and relation attention biases from
     these, so under the geometry control they must be as content-free as the
     dummy tokens they belong to."""
-    if subset != "geometry":
+    if parse_feature_subset(subset)[0] != "geometry":
         return meta
     zeros = np.zeros(GEOMETRY_N_TOKENS, dtype=np.int64)
     return {**meta, "s_rel": zeros, "e_rel": zeros.copy()}
@@ -426,7 +443,7 @@ class JunctionSetDataset(Dataset):
             norm, label = apply_augmentations(norm, label, rng, self.augment)
 
         tokens, cls, meta = build_features(cfg=self.cfg, norm=norm)
-        tokens, cls = apply_feature_subset(tokens, cls, self.feature_subset)
+        tokens, cls = apply_feature_subset(tokens, cls, self.feature_subset, self.cfg)
         meta = apply_feature_subset_meta(meta, self.feature_subset)
         if self.scaler is not None:
             tokens, cls = self.scaler.transform(tokens, cls)
@@ -461,7 +478,7 @@ class JunctionSetDataset(Dataset):
         """Unaugmented, unscaled (tokens, cls) -- used to fit the scaler."""
         norm = self._normalized(i)
         tokens, cls, _ = build_features(cfg=self.cfg, norm=norm)
-        return apply_feature_subset(tokens, cls, self.feature_subset)
+        return apply_feature_subset(tokens, cls, self.feature_subset, self.cfg)
 
     def fit_scaler(self) -> FeatureScaler:
         toks, clss = [], []

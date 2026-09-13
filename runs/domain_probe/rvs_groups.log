@@ -1,0 +1,48 @@
+feature subset 'no-geometry': zeroed 14 geometry columns
+real-vs-sim on 7576 rows (3788 real / 3788 sim), subset 'no-geometry', table runs/domain_probe/table_groups.npz
+
+wrote runs/domain_probe/rvs_groups/{oof,features,removal_curve}.tsv and summary.json
+
+pooled OOF AUC (real vs sim): 1.000
+  cohort aqr       vs sim: AUC 1.000  (n_real 984)
+  cohort bnew_dev  vs sim: AUC 0.999  (n_real 242)
+  cohort ptbp1     vs sim: AUC 1.000  (n_real 2422)
+  cohort tra2      vs sim: AUC 0.999  (n_real 140)
+  class A3  : AUC 1.000  (n 482)
+  class A5  : AUC 0.998  (n 380)
+  class CSE : AUC 1.000  (n 3166)
+  class NN  : AUC 1.000  (n 2706)
+  class RI  : AUC 1.000  (n 842)
+  leave-aqr-out: AUC 0.999 (train 5093 rows from the other cohorts + sim)
+  leave-bnew_dev-out: AUC 0.999 (train 6222 rows from the other cohorts + sim)
+  leave-ptbp1-out: AUC 0.998 (train 3164 rows from the other cohorts + sim)
+  leave-tra2-out: AUC 0.996 (train 6457 rows from the other cohorts + sim)
+
+top 15 by gain:
+  mean__log1p_count_2                           gain    61537.3  MW-AUC 0.026
+  mean__log1p_min_anchor                        gain    11245.0  MW-AUC 0.974
+  mean__log1p_count_1                           gain    10783.1  MW-AUC 0.030
+  del_rate_1                                    gain     6561.3  MW-AUC 0.840
+  log1p_n_junctions                             gain     3865.2  MW-AUC 0.853
+  del_rate_2                                    gain     2245.8  MW-AUC 0.794
+  wmean__disjoint_from_top                      gain     1127.7  MW-AUC 0.695
+  wmean__log1p_interior_cov_2                   gain     1092.0  MW-AUC 0.259
+  log1p_delcov_mean_1                           gain      838.3  MW-AUC 0.839
+  wmean__present_2                              gain      604.4  MW-AUC 0.062
+  max__log1p_min_anchor                         gain      603.5  MW-AUC 0.934
+  wmean__interior_nonzero_frac_2                gain      375.8  MW-AUC 0.333
+  log1p_cov_max_1                               gain      323.5  MW-AUC 0.243
+  wmean__motif_1                                gain      309.2  MW-AUC 0.383
+  log1p_cov_max_2                               gain      306.1  MW-AUC 0.241
+
+removal curve (families; k=0 AUC 1.000):
+  k= 1 removed log1p_count_2                            -> AUC 1.000
+  k= 2 removed log1p_nhw_2                              -> AUC 1.000
+  k= 3 removed log1p_count_1                            -> AUC 1.000
+  k= 4 removed log1p_min_anchor                         -> AUC 1.000
+  k= 5 removed log1p_nhw_1                              -> AUC 1.000
+  k= 6 removed present_2                                -> AUC 1.000
+  k= 7 removed present_1                                -> AUC 1.000
+  k= 8 removed acc_group_frac_delta                     -> AUC 0.999
+  k= 9 removed del_rate_1                               -> AUC 0.999
+  k=10 removed log1p_delcov_mean_1                      -> AUC 0.999

@@ -148,6 +148,8 @@ def cmd_build(args) -> None:
     subset = ck["feature_subset"]
     if args.depth_norm is not None:
         cfg.depth_norm = args.depth_norm
+    if args.event_groups is not None:
+        cfg = FeatureConfig(**{**cfg.__dict__, "event_groups": tuple(args.event_groups)})
     print(f"feature config from {args.ckpt}: {cfg}, subset {subset!r}", file=sys.stderr)
 
     X, y, ids, kinds, meta = [], [], [], [], []
@@ -197,7 +199,7 @@ def cmd_build(args) -> None:
     np.savez_compressed(
         args.out, X=X, y=y, kind=kinds, cohort=cohorts, is_real=(cohorts != "sim").astype(np.int8),
         chrom=chrom, start=start, end=end, event_id=np.asarray(ids), cluster=cluster_id,
-        feat_names=np.asarray(gbm_feature_names()),
+        feat_names=np.asarray(gbm_feature_names(cfg)),
         config=json.dumps({"ckpt": args.ckpt, "feature_config": cfg.__dict__, "feature_subset": subset,
                            "sim_npz": args.sim_npz, "sim_labels": args.sim_labels,
                            "real": args.real, "npz_subdir": args.npz_subdir,
@@ -529,6 +531,8 @@ def main(argv=None) -> None:
     b.add_argument("--all-sim", action="store_true", help="keep every sim row instead of class-matching")
     b.add_argument("--depth-norm", choices=("none", "scale", "drop"), default=None,
                    help="override the checkpoint's depth_norm (the 'scale' variant of 18.1)")
+    b.add_argument("--event-groups", nargs="*", default=None,
+                   help="Stage 18.5: add opt-in event groups (covshape delcov) on top of the checkpoint's config")
     b.add_argument("--link", type=int, default=DEFAULT_LINK)
     b.add_argument("--seed", type=int, default=0)
     b.add_argument("--out", required=True)
@@ -536,8 +540,8 @@ def main(argv=None) -> None:
 
     r = sub.add_parser("real-vs-sim", help="cluster-grouped real-vs-sim discriminator + removal curve")
     r.add_argument("--table", required=True)
-    r.add_argument("--feature-subset", choices=("all", "geometry", "no-geometry"), default=None,
-                   help="default: the checkpoint's (stored in the table)")
+    r.add_argument("--feature-subset", default=None,
+                   help="default: the checkpoint's (stored in the table); 'no-geometry,no-covshape' etc. also accepted")
     r.add_argument("--cohorts", default=None, help="comma-separated real cohorts to keep (default all)")
     r.add_argument("--folds", type=int, default=5)
     r.add_argument("--seed", type=int, default=0)
@@ -548,7 +552,7 @@ def main(argv=None) -> None:
 
     n = sub.add_parser("real-nn", help="real-only NN expressibility (18.2)")
     n.add_argument("--table", required=True)
-    n.add_argument("--feature-subset", choices=("all", "geometry", "no-geometry"), default=None)
+    n.add_argument("--feature-subset", default=None)
     n.add_argument("--train-cohorts", default="ptbp1,aqr")
     n.add_argument("--dev-cohort", default="bnew_dev")
     n.add_argument("--ceiling-oof", default=None, help="runs/real_supervision_ceiling/oof.tsv for the paired McNemar")
