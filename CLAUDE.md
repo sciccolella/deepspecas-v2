@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **v1 — image-based** (`master`, published). Pileup/coverage data from paired BAM files is rendered into one of six image representations, and a CNN (ResNet50) classifies the image into a splicing event type (`A3`, `A5`, `CE`/`SE` or collapsed `CSE`, `RI`, `NN`, optionally collapsed `A3`+`A5` → `A`). Root-level modules: `deepSpecas.py`, `dsEnsemble.py`, `plot2s.py`, `plot.py`, `DSutils.py`, `mc_mplp.py`, `jitimg.py`.
 - **v2 — signal-native** (branch `signal-native-v2`, in development, unpublished). **No image rendering at all**: junctions and base-resolution coverage are extracted straight from the BAMs and classified by a junction-set Transformer. Training data is simulated end-to-end (SUPPA event catalogue → PSI-targeted abundances → polyester reads → STAR). Lives entirely in `dsignal/` and `sim/`.
 
-**Branch `signal-native-v2` is the active line of work.** It was branched from `master` at `379cbba`, so it contains all of v1 too. If you are resuming v2 work, read **`plans/signal-native-v2-resume-9.md` first** — it is the current state-of-play document; `plans/README.md` indexes the rest.
+**Branch `signal-native-v2` is the active line of work.** It was branched from `master` at `379cbba`, so it contains all of v1 too. If you are resuming v2 work, read **`plans/signal-native-v2-resume-10.md` first** — it is the current state-of-play document; `plans/README.md` indexes the rest.
 
 ## Environment setup
 
