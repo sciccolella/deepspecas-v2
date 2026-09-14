@@ -1,4 +1,4 @@
-# signal-native-v2 — START HERE (2026-09-14, after Stage 18 + 20.1/20.2)
+# signal-native-v2 — START HERE (2026-09-14, after Stage 18 + 20.1/20.2/20.3)
 
 Resume document. Branch `signal-native-v2`, **nothing pushed** (per repo
 convention — pushing is the user's call). Supersedes
@@ -86,41 +86,50 @@ is 128/130/134 of 242 on `benchmark_new` dev and 56/56/59 of 70 on
 
 **Nothing.** Pasteur holds `prpf4_work/` and `u2af2_work/` (FASTQ + BAM,
 ~130 G each; never leave pasteur) next to `ptbp1_work/`/`aqr_work/`; disk
-was 872 G free after the builds. Local GPU idle. All Stage 18.5
+was 872 G free after the builds. Local GPU idle. All Stage 18.5/20.3
 checkpoints are local-only under `runs/` (gitignored); their JSON/log/TSV
 are committed.
 
-## Next: Stage 20.3 (not started — pre-register first)
+## Stage 20.3 result (2026-09-14): all three arms FAIL
 
-Write `plans/signal-native-v2-stage20-real-finetune.md` *before* any arm
-runs, per the parent plan §20.3: parent `runs/scale_union2_n12480`
-(seeds 1/2 parents now exist too: `runs/union2_base_s{1,2}`); real pool =
-aqr + prpf4 + u2af2 (build one merged labels/npz dir with
-`sim/merge_batches.py --batch` over the six `real_*` dirs, or point
-`--npz-dir` at a symlink farm); three arms × 3 seeds:
+Full pre-registration and Results: `plans/signal-native-v2-stage20-real-finetune.md`.
+Three fine-tuning regimes (B head-only, C full/low-LR, A mixed-with-GRL) x
+seeds 0/1/2, trained on the gene-disjoint 3-cohort real pool
+(`sim/experiment/npz_real3`/`npz_union2_real3`, 3,294/15,774 rows — the
+disjointness assertion caught and dropped 11 leaking rows the per-cohort
+exclusion builds missed, see Results). **B and C move arena NN recall
+backwards** (parent 11.8–15.0% -> 1.6–9.4%, McNemar p < 0.001 every seed, arm
+*behind* not ahead) despite raising pooled accuracy everywhere else — real-only
+fine-tuning suppresses NN calls rather than improving them. **A passes rules
+1 and 2 cleanly** (arena NN 22.2–24.0% vs parent 11.8–15.0%, p < 0.0001 all 3
+seeds; every eval's pooled accuracy up double-digits with no regression) but
+**fails rule 3's literal per-class count rule**: curated NN on `benchmark_new`
+dev drops by 3–7 events in every seed while the other four classes all gain.
+That call is **not clean** — the plan's own closing note says curated NN
+"is not a gate input," which would flip A to a pass; the Results section
+applies rule 3's more specific "all five classes" text and records both
+readings rather than picking silently. **Un-resolved open item**: settle
+that ambiguity (cheap, from data already on disk — no retraining needed)
+before treating "all arms fail" as final. LOCO (rule 4) was not run for any
+arm, since none cleared rules 1–3 together.
 
-- **A** mixed: sim + real, `--balance-real-cells 0.10 --class-weights none
-  --domain-lambda 1.0 --grl-schedule ramp --select-on inner --refit`;
-- **B** head-only: `--init-from --freeze encoder --select-on none
-  --epochs 20 --lr 1e-4`, real-only, `--balance-real-cells 0` (cells equal);
-- **C** full, low LR: `--init-from --select-on none --lr 3e-5
-  --warmup-epochs 2 --epochs 10 --avg-last-k 3`, real-only.
+**Consequence, per the plan's pre-registered decision table**: real
+supervision on the current features is closed for the second time, with a
+stronger negative than Stage 14–17. **Stage 22b (self-supervised pretraining
+on real windows) is next**, per Stage 18 rule 1. Stage 21 (selective calling,
+v1+v2 rule) is independent and runs regardless — it was never blocked on
+20.3 and can start any time.
 
-Gate = Stage 14's three conditions **plus** leave-one-cohort-out (confirm
-on PTBP1) **plus** per-class recall (a CSE-only gain with A5/RI loss is a
-FAIL) — and, per Stage 18 rule 3, the NN condition is judged on **arena NN
-(PTBP1 confirmatory)**, with curated NN on `benchmark_new` dev reported but
-not expected to move. Score every fine-tune with an explicit
-`--train-labels` (the checkpoint's `train_class_counts` is the fine-tune
-set's, which is not the deployment prior). Expected cost ~1 h per run
-(GPU) — the 18.5 queue script `runs/stage18_5_queue.sh` is a usable
-template.
+## Next: Stage 22b (self-supervised pretraining on real windows)
 
-After 20.3: Stage 21 (selective calling, v1+v2 rule) is independent and
-cheap; Stage 22b is now ahead of Stage 19 in the order; Stage 19, if it
-runs, targets the junction tail (noise/novel junctions at 1–3 reads,
-one-condition-only junctions) and must write `@RG`/indels before `delcov`
-or replicate features can be used.
+Not pre-registered yet. Before starting it, consider resolving the Stage
+20.3 rule-3/curated-NN ambiguity (above) — if arm A is actually a PASS under
+the "not a gate input" reading, 20.4 (fold A's flags into the e4 ensemble
+members, score dev-only against `runs/ensembles/e4_union2.json`) is a
+same-day follow-up that doesn't need Stage 22b to be blocked on it. Stage 19
+(junction tail), if it runs, targets noise/novel junctions at 1–3 reads and
+one-condition-only junctions, and must write `@RG`/indels before `delcov` or
+replicate features can be used.
 
 ## Open honesty caveats (carried forward + new)
 
