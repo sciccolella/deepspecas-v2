@@ -1,0 +1,48 @@
+== covshape s0 vs base s0
+  collapsed base 130/242 = 53.7%   new 131/242 = 54.1%   base-only  8  new-only  9  McNemar p = 1.0000
+  A3   n=  16  base   12/16   = 75.0%   new   14/16   = 87.5%   base-only  0  new-only  2  McNemar p = 0.5000
+  A5   n=  12  base    7/12   = 58.3%   new    7/12   = 58.3%   base-only  1  new-only  1  McNemar p = 1.0000
+  CSE  n= 107  base   86/107  = 80.4%   new   84/107  = 78.5%   base-only  5  new-only  3  McNemar p = 0.7266
+  NN   n=  79  base    7/79   =  8.9%   new    7/79   =  8.9%   base-only  2  new-only  2  McNemar p = 1.0000
+  RI   n=  28  base   18/28   = 64.3%   new   19/28   = 67.9%   base-only  0  new-only  1  McNemar p = 1.0000
+  collapsed base  56/70 = 80.0%   new  56/70 = 80.0%   base-only  2  new-only  2  McNemar p = 1.0000
+== covshape s1 vs base s1
+  collapsed base 128/242 = 52.9%   new 130/242 = 53.7%   base-only  6  new-only  8  McNemar p = 0.7905
+  A3   n=  16  base   14/16   = 87.5%   new   13/16   = 81.2%   base-only  1  new-only  0  McNemar p = 1.0000
+  A5   n=  12  base    7/12   = 58.3%   new    6/12   = 50.0%   base-only  1  new-only  0  McNemar p = 1.0000
+  CSE  n= 107  base   83/107  = 77.6%   new   89/107  = 83.2%   base-only  1  new-only  7  McNemar p = 0.0703
+  NN   n=  79  base    8/79   = 10.1%   new    6/79   =  7.6%   base-only  3  new-only  1  McNemar p = 0.6250
+  RI   n=  28  base   16/28   = 57.1%   new   16/28   = 57.1%   base-only  0  new-only  0  McNemar p = 1.0000
+  collapsed base  56/70 = 80.0%   new  54/70 = 77.1%   base-only  2  new-only  0  McNemar p = 0.5000
+== covshape s2 vs base s2
+  collapsed base 134/242 = 55.4%   new 130/242 = 53.7%   base-only  8  new-only  4  McNemar p = 0.3877
+  A3   n=  16  base   13/16   = 81.2%   new   13/16   = 81.2%   base-only  1  new-only  1  McNemar p = 1.0000
+  A5   n=  12  base    8/12   = 66.7%   new    8/12   = 66.7%   base-only  0  new-only  0  McNemar p = 1.0000
+  CSE  n= 107  base   87/107  = 81.3%   new   87/107  = 81.3%   base-only  2  new-only  2  McNemar p = 1.0000
+  NN   n=  79  base    8/79   = 10.1%   new    6/79   =  7.6%   base-only  2  new-only  0  McNemar p = 0.5000
+  RI   n=  28  base   18/28   = 64.3%   new   16/28   = 57.1%   base-only  3  new-only  1  McNemar p = 0.6250
+  collapsed base  59/70 = 84.3%   new  54/70 = 77.1%   base-only  6  new-only  1  McNemar p = 0.1250
+== covdel s0 vs base s0
+  collapsed base 130/242 = 53.7%   new 124/242 = 51.2%   base-only 10  new-only  4  McNemar p = 0.1796
+  A3   n=  16  base   12/16   = 75.0%   new   13/16   = 81.2%   base-only  0  new-only  1  McNemar p = 1.0000
+  A5   n=  12  base    7/12   = 58.3%   new    8/12   = 66.7%   base-only  0  new-only  1  McNemar p = 1.0000
+  CSE  n= 107  base   86/107  = 80.4%   new   82/107  = 76.6%   base-only  5  new-only  1  McNemar p = 0.2188
+  NN   n=  79  base    7/79   =  8.9%   new    6/79   =  7.6%   base-only  2  new-only  1  McNemar p = 1.0000
+  RI   n=  28  base   18/28   = 64.3%   new   15/28   = 53.6%   base-only  3  new-only  0  McNemar p = 0.2500
+  collapsed base  56/70 = 80.0%   new  56/70 = 80.0%   base-only  4  new-only  4  McNemar p = 1.0000
+== covdel s1 vs base s1
+  collapsed base 128/242 = 52.9%   new 123/242 = 50.8%   base-only 11  new-only  6  McNemar p = 0.3323
+  A3   n=  16  base   14/16   = 87.5%   new   12/16   = 75.0%   base-only  2  new-only  0  McNemar p = 0.5000
+  A5   n=  12  base    7/12   = 58.3%   new    7/12   = 58.3%   base-only  0  new-only  0  McNemar p = 1.0000
+  CSE  n= 107  base   83/107  = 77.6%   new   83/107  = 77.6%   base-only  4  new-only  4  McNemar p = 1.0000
+  NN   n=  79  base    8/79   = 10.1%   new    5/79   =  6.3%   base-only  4  new-only  1  McNemar p = 0.3750
+  RI   n=  28  base   16/28   = 57.1%   new   16/28   = 57.1%   base-only  1  new-only  1  McNemar p = 1.0000
+  collapsed base  56/70 = 80.0%   new  56/70 = 80.0%   base-only  2  new-only  2  McNemar p = 1.0000
+== covdel s2 vs base s2
+  collapsed base 134/242 = 55.4%   new 122/242 = 50.4%   base-only 17  new-only  5  McNemar p = 0.0169
+  A3   n=  16  base   13/16   = 81.2%   new   12/16   = 75.0%   base-only  1  new-only  0  McNemar p = 1.0000
+  A5   n=  12  base    8/12   = 66.7%   new    7/12   = 58.3%   base-only  1  new-only  0  McNemar p = 1.0000
+  CSE  n= 107  base   87/107  = 81.3%   new   79/107  = 73.8%   base-only  9  new-only  1  McNemar p = 0.0215
+  NN   n=  79  base    8/79   = 10.1%   new    7/79   =  8.9%   base-only  3  new-only  2  McNemar p = 1.0000
+  RI   n=  28  base   18/28   = 64.3%   new   17/28   = 60.7%   base-only  3  new-only  2  McNemar p = 1.0000
+  collapsed base  59/70 = 84.3%   new  57/70 = 81.4%   base-only  3  new-only  1  McNemar p = 0.6250

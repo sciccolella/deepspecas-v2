@@ -1,0 +1,66 @@
+{
+  "augment": [
+    "all"
+  ],
+  "feature_subset": "no-geometry",
+  "depth_norm": "none",
+  "subsample_low": 0.3,
+  "folds": 5,
+  "seed": 0,
+  "select_on": "inner",
+  "inner_val_frac": 0.3,
+  "refit": true,
+  "avg_last_k": 1,
+  "two_head": false,
+  "diff_lambda": 1.0,
+  "domain_lambda": 0.0,
+  "class_weight_boost": {},
+  "epochs": 60,
+  "lr": 0.0003,
+  "init_from": null,
+  "freeze": "none",
+  "warmup_epochs": 0,
+  "balance_real_cells": null,
+  "class_weights": "balanced",
+  "grl_schedule": "const",
+  "event_groups": [
+    "covshape",
+    "delcov"
+  ],
+  "per_fold_macro_f1": [
+    0.9038190898974705,
+    0.9204314233447649,
+    0.9049939970042056,
+    0.9027454879517627,
+    0.9182622606583315
+  ],
+  "per_fold_inner_val_macro_f1": [
+    0.9017933953939077,
+    0.8976155395224523,
+    0.9057351768813253,
+    0.9046938402436208,
+    0.9011437988574592
+  ],
+  "elapsed_min": 69.99278363784154,
+  "result": {
+    "accuracy": 0.9095352564102565,
+    "macro_f1": 0.9100866946547516,
+    "per_class_f1": {
+      "A3": 0.9104606112785192,
+      "A5": 0.8975401069518717,
+      "CSE": 0.8953781512605042,
+      "NN": 0.8991335622036947,
+      "RI": 0.9479210415791685
+    }
+  },
+  "collapsed": {
+    "accuracy": 0.9212339743589744,
+    "macro_f1": 0.9194350313742954,
+    "per_class_f1": {
+      "A": 0.935307370453814,
+      "CSE": 0.8953781512605042,
+      "NN": 0.8991335622036947,
+      "RI": 0.9479210415791685
+    }
+  }
+}

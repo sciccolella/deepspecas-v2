@@ -198,3 +198,38 @@ sim (no indels in polyester reads), `covshape` is not.
 `runs/stage18_5_queue.sh` trains base seeds 1/2 on union2 n12480 (only
 seed 0 existed), `covshape` s0–2 and `covshape+delcov` s0–2, scoring each on
 both dev sets — results to be appended here under rule 4.
+
+#### 18.5 — 3-seed result (2026-09-14; `runs/stage18_5_queue.log`, `runs/stage18_5_compare.log`)
+
+Single-model recipe on `npz_union2` n12480, scored with TTA + `nn_weight`
+0.1, paired McNemar per seed against the same-seed base. Base seed 0 is
+`runs/scale_union2_n12480` (its `benchmark/` dev TSV copied to
+`runs/benchmark_events_union2_base_s0_dev.tsv`); seeds 1/2 are new
+(`runs/union2_base_s{1,2}`), the first same-recipe seed replicates on the
+union2 pool — **base seed spread here is 128/130/134 on `benchmark_new`
+dev and 56/56/59 on `benchmark/` dev.**
+
+| arm | seed | in-sim macro-F1 | `benchmark_new` dev collapsed (base → new, p) | NN | CSE | RI | `benchmark/` dev (base → new, p) |
+|---|---:|---:|---|---:|---:|---:|---|
+| covshape | 0 | 0.908 | 130 → 131 (1.00) | 7 → 7 | 86 → 84 | 18 → 19 | 56 → 56 (1.00) |
+| covshape | 1 | 0.907 | 128 → 130 (0.79) | 8 → 6 | 83 → 89 | 16 → 16 | 56 → 54 (0.50) |
+| covshape | 2 | 0.910 | 134 → 130 (0.39) | 8 → 6 | 87 → 87 | 18 → 16 | 59 → 54 (0.13) |
+| covshape+delcov | 0 | 0.910 | 130 → 124 (0.18) | 7 → 6 | 86 → 82 | 18 → 15 | 56 → 56 (1.00) |
+| covshape+delcov | 1 | 0.912 | 128 → 123 (0.33) | 8 → 5 | 83 → 83 | 16 → 16 | 56 → 56 (1.00) |
+| covshape+delcov | 2 | 0.910 | 134 → 122 (**0.017**) | 8 → 7 | 87 → 79 | 18 → 17 | 59 → 57 (0.63) |
+
+Medians: base 130 / 56; covshape 130 / 54; covshape+delcov 123 / 56.
+In-sim macro-F1 rises slightly with every added group (0.906–0.909 →
+0.907–0.912) while transfer does not — the branch's standing pattern.
+
+**Rule 4: neither group is adopted.** `covshape` is a null on the primary
+target (median unchanged, 0/3 seeds beyond noise) with a downward lean on
+the guard (54/54 in two seeds); `delcov` costs 5–12 events in all three
+seeds (one significant), taken from CSE — exactly what a pure domain tell
+should do: sim del_rate is 0, real del_rate is not, and the model learned
+to read a column that only ever moves at deployment. NN recall never moves
+(5–8 of 79) in any arm. **Hand-built shape features do not transfer**, so
+the 25 h re-sim is not justified by them; Stage 19's remaining case is the
+junction tail identified in 18.1, and the delcov group must stay off until
+a simulation writes indels. Both groups remain available via
+`--event-groups` (off by default).

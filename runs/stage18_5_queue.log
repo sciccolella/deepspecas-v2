@@ -1,0 +1,9 @@
+DONE union2_base_s1: bnew aggregate collapsed: 128/242  old aggregate collapsed: 56/70
+DONE union2_base_s2: bnew aggregate collapsed: 134/242  old aggregate collapsed: 59/70
+DONE stage18_covshape_s0: bnew aggregate collapsed: 131/242  old aggregate collapsed: 56/70
+DONE stage18_covshape_s1: bnew aggregate collapsed: 130/242  old aggregate collapsed: 54/70
+DONE stage18_covshape_s2: bnew aggregate collapsed: 130/242  old aggregate collapsed: 54/70
+DONE stage18_covdel_s0: bnew aggregate collapsed: 124/242  old aggregate collapsed: 56/70
+DONE stage18_covdel_s1: bnew aggregate collapsed: 123/242  old aggregate collapsed: 56/70
+DONE stage18_covdel_s2: bnew aggregate collapsed: 122/242  old aggregate collapsed: 57/70
+QUEUE_DONE
