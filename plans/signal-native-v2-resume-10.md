@@ -105,13 +105,14 @@ fine-tuning suppresses NN calls rather than improving them. **A passes rules
 seeds; every eval's pooled accuracy up double-digits with no regression) but
 **fails rule 3's literal per-class count rule**: curated NN on `benchmark_new`
 dev drops by 3–7 events in every seed while the other four classes all gain.
-That call is **not clean** — the plan's own closing note says curated NN
-"is not a gate input," which would flip A to a pass; the Results section
-applies rule 3's more specific "all five classes" text and records both
-readings rather than picking silently. **Un-resolved open item**: settle
-that ambiguity (cheap, from data already on disk — no retraining needed)
-before treating "all arms fail" as final. LOCO (rule 4) was not run for any
-arm, since none cleared rules 1–3 together.
+That call looked ambiguous against the plan's own closing note ("curated NN
+is not a gate input"), but is now **resolved**: the same 6–8 curated regions
+regress from NN to a confidently-predicted structural class in every one of
+the 3 seeds (`p_NN` typically 0.4–0.7 -> 0.00–0.06, the new class's
+probability rising to 0.5–0.99) — a reproducible, mechanistically legible
+effect, not noise. The FAIL verdict for A stands, confirmed rather than
+merely adopted by default. LOCO (rule 4) was not run for any arm, since none
+cleared rules 1–3 together.
 
 **Consequence, per the plan's pre-registered decision table**: real
 supervision on the current features is closed for the second time, with a
@@ -122,14 +123,12 @@ v1+v2 rule) is independent and runs regardless — it was never blocked on
 
 ## Next: Stage 22b (self-supervised pretraining on real windows)
 
-Not pre-registered yet. Before starting it, consider resolving the Stage
-20.3 rule-3/curated-NN ambiguity (above) — if arm A is actually a PASS under
-the "not a gate input" reading, 20.4 (fold A's flags into the e4 ensemble
-members, score dev-only against `runs/ensembles/e4_union2.json`) is a
-same-day follow-up that doesn't need Stage 22b to be blocked on it. Stage 19
-(junction tail), if it runs, targets noise/novel junctions at 1–3 reads and
-one-condition-only junctions, and must write `@RG`/indels before `delcov` or
-replicate features can be used.
+Not pre-registered yet — needs a plan discussed and approved before any
+implementation, per this repo's workflow convention. Stage 21 (selective
+calling, v1+v2 rule) is independent and can run in parallel/first; it was
+never blocked on 20.3. Stage 19 (junction tail), if it runs, targets
+noise/novel junctions at 1–3 reads and one-condition-only junctions, and
+must write `@RG`/indels before `delcov` or replicate features can be used.
 
 ## Open honesty caveats (carried forward + new)
 

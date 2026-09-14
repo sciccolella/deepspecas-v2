@@ -362,6 +362,24 @@ curated NN, or measures whether arm A's curated-NN drop is itself within the
 noise Stage 18 already characterized, would settle it cheaply without a new
 training run (the OOF/dev predictions already exist).
 
+**Resolved same-day, from data already on disk.** The flip is not noise: the
+same 6–8 curated regions (e.g. `16:28892315-28894155`, `1:1338653-1339439`,
+`9:137022952-137024243`, `22:50256546-50258343`, `11:62633414-62634921`)
+regress from NN to a structural class in *every* seed, and every flip is a
+confident reclassification, not a threshold wobble — `p_NN` typically falls
+from ~0.4–0.7 under the parent to ~0.00–0.06 under A, while the new class's
+probability rises to 0.5–0.99 (e.g. `1:1338653-1339439`: p_NN 0.59→0.00,
+p_A5 →0.99, in all 3 seeds). A metric too noisy to move systematically would
+not reproduce the same regions with the same confident direction across
+three independently-seeded training runs. This is a real, mechanistically
+legible effect — arm A's real-vs-sim domain training makes it decisive on a
+specific set of curated "NN" events that apparently carry some structural
+signal, calling them CSE/A3/A5/RI instead of hedging to NN — and it is
+exactly the shape rule 3 exists to catch, whether or not the *cause* is
+inexpressibility. **The FAIL verdict for arm A stands, confirmed rather than
+merely adopted by default.** Stage 22b is the actual next step, not a 20.4
+ensemble fold-in of arm A.
+
 ### Within-real OOF (free, decides nothing, 5-fold pooled over the 3 seeds' own folds)
 
 Accuracy on each arm's own real-only held-out folds, real rows only, macro
