@@ -1,0 +1,86 @@
+loaded 3294 events
+gene-grouped 5-fold CV over 2258 genes: no gene leak
+model: 1,403,229 trainable parameters, initialised from runs/scale_union2_n12480/fold0.pt
+row weights active: min 0.287 max 7.638, real total 2635.0 of 2635.0
+  fold 0 epoch   0  loss 1.7487  (fixed-epoch, no selection)
+/datasets/deepSpecas-v2/envs/DSnet/lib/python3.11/site-packages/torch/optim/lr_scheduler.py:240: UserWarning: The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible. Please use `scheduler.step()` to step the scheduler. During the deprecation, if epoch is different from None, the closed form is used instead of the new chainable form, where available. Please open an issue if you are unable to replicate your use case: https://github.com/pytorch/pytorch/issues/new/choose.
+  warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
+  fold 0: averaged the last 3 epochs' weights
+fold 0: held-out macro-F1 0.539 at epoch 9 (fixed epoch budget, no selection)
+  fold 1 epoch   0  loss 1.5839  (fixed-epoch, no selection)
+/datasets/deepSpecas-v2/envs/DSnet/lib/python3.11/site-packages/torch/optim/lr_scheduler.py:240: UserWarning: The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible. Please use `scheduler.step()` to step the scheduler. During the deprecation, if epoch is different from None, the closed form is used instead of the new chainable form, where available. Please open an issue if you are unable to replicate your use case: https://github.com/pytorch/pytorch/issues/new/choose.
+  warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
+  fold 1: averaged the last 3 epochs' weights
+fold 1: held-out macro-F1 0.573 at epoch 9 (fixed epoch budget, no selection)
+  fold 2 epoch   0  loss 1.5723  (fixed-epoch, no selection)
+/datasets/deepSpecas-v2/envs/DSnet/lib/python3.11/site-packages/torch/optim/lr_scheduler.py:240: UserWarning: The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible. Please use `scheduler.step()` to step the scheduler. During the deprecation, if epoch is different from None, the closed form is used instead of the new chainable form, where available. Please open an issue if you are unable to replicate your use case: https://github.com/pytorch/pytorch/issues/new/choose.
+  warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
+  fold 2: averaged the last 3 epochs' weights
+fold 2: held-out macro-F1 0.619 at epoch 9 (fixed epoch budget, no selection)
+  fold 3 epoch   0  loss 1.7028  (fixed-epoch, no selection)
+/datasets/deepSpecas-v2/envs/DSnet/lib/python3.11/site-packages/torch/optim/lr_scheduler.py:240: UserWarning: The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible. Please use `scheduler.step()` to step the scheduler. During the deprecation, if epoch is different from None, the closed form is used instead of the new chainable form, where available. Please open an issue if you are unable to replicate your use case: https://github.com/pytorch/pytorch/issues/new/choose.
+  warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
+  fold 3: averaged the last 3 epochs' weights
+fold 3: held-out macro-F1 0.650 at epoch 9 (fixed epoch budget, no selection)
+  fold 4 epoch   0  loss 1.4213  (fixed-epoch, no selection)
+/datasets/deepSpecas-v2/envs/DSnet/lib/python3.11/site-packages/torch/optim/lr_scheduler.py:240: UserWarning: The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible. Please use `scheduler.step()` to step the scheduler. During the deprecation, if epoch is different from None, the closed form is used instead of the new chainable form, where available. Please open an issue if you are unable to replicate your use case: https://github.com/pytorch/pytorch/issues/new/choose.
+  warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
+  fold 4: averaged the last 3 epochs' weights
+fold 4: held-out macro-F1 0.624 at epoch 9 (fixed epoch budget, no selection)
+
+trained 5 folds in 2.3 min (per-fold macro-F1 0.539 0.573 0.619 0.650 0.624)
+wrote out-of-fold predictions to runs/stage20_C_s0.oof.tsv
+wrote metrics to runs/stage20_C_s0.json
+class counts: {'A3': 207, 'A5': 133, 'CSE': 1299, 'NN': 1392, 'RI': 263}
+augmentations: ['all'], feature subset: no-geometry, depth norm: none, subsample_low: 0.3, epoch selection: none
+
+=== junction-set transformer [no-geometry] [aug: all] (5-fold group CV, by gene) ===
+              precision    recall  f1-score   support
+
+          A3      0.431     0.604     0.503       207
+          A5      0.400     0.556     0.465       133
+         CSE      0.786     0.777     0.782      1299
+          NN      0.810     0.609     0.695      1392
+          RI      0.442     0.821     0.574       263
+
+    accuracy                          0.690      3294
+   macro avg      0.574     0.673     0.604      3294
+weighted avg      0.731     0.690     0.698      3294
+
+confusion matrix (rows=true, cols=pred): ['A3', 'A5', 'CSE', 'NN', 'RI']
+[[ 125    4   21   26   31]
+ [   9   74   17   15   18]
+ [  49   52 1009  148   41]
+ [  85   50  226  848  183]
+ [  22    5   10   10  216]]
+
+vs sim/baseline_model.py random forest (same data, same protocol):
+  metric         this   RF ref    delta
+  accuracy      0.690    0.488   +0.202
+  macro-F1      0.604    0.325   +0.279
+  F1 A3         0.503    0.108   +0.395
+  F1 A5         0.465    0.160   +0.305
+  F1 CSE        0.782    0.132   +0.650
+  F1 NN         0.695    0.657   +0.038
+  F1 RI         0.574    0.568   +0.006
+
+  A3/A5 F1 is the metric that matters -- that is the class pair the
+  topology features exist to fix.
+
+=== transformer, A3+A5 collapsed to A ===
+              precision    recall  f1-score   support
+
+           A      0.446     0.624     0.520       340
+         CSE      0.786     0.777     0.782      1299
+          NN      0.810     0.609     0.695      1392
+          RI      0.442     0.821     0.574       263
+
+    accuracy                          0.694      3294
+   macro avg      0.621     0.708     0.643      3294
+weighted avg      0.734     0.694     0.702      3294
+
+confusion matrix (rows=true, cols=pred): ['A', 'CSE', 'NN', 'RI']
+[[ 212   38   41   49]
+ [ 101 1009  148   41]
+ [ 135  226  848  183]
+ [  27   10   10  216]]

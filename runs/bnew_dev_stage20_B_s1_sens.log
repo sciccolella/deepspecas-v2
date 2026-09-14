@@ -1,0 +1,42 @@
+prior correction: PriorCorrection(tau=1.0, train=[0.063, 0.04, 0.394, 0.423, 0.08], target=[0.244, 0.244, 0.244, 0.024, 0.244])
+loaded 5 fold checkpoint(s), classes ('A3', 'A5', 'CSE', 'NN', 'RI'), feature subset 'no-geometry'
+scoring the dev half of benchmark_new/split.tsv
+
+wrote per-event results to runs/bnew_dev_stage20_B_s1_sens.tsv
+
+=== curated benchmark (dev half): 242 events ===
+
+per-CSV accuracy (5-class / A3+A5 collapsed):
+  A3  (truth A3  ) n= 16   81.2% /  93.8%   (13/16 correct)
+  A5  (truth A5  ) n= 12   83.3% /  83.3%   (10/12 correct)
+  ES  (truth CSE ) n=107   59.8% /  59.8%   (64/107 correct)
+  NN  (truth NN  ) n= 79    0.0% /   0.0%   (0/79 correct)
+  IR  (truth RI  ) n= 28   50.0% /  50.0%   (14/28 correct)
+
+aggregate 5-class:  101/242 = 41.7%
+aggregate collapsed: 103/242 = 42.6%   (this set has NN truth -- not directly comparable to v1's no-NN 123/140)
+
+confusion matrix, 5-class (rows=truth, cols=pred): ['A3', 'A5', 'CSE', 'NN', 'RI']
+[[13  2  1  0  0]
+ [ 0 10  1  0  1]
+ [15 28 64  0  0]
+ [18 36 15  0 10]
+ [ 4  9  1  0 14]]
+
+confusion matrix, A3+A5 collapsed (rows=truth, cols=pred): ['A', 'CSE', 'NN', 'RI']
+[[25  2  0  1]
+ [43 64  0  0]
+ [54 15  0 10]
+ [13  1  0 14]]
+
+accuracy vs region width (5-class), for plotting against v1's:
+  [     0,   1000) n= 44   40.9% /  40.9%
+  [  1000,   5000) n=103   36.9% /  37.9%
+  [  5000,  20000) n= 70   48.6% /  50.0%
+  [ 20000, 100000) n= 24   41.7% /  41.7%
+  [100000,    inf) n=  1  100.0% / 100.0%
+
+wall clock: 0.043 s/event (0.029 extract + 0.014 inference), 10.3 s total.
+  For scale: v1's six-net ensemble spends ~17 s/event on image rendering alone
+  on the default PIL path (see report.md; --gpu-render cuts that several-fold).
+  widest event 235,613 bp, median 3,632 bp

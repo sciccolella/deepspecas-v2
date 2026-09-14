@@ -1,0 +1,16 @@
+SCORED stage20_B_s0: bnew aggregate collapsed: 126/242 old aggregate collapsed: 55/70 arena aggregate collapsed: 1140/2422
+SCORED stage20_B_s1: bnew aggregate collapsed: 125/242 old aggregate collapsed: 61/70 arena aggregate collapsed: 1122/2422
+SCORED stage20_B_s2: bnew aggregate collapsed: 129/242 old aggregate collapsed: 60/70 arena aggregate collapsed: 1164/2422
+SCORED stage20_C_s0: bnew aggregate collapsed: 134/242 old aggregate collapsed: 64/70 arena aggregate collapsed: 1396/2422
+SCORED stage20_C_s1: bnew aggregate collapsed: 135/242 old aggregate collapsed: 65/70 arena aggregate collapsed: 1390/2422
+SCORED stage20_C_s2: bnew aggregate collapsed: 135/242 old aggregate collapsed: 64/70 arena aggregate collapsed: 1392/2422
+SCORED stage20_A_s0: bnew aggregate collapsed: 151/242 old aggregate collapsed: 65/70 arena aggregate collapsed: 1568/2422
+SCORED stage20_A_s1: bnew aggregate collapsed: 147/242 old aggregate collapsed: 64/70 arena aggregate collapsed: 1582/2422
+SCORED stage20_A_s2: bnew aggregate collapsed: 149/242 old aggregate collapsed: 67/70 arena aggregate collapsed: 1590/2422
+SENS stage20_B_s0: bnew aggregate collapsed: 103/242 old aggregate collapsed: 56/70
+SENS stage20_B_s1: bnew aggregate collapsed: 103/242 old aggregate collapsed: 59/70
+SENS stage20_B_s2: bnew aggregate collapsed: 97/242 old aggregate collapsed: 57/70
+SENS stage20_C_s0: bnew aggregate collapsed: 116/242 old aggregate collapsed: 61/70
+SENS stage20_C_s1: bnew aggregate collapsed: 117/242 old aggregate collapsed: 62/70
+SENS stage20_C_s2: bnew aggregate collapsed: 114/242 old aggregate collapsed: 60/70
+QUEUE_DONE

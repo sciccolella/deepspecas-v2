@@ -1,0 +1,63 @@
+{
+  "augment": [
+    "all"
+  ],
+  "feature_subset": "no-geometry",
+  "depth_norm": "none",
+  "subsample_low": 0.3,
+  "folds": 5,
+  "seed": 1,
+  "select_on": "none",
+  "inner_val_frac": 0.15,
+  "refit": false,
+  "avg_last_k": 3,
+  "two_head": false,
+  "diff_lambda": 1.0,
+  "domain_lambda": 0.0,
+  "class_weight_boost": {},
+  "epochs": 10,
+  "lr": 3e-05,
+  "init_from": "runs/union2_base_s1",
+  "freeze": "none",
+  "warmup_epochs": 2,
+  "balance_real_cells": 0.0,
+  "class_weights": "none",
+  "grl_schedule": "const",
+  "event_groups": [],
+  "per_fold_macro_f1": [
+    0.5241550920012971,
+    0.611008103008103,
+    0.5895614242925775,
+    0.6025473190135486,
+    0.5979173326412
+  ],
+  "per_fold_inner_val_macro_f1": [
+    NaN,
+    NaN,
+    NaN,
+    NaN,
+    NaN
+  ],
+  "elapsed_min": 2.339197234312693,
+  "result": {
+    "accuracy": 0.6791135397692775,
+    "macro_f1": 0.5869612234035418,
+    "per_class_f1": {
+      "A3": 0.5070993914807302,
+      "A5": 0.3954154727793696,
+      "CSE": 0.7724784988272088,
+      "NN": 0.6895424836601307,
+      "RI": 0.5702702702702702
+    }
+  },
+  "collapsed": {
+    "accuracy": 0.6833636915604129,
+    "macro_f1": 0.6315882526193312,
+    "per_class_f1": {
+      "A": 0.49406175771971494,
+      "CSE": 0.7724784988272088,
+      "NN": 0.6895424836601307,
+      "RI": 0.5702702702702702
+    }
+  }
+}
