@@ -544,3 +544,173 @@ def collate(batch):
     if "coverage" in batch[0]:
         out["coverage"] = torch.stack([item["coverage"] for item in batch])
     return out
+
+
+# --------------------------------------------------------------------------
+# Stage 22b: self-supervised pretraining dataset
+# --------------------------------------------------------------------------
+
+
+class SSLPretrainDataset(Dataset):
+    """Two independently-augmented views of the same real window, each with
+    its own random junction mask for the MFM pretext task -- everything
+    ``dsignal.pretrain`` needs, built from the same normalize_record ->
+    apply_augmentations -> build_features pipeline ``JunctionSetDataset``
+    uses, so the model's inputs never notice a difference between the two.
+
+    Entries come from ``read_labels`` on a pool built by
+    ``sim.sample_unlabeled_windows`` (Stage 22b.1), whose ``label`` column is
+    always empty -- it is accepted here and never read. ``apply_augmentations``
+    still wants a label argument (the flip augmentation's A3<->A5 swap); an
+    empty string round-trips through ``_FLIP_LABEL.get("", "")`` unchanged
+    and the returned label is discarded, so flip still applies as a pure
+    geometric transform.
+
+    The two views' random draws are independent (fresh ``np.random.Generator``
+    per view, keyed by ``(seed, epoch, index, view)``) so augmentation and
+    masking never correlate between them -- the "these two nuisance-perturbed
+    windows are still the same event" signal the contrastive task needs would
+    otherwise be trivially exploitable.
+    """
+
+    def __init__(
+        self,
+        entries,
+        cfg: FeatureConfig | None = None,
+        augment: AugmentConfig | None = None,
+        scaler: FeatureScaler | None = None,
+        mask_frac: float = 0.3,
+        feature_subset: str = "no-geometry",
+        cache: bool = True,
+        seed: int = 0,
+        coverage_bins: int = 0,
+    ):
+        self.entries = list(entries)
+        self.cfg = cfg or FeatureConfig(max_junctions=256)
+        self.augment = augment or AugmentConfig()
+        self.scaler = scaler
+        self.mask_frac = mask_frac
+        self.feature_subset = feature_subset
+        self.cache = cache
+        self._cache: dict = {}
+        self.seed = seed
+        self.coverage_bins = int(coverage_bins)
+        self.epoch = 0
+
+    def __len__(self):
+        return len(self.entries)
+
+    @property
+    def gene_ids(self):
+        return [e[3] for e in self.entries]
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = epoch
+
+    def _normalized(self, i: int) -> NormalizedRecord:
+        if self.cache and i in self._cache:
+            return self._cache[i]
+        norm = normalize_record(load_record(self.entries[i][4]), self.cfg)
+        if self.cache:
+            self._cache[i] = norm
+        return norm
+
+    def _view(self, norm: NormalizedRecord, rng: np.random.Generator) -> dict:
+        aug_norm, _label = apply_augmentations(norm, "", rng, self.augment)
+        tokens, cls, meta = build_features(cfg=self.cfg, norm=aug_norm)
+        tokens, cls = apply_feature_subset(tokens, cls, self.feature_subset, self.cfg)
+        meta = apply_feature_subset_meta(meta, self.feature_subset)
+        if self.scaler is not None:
+            tokens, cls = self.scaler.transform(tokens, cls)
+
+        j = tokens.shape[0]
+        n_mask = int(round(j * self.mask_frac)) if j else 0
+        mask = np.zeros(j, dtype=bool)
+        if n_mask:
+            idx = rng.choice(j, size=n_mask, replace=False)
+            mask[idx] = True
+
+        item = {
+            "tokens": torch.from_numpy(np.ascontiguousarray(tokens, dtype=np.float32)),
+            "cls": torch.from_numpy(np.ascontiguousarray(cls, dtype=np.float32)),
+            "s_rel": torch.from_numpy(meta["s_rel"].astype(np.int64)),
+            "e_rel": torch.from_numpy(meta["e_rel"].astype(np.int64)),
+            "mask": torch.from_numpy(mask),
+        }
+        if self.coverage_bins:
+            item["coverage"] = torch.from_numpy(build_coverage_profile(aug_norm, self.coverage_bins))
+        return item
+
+    def __getitem__(self, i: int):
+        ix, event_id, _label, _gene_id, _path, _kind, _weight = self.entries[i]
+        norm = self._normalized(i)
+        rng1 = np.random.default_rng((self.seed, self.epoch, i, 1))
+        rng2 = np.random.default_rng((self.seed, self.epoch, i, 2))
+        return {
+            "view1": self._view(norm, rng1),
+            "view2": self._view(norm, rng2),
+            "event_id": event_id,
+            "ix": ix,
+        }
+
+    def raw_features(self, i: int):
+        """Unaugmented, unscaled (tokens, cls) -- used to fit the scaler."""
+        norm = self._normalized(i)
+        tokens, cls, _ = build_features(cfg=self.cfg, norm=norm)
+        return apply_feature_subset(tokens, cls, self.feature_subset, self.cfg)
+
+    def fit_scaler(self) -> FeatureScaler:
+        toks, clss = [], []
+        for i in range(len(self)):
+            t, c = self.raw_features(i)
+            toks.append(t)
+            clss.append(c)
+        self.scaler = FeatureScaler().fit(toks, clss)
+        return self.scaler
+
+
+def _pad_view(items):
+    """Pad one view's item dicts (tokens/cls/s_rel/e_rel/mask[/coverage]) to
+    the batch's longest junction set -- same padding convention as
+    ``collate`` (``pad_mask`` True = padding; ``mask`` is never True on a
+    padding position, since ``SSLPretrainDataset._view`` only ever draws a
+    mask index from the pre-padding junction count)."""
+    b = len(items)
+    max_j = max(int(it["tokens"].shape[0]) for it in items)
+    max_j = max(max_j, 1)
+    f = N_TOKEN_FEATURES
+
+    tokens = torch.zeros(b, max_j, f, dtype=torch.float32)
+    s_rel = torch.zeros(b, max_j, dtype=torch.long)
+    e_rel = torch.zeros(b, max_j, dtype=torch.long)
+    pad_mask = torch.ones(b, max_j, dtype=torch.bool)
+    mask = torch.zeros(b, max_j, dtype=torch.bool)
+
+    for i, it in enumerate(items):
+        j = int(it["tokens"].shape[0])
+        if j:
+            tokens[i, :j] = it["tokens"]
+            s_rel[i, :j] = it["s_rel"]
+            e_rel[i, :j] = it["e_rel"]
+            pad_mask[i, :j] = False
+            mask[i, :j] = it["mask"]
+
+    out = {"tokens": tokens, "cls": torch.stack([it["cls"] for it in items]),
+           "s_rel": s_rel, "e_rel": e_rel, "pad_mask": pad_mask, "mask": mask}
+    if "coverage" in items[0]:
+        out["coverage"] = torch.stack([it["coverage"] for it in items])
+    return out
+
+
+def collate_ssl(batch):
+    """Two-view batch for ``dsignal.pretrain``. Each view is padded
+    independently -- the two augmented views of one event can end up with
+    different junction counts (jitter/junction_dropout), so ``view1`` and
+    ``view2`` each get their own ``max_j`` rather than being padded to a
+    shared one."""
+    return {
+        "view1": _pad_view([b["view1"] for b in batch]),
+        "view2": _pad_view([b["view2"] for b in batch]),
+        "event_id": [b["event_id"] for b in batch],
+        "ix": [b["ix"] for b in batch],
+    }
