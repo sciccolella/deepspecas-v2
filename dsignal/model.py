@@ -27,6 +27,13 @@ forward pass rather than a degenerate all-padding batch.
 Attention weights over junctions are returned on request -- this is the
 `--explain` story that `deepSpecas.py predict` still raises
 NotImplementedError for.
+
+Stage 22b adds three self-supervised pretraining heads (`mask_token`,
+`recon_head`, `proj_head`) and `forward_pretrain`, which read the encoder
+pass's per-junction hidden state rather than only the pooled CLS row the
+classifier heads use -- see `_run_layers` and `forward_pretrain`. They exist
+on every model unconditionally and are otherwise inert (see `plans/
+signal-native-v2-stage22b-ssl-pretrain.md`).
 """
 
 from __future__ import annotations
@@ -320,6 +327,22 @@ class JunctionSetTransformer(nn.Module):
 
         self.layers = nn.ModuleList(EncoderLayer(c) for _ in range(c.n_layers))
         self.norm = nn.LayerNorm(c.d_model)
+
+        # Stage 22b: self-supervised pretraining heads. Present on every
+        # model unconditionally -- no ModelConfig field gates them -- so a
+        # classifier checkpoint carries them as unused parameters rather than
+        # needing a "was this pretrained" flag anywhere. Only
+        # `forward_pretrain` reads them; `forward`/`forward_parts`/
+        # `domain_logits` never do. An *older* checkpoint saved before these
+        # existed is still loadable: dsignal.train.build_model's strict=False
+        # missing-key whitelist tolerates mask_token/recon_head.*/proj_head.*
+        # exactly the way it already tolerated a missing domain_head.
+        self.mask_token = nn.Parameter(torch.zeros(c.d_model))
+        self.recon_head = nn.Linear(c.d_model, c.n_token_features)
+        self.proj_head = nn.Sequential(
+            nn.Linear(c.d_model, c.d_model), nn.GELU(), nn.Linear(c.d_model, 64)
+        )
+
         if c.two_head:
             # "what structure is this" and "did it change" are different
             # questions with different domain shifts -- see forward_parts
@@ -369,13 +392,21 @@ class JunctionSetTransformer(nn.Module):
             h = h + self.coverage_encoder(coverage)
         return h
 
-    def _encode(self, tokens, cls, s_rel, e_rel, pad_mask, coverage=None, need_weights: bool = False):
-        """Shared encoder pass -- CLS + junction-token embedding, attention
-        bias, the layer stack, final norm -- used by `forward`,
-        `forward_parts` and `domain_logits` alike (previously each wrote this
-        block out separately; see plan Stage 22b.2). Returns ``(x [B, J+1,
-        D], attn or None)``: ``x[:, 0]`` is what those three methods call
-        "pooled", ``x[:, 1:]`` is the per-junction final hidden state
+    def _embed(self, tokens, cls, coverage=None):
+        """CLS + junction-token embeddings, concatenated: [B, J+1, D]. Split
+        out of `_encode` (Stage 22b.3) so `forward_pretrain` can substitute
+        masked-token embeddings between this and `_run_layers` -- masking
+        `token_proj`'s *output*, not the raw input features, is the point
+        (module docstring, "Masked junction-feature reconstruction")."""
+        return torch.cat([self._cls_embedding(cls, coverage).unsqueeze(1), self.token_proj(tokens)], dim=1)
+
+    def _run_layers(self, x, s_rel, e_rel, pad_mask, need_weights: bool = False):
+        """Attention bias + the layer stack + final norm, given an
+        already-embedded ``[B, J+1, D]`` sequence (`_embed`'s output, masked
+        or not). The other half of `_encode`, split out for the same reason
+        as `_embed`. Returns ``(x [B, J+1, D], attn or None)``: ``x[:, 0]``
+        is what `forward`/`forward_parts`/`domain_logits` call "pooled",
+        ``x[:, 1:]`` is the per-junction final hidden state
         `forward_pretrain`'s masked-reconstruction head reads -- the thing
         the pre-refactor private logic discarded by norming only the CLS
         row. ``self.norm`` is applied to the whole sequence rather than just
@@ -383,9 +414,7 @@ class JunctionSetTransformer(nn.Module):
         normalizes each position independently over the feature dim) and is
         the bit-identity check this method shipped with.
         """
-        b, j, _ = tokens.shape
-        x = torch.cat([self._cls_embedding(cls, coverage).unsqueeze(1), self.token_proj(tokens)], dim=1)
-
+        b = x.shape[0]
         cls_pad = torch.zeros(b, 1, dtype=torch.bool, device=pad_mask.device)
         full_pad = torch.cat([cls_pad, pad_mask], dim=1)
         bias = self._attention_bias(s_rel, e_rel, pad_mask)
@@ -398,6 +427,14 @@ class JunctionSetTransformer(nn.Module):
 
         x = self.norm(x)
         return x, (torch.stack(attns, dim=1) if need_weights else None)
+
+    def _encode(self, tokens, cls, s_rel, e_rel, pad_mask, coverage=None, need_weights: bool = False):
+        """Shared encoder pass -- CLS + junction-token embedding, attention
+        bias, the layer stack, final norm -- used by `forward`,
+        `forward_parts` and `domain_logits` alike (previously each wrote this
+        block out separately; see plan Stage 22b.2). See `_run_layers` for
+        what ``x`` contains."""
+        return self._run_layers(self._embed(tokens, cls, coverage), s_rel, e_rel, pad_mask, need_weights)
 
     def forward(self, tokens, cls, s_rel, e_rel, pad_mask, need_weights: bool = False,
                 coverage=None):
@@ -493,6 +530,43 @@ class JunctionSetTransformer(nn.Module):
         x, _ = self._encode(tokens, cls, s_rel, e_rel, pad_mask, coverage, need_weights=False)
         pooled = x[:, 0]
         return self.domain_head(gradient_reversal(pooled, grl_lambda)).squeeze(-1)
+
+    def forward_pretrain(self, tokens, cls, s_rel, e_rel, pad_mask, mask, coverage=None):
+        """Stage 22b self-supervised forward pass: masked junction-feature
+        reconstruction (MFM) plus the pooled CLS embedding a caller projects
+        through `proj_head` for the contrastive task (see module docstring
+        and `plans/signal-native-v2-stage22b-ssl-pretrain.md` §Design).
+
+        ``mask`` ``[B, J]`` bool, True at junction positions to reconstruct.
+        Must never be True at a padding position -- asserted, since a masked
+        pad position would ask `recon_head` to reconstruct meaningless
+        padding, and silently tolerating it would let a caller bug through
+        rather than fail loudly.
+
+        Masking replaces the token's *embedding* (`token_proj`'s output, via
+        `_embed`) with the learned `mask_token`, not the raw feature vector:
+        masking the input would just teach the model to invert `token_proj`,
+        which is not the point.
+
+        Returns ``(recon_pred [N_masked, F], pooled [B, d_model])`` --
+        `recon_head` applied to the masked positions' final hidden states,
+        flattened across the batch (however many masked tokens a batch
+        happens to have; a zero-junction event contributes none), and CLS's
+        final hidden state *before* `proj_head` -- the caller runs two
+        independent views through this and only then applies `proj_head` +
+        NT-Xent, since that loss needs both views' pooled vectors together.
+        """
+        if mask.numel() and pad_mask.numel():
+            assert not (mask & pad_mask).any(), \
+                "forward_pretrain: mask must not select a padding position"
+        x = self._embed(tokens, cls, coverage)
+        tok = x[:, 1:]
+        masked_tok = torch.where(mask.unsqueeze(-1), self.mask_token.to(tok.dtype), tok)
+        x = torch.cat([x[:, :1], masked_tok], dim=1)
+        x, _ = self._run_layers(x, s_rel, e_rel, pad_mask, need_weights=False)
+        recon_pred = self.recon_head(x[:, 1:][mask])
+        pooled = x[:, 0]
+        return recon_pred, pooled
 
     def n_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)

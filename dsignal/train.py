@@ -161,6 +161,14 @@ def domain_loss(model, batch, device, pos_weight=None, grl_lambda: float = 1.0):
 #: parameters that are *not* the encoder, for --freeze encoder
 _HEAD_PREFIXES = ("head.", "type_head.", "diff_head.", "domain_head.")
 
+#: Stage 22b: the self-supervised pretext heads (dsignal/model.py) exist on
+#: every model unconditionally, so a *parent* checkpoint saved before they
+#: existed will always be missing them -- tolerated in build_model's
+#: strict=False load exactly the way a missing domain_head already was.
+#: "mask_token" has no trailing "." since it is a bare nn.Parameter, not a
+#: submodule.
+_PRETEXT_MISSING_OK = ("domain_head.", "mask_token", "recon_head.", "proj_head.")
+
 
 def _wmean(losses, denom, w):
     """Row-weighted mean: ``sum(l_i w_i) / sum(d_i w_i)``. With ``denom`` the
@@ -276,7 +284,7 @@ def build_model(args, mcfg, device, parent_state=None):
     model = JunctionSetTransformer(mcfg).to(device)
     if parent_state is not None:
         missing, unexpected = model.load_state_dict(parent_state, strict=False)
-        bad = [k for k in missing if not k.startswith("domain_head.")]
+        bad = [k for k in missing if not k.startswith(_PRETEXT_MISSING_OK)]
         if bad or unexpected:
             raise ValueError(f"--init-from state mismatch: missing {bad}, unexpected {list(unexpected)}")
     if args.freeze == "encoder":
@@ -732,8 +740,9 @@ def _build_argparser() -> argparse.ArgumentParser:
     # ---- Stage 20.2 fine-tuning path (plans/signal-native-v2-stage18-22-accuracy-plan.md §20.2)
     ap.add_argument("--init-from", default=None, metavar="DIR",
                     help="initialise fold k from DIR/fold{k}.pt: model config and weights "
-                    "(load_state_dict strict=False, only a missing domain_head is tolerated), "
-                    "and the parent's scaler -- never refit. classes/feature_subset/"
+                    "(load_state_dict strict=False; a missing domain_head/mask_token/"
+                    "recon_head/proj_head is tolerated, from a parent saved before those "
+                    "existed), and the parent's scaler -- never refit. classes/feature_subset/"
                     "feature_config must match the parent")
     ap.add_argument("--freeze", choices=("none", "encoder"), default="none",
                     help="'encoder' trains only head.*/type_head.*/diff_head.*/domain_head.*")
