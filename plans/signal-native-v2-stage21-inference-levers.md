@@ -31,6 +31,52 @@ separate conda env / GPU run).
    *(mechanical)*
 4. Build → verify → commit.
 
+### 21.1 Results (2026-09-16)
+
+`--min-confidence` landed in `dsignal/predict.py` (shared `abstain()` helper)
+and `dsignal/score_benchmark.py` (`score()` forces `pred="NA"` below
+threshold; `report()` excludes `"NA"` rows from every accuracy figure and
+prints the abstained count as a coverage loss instead of scoring it wrong).
+`score_benchmark.py` also gained `--coverage-curve` (prints the table
+inline after a live scoring pass) and `--from-tsv` (prints it from an
+already-written per-event TSV with no checkpoint/BAMs at all, confirming the
+"post-hoc from `p_*`, no re-scoring" property literally).
+
+**Sanity check (step 3) passes**: re-running the curve on
+`runs/benchmark_events_e4_union2_dev.tsv` (`benchmark/` dev, `e4_union2`)
+via `--from-tsv` reproduces the parent plan's quoted top-50%/top-25%
+exactly — **94.3% / 100.0%** vs the quoted 94%/100%. The mechanism is
+trusted.
+
+Full top-K% table, both models (headline single model
+`runs/geomwin_iv30_refit`, and `e4_union2`), all three evals:
+
+| eval (n) | model | 100% | 75% | 50% | 25% |
+|---|---|---:|---:|---:|---:|
+| `benchmark/` dev (70) | geomwin_iv30_refit | 75.7% | 82.7% | 97.1% | 100.0% |
+| `benchmark/` dev (70) | e4_union2 | 87.1% | 92.3% | 94.3% | 100.0% |
+| `benchmark_new` dev (242) | geomwin_iv30_refit | 48.3% | 55.5% | 59.5% | 75.0% |
+| `benchmark_new` dev (242) | e4_union2 | 58.7% | 62.1% | 67.8% | 75.0% |
+| `ptbp1_arena` (2422) | geomwin_iv30_refit | 49.8% | 54.1% | 59.3% | 68.6% |
+| `ptbp1_arena` (2422) | e4_union2 | 48.5% | 54.6% | 61.6% | 75.1% |
+
+(Collapsed accuracy; `benchmark/` dev has no NN truth so its curve is the
+one directly comparable across models. `benchmark_new`/arena numbers
+qualitatively match the prior "flat below max-p 0.8" read for
+`benchmark_new` — the curve rises but stays well under `benchmark/`'s,
+consistent with NN being the dominant, confidence-uncorrelated error there.)
+
+Per-event TSVs written this step: `runs/arena_geomwin_iv30_refit.tsv` (new —
+the headline single model had not been scored on the arena before); the
+`benchmark/`/`benchmark_new`/`e4_union2`-arena TSVs already existed on disk
+and were reused unchanged via `--from-tsv`.
+
+Selective calling is a real, monotone lever on every eval measured, largest
+where NN is the error mode's minority (`benchmark/`, no NN truth at all) and
+smaller but still positive on the two NN-bearing evals — consistent with
+confidence correlating with correctness generally, but NN specifically being
+mis-called with the same overconfidence as everything else.
+
 ## 21.3 — Operating point recheck (mechanical, ~half day, no new training)
 
 1. Run `dsignal.prior_sweep` on dev for the three seeds already on disk

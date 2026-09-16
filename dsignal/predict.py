@@ -356,6 +356,16 @@ def read_prediction_csv(path: str):
         return [(r[0], r[1], r[2]) for r in csv.reader(f) if r]
 
 
+def abstain(label: str, probs: np.ndarray, min_confidence: float | None) -> str:
+    """Stage 21.1 selective calling: below ``min_confidence`` max posterior
+    probability, the call is withheld (``"NA"``) rather than reported. Callers
+    (``score_benchmark.report``) exclude ``"NA"`` predictions from accuracy and
+    tally them separately as a coverage loss, rather than scoring them wrong."""
+    if min_confidence is not None and float(np.max(probs)) < min_confidence:
+        return "NA"
+    return label
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--csv", required=True, help="region,bam1,bam2 CSV, no header")
@@ -372,6 +382,12 @@ def main(argv=None) -> None:
         "doubles inference time and leaves extraction untouched",
     )
     ap.add_argument("--min-mapq", type=int, default=0)
+    ap.add_argument(
+        "--min-confidence", type=float, default=None,
+        help="Stage 21.1 selective calling: withhold predictions whose max "
+        "posterior probability falls below this threshold (reported as "
+        "prediction 'NA') instead of forcing a call on every event",
+    )
     args = ap.parse_args(argv)
 
     predictor = Predictor(
@@ -385,12 +401,15 @@ def main(argv=None) -> None:
 
     rows = read_prediction_csv(args.csv)
     out_rows, timings = [], []
+    n_abstain = 0
     for region, bam1, bam2 in rows:
         label, probs, _, timing = predictor.predict_region(region, bam1, bam2)
         timings.append(timing)
+        called = abstain(label, probs, args.min_confidence)
+        n_abstain += called == "NA"
         prob_str = " ".join(f"{c}={p:.3f}" for c, p in zip(predictor.classes, probs))
-        print(f"{region}\t{label}\t{prob_str}\t{timing['total_s']:.3f}s")
-        out_rows.append([region, label] + [f"{p:.6f}" for p in probs])
+        print(f"{region}\t{called}\t{prob_str}\t{timing['total_s']:.3f}s")
+        out_rows.append([region, called] + [f"{p:.6f}" for p in probs])
 
     if timings:
         tot = np.array([t["total_s"] for t in timings])
@@ -400,6 +419,12 @@ def main(argv=None) -> None:
             f"\n{len(tot)} events: {tot.mean():.3f} s/event total "
             f"({ext.mean():.3f} extract + {inf.mean():.3f} inference), "
             f"{tot.sum():.1f} s wall clock",
+            file=sys.stderr,
+        )
+    if args.min_confidence is not None:
+        print(
+            f"--min-confidence {args.min_confidence:g}: {n_abstain}/{len(rows)} abstained "
+            f"(coverage {1 - n_abstain / len(rows):.1%})",
             file=sys.stderr,
         )
 

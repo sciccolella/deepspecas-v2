@@ -64,6 +64,7 @@ import numpy as np
 
 from dsignal.extract import ReadFilters, parse_region
 from dsignal.predict import (
+    abstain,
     Predictor,
     PriorCorrection,
     class_counts_from_labels,
@@ -117,10 +118,16 @@ def apply_trash_as_nn(rows, curation_path: str):
     return out
 
 
-def score(predictor: Predictor, csv_paths, verbose: bool = False, keep=None):
+def score(predictor: Predictor, csv_paths, verbose: bool = False, keep=None,
+          min_confidence: float | None = None):
     """``keep``, when given, is a predicate on ``(csv_stem, region)`` -- used by
     ``--half`` to score only one side of ``benchmark/split.tsv``. Filtering here
-    rather than after the fact means the skipped half is never extracted."""
+    rather than after the fact means the skipped half is never extracted.
+
+    ``min_confidence`` (Stage 21.1 selective calling): predictions whose max
+    posterior probability falls below it are withheld (``pred="NA"``) rather
+    than forced -- ``report`` excludes these from accuracy and tallies them
+    separately as a coverage loss."""
     rows = []
     for path in csv_paths:
         stem = splitext(basename(path))[0]
@@ -132,22 +139,23 @@ def score(predictor: Predictor, csv_paths, verbose: bool = False, keep=None):
                 continue
             chrom, start, end = parse_region(region)
             pred, probs, _, timing = predictor.predict_region(region, bam1, bam2)
+            called = abstain(pred, probs, min_confidence)
             rows.append(
                 {
                     "csv": stem,
                     "region": region,
                     "width": end - start,
                     "truth": truth,
-                    "pred": pred,
-                    "correct": int(pred == truth),
-                    "correct_collapsed": int(collapse(pred) == collapse(truth)),
+                    "pred": called,
+                    "correct": int(called == truth),
+                    "correct_collapsed": int(collapse(called) == collapse(truth)),
                     **{f"p_{c}": probs[i] for i, c in enumerate(predictor.classes)},
                     **timing,
                 }
             )
             if verbose:
-                print(f"  {region:32s} truth={truth:4s} pred={pred:4s} "
-                      f"{'ok' if pred == truth else 'XX'}  ({timing['total_s']:.2f}s)", file=sys.stderr)
+                print(f"  {region:32s} truth={truth:4s} pred={called:4s} "
+                      f"{'ok' if called == truth else 'XX'}  ({timing['total_s']:.2f}s)", file=sys.stderr)
     return rows
 
 
@@ -161,7 +169,21 @@ def _confusion(rows, key_true, key_pred, labels):
     return cm
 
 
-def report(rows, predictor, half: str = "both") -> None:
+def report(rows, predictor, half: str = "both", min_confidence: float | None = None) -> None:
+    n_total = len(rows)
+    # every row keeps a consistent schema (truth_c/pred_c) whether or not it
+    # was abstained, so `--out` can write one uniform per-event TSV
+    for r in rows:
+        r["truth_c"], r["pred_c"] = collapse(r["truth"]), collapse(r["pred"])
+    n_abstain = sum(1 for r in rows if r["pred"] == "NA")
+    if n_abstain:
+        # Stage 21.1 selective calling: abstained events are excluded from every
+        # accuracy figure below (rather than scored wrong) and tallied here as
+        # a coverage loss instead.
+        print(f"\n--min-confidence {min_confidence:g}: {n_abstain}/{n_total} events abstained "
+              f"(pred=NA) -- coverage {1 - n_abstain / n_total:.1%}, "
+              f"accuracy below computed over the remaining {n_total - n_abstain}")
+        rows = [r for r in rows if r["pred"] != "NA"]
     n = len(rows)
     stems = sorted({r["csv"] for r in rows}, key=lambda s: (CSV_LABEL[s], s))
     has_nn_truth = any(r["truth"] == "NN" for r in rows)
@@ -198,8 +220,6 @@ def report(rows, predictor, half: str = "both") -> None:
     print(_confusion(rows, "truth", "pred", labels))
 
     clabels = sorted({collapse(l) for l in labels})
-    for r in rows:
-        r["truth_c"], r["pred_c"] = collapse(r["truth"]), collapse(r["pred"])
     print(f"\nconfusion matrix, A3+A5 collapsed (rows=truth, cols=pred): {clabels}")
     print(_confusion(rows, "truth_c", "pred_c", clabels))
 
@@ -227,9 +247,48 @@ def report(rows, predictor, half: str = "both") -> None:
     print(f"  widest event {widths.max():,} bp, median {int(np.median(widths)):,} bp")
 
 
+def coverage_table(rows, classes, ks=(1.00, 0.75, 0.50, 0.25)) -> None:
+    """Stage 21.1 selective calling, framed as top-K% retained rather than a raw
+    probability cutoff. Computed post-hoc from the ``p_*`` columns a scoring
+    pass (or ``--out`` TSV already on disk, via ``load_scored_tsv``) already
+    carries -- no re-scoring, no retraining. Events with no truth/pred (e.g.
+    already abstained by ``--min-confidence``) are dropped before ranking."""
+    scored = [r for r in rows if r["pred"] != "NA"]
+    ranked = sorted(scored, key=lambda r: -max(float(r[f"p_{c}"]) for c in classes))
+    n = len(ranked)
+    if n == 0:
+        print("\naccuracy vs coverage: no scored events (all abstained)")
+        return
+    print(f"\naccuracy vs coverage (top-K% retained by max posterior probability, n={n}):")
+    header = f"{'top-K%':>8s} {'n':>5s} {'5-class':>9s} {'collapsed':>10s}"
+    print(header)
+    for k in ks:
+        keep = max(1, round(k * n))
+        sel = ranked[:keep]
+        acc = np.mean([r["pred"] == r["truth"] for r in sel])
+        acc_c = np.mean([collapse(r["pred"]) == collapse(r["truth"]) for r in sel])
+        print(f"{k:7.0%}  {len(sel):4d}  {acc:8.1%}  {acc_c:9.1%}")
+
+
+def load_scored_tsv(path: str):
+    """Read back a per-event TSV written by ``score``/``--out`` (or by the
+    combine step in Stage 21.2) -- for ``--from-tsv``, which computes the
+    coverage curve straight from cached ``p_*`` columns with no model, no
+    Predictor, no BAMs."""
+    with open(path, newline="") as f:
+        return list(csv.DictReader(f, delimiter="\t"))
+
+
+def classes_from_scored_rows(rows):
+    """Class list read off a scored table's own ``p_*`` columns, in the label
+    order those columns appear -- so ``--from-tsv`` needs no checkpoint to know
+    what the classes were."""
+    return [k[2:] for k in rows[0] if k.startswith("p_")]
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    net_group = ap.add_mutually_exclusive_group(required=True)
+    net_group = ap.add_mutually_exclusive_group(required=False)
     net_group.add_argument("--net", nargs="+", help="trained fold checkpoints (.pt) of one run")
     net_group.add_argument("--ensemble", default=None,
                            help="EnsembleSpec JSON (dsignal.ensemble, runs/ensembles/*.json) -- "
@@ -278,7 +337,37 @@ def main(argv=None) -> None:
         "trash==1 event's truth forced to NN, dropping trash==NA rows. "
         "Reported alongside, never instead of, the default convention A",
     )
+    ap.add_argument(
+        "--min-confidence", type=float, default=None,
+        help="Stage 21.1 selective calling: withhold predictions whose max "
+        "posterior probability falls below this threshold (pred='NA'), "
+        "excluded from accuracy and tallied separately as a coverage loss",
+    )
+    ap.add_argument(
+        "--coverage-curve", action="store_true",
+        help="Stage 21.1: also print the accuracy-vs-coverage table (top-K% "
+        "retained by confidence), computed post-hoc from the p_* columns "
+        "this same pass already produces -- no extra scoring",
+    )
+    ap.add_argument(
+        "--from-tsv", default=None, metavar="EVENTS.tsv",
+        help="skip scoring entirely: read an already-produced per-event TSV "
+        "(this script's own --out, or Stage 21.2's combined TSV) and print "
+        "only the accuracy-vs-coverage table from its cached p_* columns. "
+        "No checkpoint, --csv or BAMs needed",
+    )
     args = ap.parse_args(argv)
+
+    if args.from_tsv:
+        rows = load_scored_tsv(args.from_tsv)
+        classes = classes_from_scored_rows(rows)
+        print(f"read {len(rows)} scored events from {args.from_tsv}, classes {classes}",
+              file=sys.stderr)
+        coverage_table(rows, classes)
+        return
+
+    if not args.net and not args.ensemble:
+        ap.error("one of --net/--ensemble is required unless --from-tsv is given")
 
     if args.ensemble:
         if args.target_prior != "none" and not args.train_labels:
@@ -334,13 +423,15 @@ def main(argv=None) -> None:
         keep = lambda stem, region: split.get((stem, region)) == args.half  # noqa: E731
         print(f"scoring the {args.half} half of {args.split}", file=sys.stderr)
 
-    rows = score(predictor, args.csv, args.verbose, keep=keep)
-    report(rows, predictor, args.half)
+    rows = score(predictor, args.csv, args.verbose, keep=keep, min_confidence=args.min_confidence)
+    report(rows, predictor, args.half, min_confidence=args.min_confidence)
+    if args.coverage_curve:
+        coverage_table(rows, list(predictor.classes))
 
     if args.trash_as_nn:
         rows_b = apply_trash_as_nn(rows, args.trash_as_nn)
         print("\n### convention B: TRASH-as-NN ###", file=sys.stderr)
-        report(rows_b, predictor, args.half)
+        report(rows_b, predictor, args.half, min_confidence=args.min_confidence)
         if args.out:
             base, ext = splitext(args.out)
             out_b = f"{base}.trash_as_nn{ext}"
