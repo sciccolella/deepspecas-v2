@@ -183,6 +183,62 @@ Steps:
    appended below, nothing above the line edited except retractions next to
    what they retract).
 
+### 21.2 Results (2026-09-16)
+
+**v1-only reproduces its own known numbers exactly**, confirming the new
+`dsEnsemble.py --out` path changed nothing about v1's predictions: 123/140
+= 87.9% over all of `benchmark/` (the historical six-net-ensemble figure)
+and 60/70 dev on `benchmark/split.tsv`, matching `CLAUDE.md`'s quoted
+numbers bit-for-bit.
+
+`e4_union2` was used as v2-only (the current dev-best ensemble, per
+`CLAUDE.md`). Pooled collapsed accuracy, all three evals:
+
+| eval (n) | v1-only | v2-only (`e4_union2`) | v1+v2 (mean-of-posteriors) |
+|---|---:|---:|---:|
+| `ptbp1_arena` (2422) — **primary** | 36.5% | 48.5% | 37.8% |
+| `benchmark_new` dev (242) — **confirm** | 48.8% | 58.7% | 50.4% |
+| `benchmark/` dev (70) — extra, no NN truth | 85.7% | 87.1% | 87.1% |
+
+Paired McNemar (`dsignal.benchmark_split compare --by-class`):
+
+| comparison | arena p | arena Δ | bnew dev p | bnew dev Δ | bench dev p | bench dev Δ |
+|---|---:|---:|---:|---:|---:|---:|
+| v1+v2 vs v2-only | <0.0001 | **−10.7 pt** | 0.0091 | **−8.3 pt** | 1.0000 | 0.0 pt |
+| v1+v2 vs v1-only | <0.0001 | +1.3 pt | 0.2891 | +1.6 pt | 1.0000 | +1.4 pt |
+
+**v2-only significantly beats v1+v2 on both the primary and confirmatory
+evals** (both p<0.01); **v1+v2 beats v1-only only marginally**, significant
+on the arena's large n but not at n=242/70. `benchmark/` dev is a wash in
+both directions — expected, since it carries no NN truth, v1's single
+biggest weak point.
+
+Per-class recall on the arena (primary) explains the shape: mean-of-posteriors
+does deliver the RI gain the rejected "RI-rescue" alternative was chasing
+(v1+v2 90.5% vs v2-only 75.0% vs v1-only 89.4% — v1's known RI strength
+comes through even without a dedicated rule for it) and small gains on
+A3/A5/CSE over v1-only, but **NN craters** (v1+v2 3.9% vs v2-only 16.9%,
+v1-only 4.4%) because v1 is confidently wrong on NN essentially always (its
+softmax is close to one-hot, so a wrong-but-confident v1 vote dominates the
+average) and there is no NN truth in v1's own training data to correct it.
+Net macro-recall over the 5 classes: v2-only 54.7%, v1+v2 42.9%, v1-only
+41.1% — the averaging recovers some of what v1 alone loses but does not
+approach v2 alone.
+
+**Reading**: the pre-registered rule works exactly as specified and is not a
+bug — it is a real, if modest and mostly non-significant, improvement over
+v1 alone, bought at a significant cost relative to v2 alone. This confirms
+rather than overturns the standing decision: **v2-only remains the
+preferred headline result.** v1+v2 is reported here alongside it, not
+proposed as a replacement, per the parent plan's Context section.
+
+Files: `dsEnsemble.py` (`--out`, gated on `--a --cse`), new
+`dsignal/combine_v1v2.py`. Per-event TSVs: `runs/v1_{bnew,bench,arena}_
+{A3,A5,ES,IR,NN}.tsv` (fresh v1 posteriors, one per truth CSV),
+`runs/v1_only_{bnew,bench,arena}.tsv` (concatenated, for the v1-only
+McNemar arm), `runs/combined_v1v2_{bnew_dev,bench_dev,arena}.tsv` (the
+combination itself).
+
 ## Verification
 
 Same standing conventions: build → verify → commit each step; never `git

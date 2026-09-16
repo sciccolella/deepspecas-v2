@@ -121,14 +121,37 @@ on real windows) is next**, per Stage 18 rule 1. Stage 21 (selective calling,
 v1+v2 rule) is independent and runs regardless — it was never blocked on
 20.3 and can start any time.
 
+## Stage 21 (2026-09-16): done, all three sub-stages
+
+`plans/signal-native-v2-stage21-inference-levers.md` has full pre-registration
+and Results for all of 21.1/21.3/21.2. One paragraph each:
+
+- **21.1 selective calling**: `--min-confidence` (abstain → `NA`, excluded
+  from accuracy) landed in `predict.py`/`score_benchmark.py`, plus
+  `--coverage-curve`/`--from-tsv` (top-K%-retained table, post-hoc from
+  cached `p_*`, no re-scoring). Sanity check reproduced the parent plan's
+  quoted `benchmark/` dev numbers (94.3%/100.0% at top-50%/25%) exactly. A
+  real, monotone lever on every eval, largest where NN isn't in the mix.
+- **21.3 operating point**: `nn_weight=0.1` rechecked on 3 seeds
+  (`npz_union2`/n12480) — each seed's own argmax beats 0.1, but no value is
+  the argmax in more than one seed and none is McNemar-significant. **0.1
+  stays.**
+- **21.2 v1+v2 mean-of-posteriors**: pre-registered, scored on the arena
+  (primary, n=2422) and `benchmark_new` dev (confirm, n=242). v1+v2
+  significantly **underperforms v2-only** on both (arena 37.8% vs 48.5%
+  collapsed p<0.0001; bnew dev 50.4% vs 58.7% p=0.0091) — v1's confident-wrong
+  NN calls dominate the average and swamp a real RI gain (90.5% vs 75.0%
+  collapsed recall). v1+v2 beats v1-only only marginally (arena p<0.0001 but
+  +1.3 pt; bnew dev +1.6 pt, not significant). **v2-only remains the
+  preferred headline**, as decided before scoring; v1+v2 reported alongside.
+
 ## Next: Stage 22b (self-supervised pretraining on real windows)
 
 Not pre-registered yet — needs a plan discussed and approved before any
-implementation, per this repo's workflow convention. Stage 21 (selective
-calling, v1+v2 rule) is independent and can run in parallel/first; it was
-never blocked on 20.3. Stage 19 (junction tail), if it runs, targets
-noise/novel junctions at 1–3 reads and one-condition-only junctions, and
-must write `@RG`/indels before `delcov` or replicate features can be used.
+implementation, per this repo's workflow convention. Stage 19 (junction
+tail), if it runs, targets noise/novel junctions at 1–3 reads and
+one-condition-only junctions, and must write `@RG`/indels before `delcov`
+or replicate features can be used.
 
 ## Open honesty caveats (carried forward + new)
 
