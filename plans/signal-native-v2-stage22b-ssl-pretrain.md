@@ -227,3 +227,57 @@ starts in a separate session, 22b.1 and 22b.2 first (independent of each
 other — data sampling doesn't block on the model refactor and vice versa),
 then 22b.3/22b.4 (which both need 22b.2's `_encode`), then 22b.5 → 22b.6 →
 22b.7 in order.
+
+**22b.1–22b.4 done (2026-09-16), all local-only work; 22b.5 onward blocked
+on pasteur extraction, deliberately not launched this session (pasteur was
+busy).**
+
+- **22b.1**: `sim/sample_unlabeled_windows.py` — gene exclusion (reuses
+  `sim.select_events`'s loader against the committed `exclude_genes_u2af2.tsv`
+  /`exclude_genes_nn_u2af2.tsv`, the most complete union available per
+  resume-10/Stage 20's `--union-with` chaining), a v3-window sub-interval
+  sampler seeded from each cohort's own `real_pos_<cohort>` span
+  distribution (not the held-out benchmark), and a BAM read-count expression
+  filter (`--min-reads`, skippable for a dry run). Verified locally with
+  synthetic fixtures and a real tiny in-memory BAM (no pasteur access
+  needed for this step) — **not yet run against the actual aqr/prpf4/u2af2
+  BAMs**, since that needs pasteur.
+- **22b.2**: `JunctionSetTransformer._encode` factored out of
+  `forward`/`forward_parts`/`domain_logits`; bit-identical, checked against
+  a pre-refactor baseline across 5 `ModelConfig` variants and a real
+  checkpoint.
+- **22b.3**: `_encode` further split into `_embed`/`_run_layers` so
+  `forward_pretrain` can inject masked-token embeddings between the two;
+  `mask_token`/`recon_head`/`proj_head` added unconditionally (inert outside
+  `forward_pretrain`); `dsignal.dataset.SSLPretrainDataset` (two independently
+  -augmented views + per-view junction mask) and `dsignal/pretrain.py`
+  (`L = alpha*L_mfm + beta*L_contrastive`, both always computed, a variant
+  selected purely by its loss weight). `train.py`'s `build_model` missing
+  -key whitelist extended (`mask_token`/`recon_head.`/`proj_head.`) so
+  `--init-from` still loads pre-Stage-22b parent checkpoints. All bit
+  -identity/shape/gradient-isolation checks pass; a smoke run against
+  synthetic npz fixtures trains end-to-end (one incidental finding, not a
+  defect: `FeatureScaler`'s 1e-6 std floor amplifies a feature that is
+  constant in the *unaugmented* fit population but can differ under
+  augmentation — only reproducible with a fixture degenerate enough to zero
+  a whole column's variance; pre-existing shared `FeatureScaler` behavior,
+  not something Stage 22b introduced).
+- **22b.4**: `train.py --init-encoder-from PATH` (mutually exclusive with
+  `--init-from`), loading only `token_proj.`/`cls_proj.`/`distance_bias.`/
+  `relation_bias.`/`layers.`/`norm.` from an SSL checkpoint into a freshly
+  -built classifier via `build_model`'s existing loader (missing-key
+  whitelist further extended to `_HEAD_PREFIXES` for this path, since an SSL
+  parent has no classifier head at all). Verified: loaded tensors
+  `torch.equal` the SSL checkpoint's own; every non-loaded tensor differs
+  from a second independently-seeded init except the deliberately zero
+  -initialized `mask_token`; architecture/feature-config mismatches raise;
+  a full `dsignal.pretrain` → `dsignal.train --init-encoder-from --freeze
+  encoder` CLI smoke run on synthetic data holds the encoder frozen exactly
+  as expected.
+
+**Next**: 22b.1's extraction needs to actually run on pasteur (gene
+enumeration via `gene_spans.tsv`/`.fai`, BAM expression filter, `dsignal
+.extract` — none of which exist/run locally) once pasteur is free, under
+the usual discipline (`limitram`, four thread-pool vars, `nice -n 19`,
+`/proc/loadavg` before/after). Then 22b.5 (3 pretraining runs) → 22b.6 (9
+downstream fine-tunes) → 22b.7 (scoring/gate) as planned.
