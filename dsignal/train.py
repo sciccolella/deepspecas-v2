@@ -280,13 +280,82 @@ def load_parent(args, fold: int, cfg, device):
     return mcfg, ck["model_state"], FeatureScaler.from_state_dict(ck["scaler"]), path
 
 
+#: Stage 22b.4: tensor-name prefixes --init-encoder-from transfers -- the
+#: shared encoder body only. A classifier's own head(s) and the pretext
+#: heads (mask_token/recon_head/proj_head -- irrelevant to a classifier,
+#: since forward/forward_parts/domain_logits never call them) always stay
+#: at this run's own random init, exactly like build_model's strict=False
+#: load already leaves a plain --init-from's missing domain_head randomly
+#: initialized.
+_ENCODER_PREFIXES = ("token_proj.", "cls_proj.", "distance_bias.", "relation_bias.", "layers.", "norm.")
+
+
+def fresh_model_config(args, cfg) -> ModelConfig:
+    """The ``ModelConfig`` this run's CLI args describe, independent of any
+    ``--init-from``/``--init-encoder-from`` parent -- shared by the
+    no-parent path and by ``--init-encoder-from`` (which needs a config to
+    both build a fresh model *and* validate the SSL parent's architecture
+    against, unlike ``--init-from`` which takes the parent's config wholesale)."""
+    return ModelConfig(
+        n_classes=len(CLASSES), d_model=args.d_model, n_heads=args.n_heads,
+        n_layers=args.n_layers, d_ff=args.d_ff, dropout=args.dropout,
+        two_head=args.two_head, n_types=len(TYPE_CLASSES),
+        use_distance_bias=not args.no_distance_bias, use_relation_bias=not args.no_relation_bias,
+        coverage_bins=args.coverage_bins, coverage_channels=args.coverage_channels,
+        domain_adversarial=args.domain_lambda > 0,
+        n_event_features=len(event_feature_names(cfg)),
+    )
+
+
+def load_encoder_parent(path: str, mcfg: ModelConfig, cfg) -> dict:
+    """``--init-encoder-from PATH``: PATH is a single ``dsignal.pretrain`` SSL
+    checkpoint (no folds -- SSL pretraining runs once), not a per-fold
+    directory like ``--init-from``. Returns the subset of its state_dict
+    whose keys start with ``_ENCODER_PREFIXES``, meant to be passed straight
+    into ``build_model``'s existing ``strict=False`` loader -- every key it
+    does *not* return (a classifier head, or the SSL run's own mask_token/
+    recon_head/proj_head) is exactly what that loader's missing-key
+    whitelist (``_HEAD_PREFIXES`` / ``_PRETEXT_MISSING_OK``) already
+    tolerates, so no new loading path is needed, just a smaller state dict.
+
+    Asserts the SSL run's architecture and feature_config match this run's
+    -- the same "a fine-tune that silently changed the representation would
+    be a different model wearing the parent's name" contract ``load_parent``
+    already enforces, against an encoder-only checkpoint that carries no
+    classes/feature_subset at all (SSL pretraining never sees either)."""
+    ck = torch.load(path, map_location="cpu", weights_only=False)
+    parent_cfg = FeatureConfig(**ck["feature_config"])
+    if parent_cfg != cfg:
+        raise ValueError(f"{path}: feature_config {parent_cfg} != this run's {cfg} "
+                         "(pass the SSL run's --flank/--max-junctions/--depth-norm/--event-groups)")
+    parent_mcfg = ck["model_config"]
+    for field in ("d_model", "n_heads", "n_layers", "d_ff", "dropout"):
+        want, got = getattr(mcfg, field), parent_mcfg[field]
+        if want != got:
+            flag = "--" + field.replace("_", "-")
+            raise ValueError(f"{path}: SSL run's {field}={got} but this run's {flag}={want}")
+    state = {k: v for k, v in ck["model_state"].items() if k.startswith(_ENCODER_PREFIXES)}
+    if not state:
+        raise ValueError(f"{path}: no tensor matched _ENCODER_PREFIXES -- not a dsignal.pretrain checkpoint?")
+    return state
+
+
+#: every prefix build_model's strict=False load tolerates as missing.
+#: --init-from parents are architecture-identical to the freshly-built model
+#: by construction (mcfg comes straight from the parent's own saved config),
+#: so _HEAD_PREFIXES is never actually exercised there -- it matters for
+#: --init-encoder-from, whose SSL parent has no classifier head at all.
+_MISSING_OK = _HEAD_PREFIXES + _PRETEXT_MISSING_OK
+
+
 def build_model(args, mcfg, device, parent_state=None):
     model = JunctionSetTransformer(mcfg).to(device)
     if parent_state is not None:
         missing, unexpected = model.load_state_dict(parent_state, strict=False)
-        bad = [k for k in missing if not k.startswith(_PRETEXT_MISSING_OK)]
+        bad = [k for k in missing if not k.startswith(_MISSING_OK)]
         if bad or unexpected:
-            raise ValueError(f"--init-from state mismatch: missing {bad}, unexpected {list(unexpected)}")
+            raise ValueError(f"--init-from/--init-encoder-from state mismatch: "
+                             f"missing {bad}, unexpected {list(unexpected)}")
     if args.freeze == "encoder":
         for name, p in model.named_parameters():
             p.requires_grad_(name.startswith(_HEAD_PREFIXES))
@@ -364,7 +433,10 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
     # It is fit on the whole training fold, inner val included: that is still
     # training-fold data, so nothing about the reported fold enters it.
     # Under --init-from the scaler is the *parent's*, never refit: the parent's
-    # weights were trained against that exact transform.
+    # weights were trained against that exact transform. Under
+    # --init-encoder-from the scaler is this run's own, fit fresh on this
+    # run's own (sim) training fold -- the SSL parent's scaler was fit on an
+    # unrelated real-window pool and has no reason to fit this run's data.
     parent_state = parent_path = None
     if args.init_from:
         mcfg, parent_state, scaler, parent_path = load_parent(args, fold, cfg, device)
@@ -373,15 +445,10 @@ def train_fold(args, entries, train_idx, test_idx, fold: int, device):
             fold_entries, cfg=cfg, feature_subset=args.feature_subset, cache=not args.no_cache, coverage_bins=args.coverage_bins
         )
         scaler = fit_ds.fit_scaler()
-        mcfg = ModelConfig(
-            n_classes=len(CLASSES), d_model=args.d_model, n_heads=args.n_heads,
-            n_layers=args.n_layers, d_ff=args.d_ff, dropout=args.dropout,
-            two_head=args.two_head, n_types=len(TYPE_CLASSES),
-            use_distance_bias=not args.no_distance_bias, use_relation_bias=not args.no_relation_bias,
-            coverage_bins=args.coverage_bins, coverage_channels=args.coverage_channels,
-            domain_adversarial=args.domain_lambda > 0,
-            n_event_features=len(event_feature_names(cfg)),
-        )
+        mcfg = fresh_model_config(args, cfg)
+        if args.init_encoder_from:
+            parent_state = load_encoder_parent(args.init_encoder_from, mcfg, cfg)
+            parent_path = args.init_encoder_from
     if mcfg.two_head != args.two_head:
         raise ValueError(f"--init-from parent two_head={mcfg.two_head} but --two-head={args.two_head}")
 
@@ -744,6 +811,18 @@ def _build_argparser() -> argparse.ArgumentParser:
                     "recon_head/proj_head is tolerated, from a parent saved before those "
                     "existed), and the parent's scaler -- never refit. classes/feature_subset/"
                     "feature_config must match the parent")
+    ap.add_argument("--init-encoder-from", default=None, metavar="PATH",
+                    help="Stage 22b: warm-start the encoder from a dsignal.pretrain SSL "
+                    "checkpoint (a single file, not a per-fold directory -- SSL pretraining "
+                    "has no folds). Only token_proj/cls_proj/distance_bias/relation_bias/"
+                    "layers/norm are loaded; every head and the SSL run's own mask_token/"
+                    "recon_head/proj_head stay randomly initialized, and this run fits its "
+                    "own scaler on its own (sim) training data rather than reusing the SSL "
+                    "run's. d_model/n_heads/n_layers/d_ff/dropout/--flank/--max-junctions/"
+                    "--depth-norm/--event-groups must match what the SSL run used (asserted "
+                    "against the checkpoint's own saved config). Mutually exclusive with "
+                    "--init-from -- one resumes a classifier, the other warm-starts an "
+                    "encoder with no classifier at all")
     ap.add_argument("--freeze", choices=("none", "encoder"), default="none",
                     help="'encoder' trains only head.*/type_head.*/diff_head.*/domain_head.*")
     ap.add_argument("--warmup-epochs", type=int, default=0,
@@ -781,8 +860,13 @@ def main(argv=None) -> None:
         ap.error("--refit selects an epoch on an inner split; --select-on none has no selection")
     if args.epochs < 0:
         ap.error("--epochs must be >= 0")
-    if args.freeze != "none" and not args.init_from:
-        ap.error("--freeze without --init-from would train a head on random encoder features")
+    if args.init_from and args.init_encoder_from:
+        ap.error("--init-from and --init-encoder-from are mutually exclusive: the first resumes "
+                 "a classifier checkpoint, the second warm-starts an encoder with no classifier "
+                 "at all -- pick one")
+    if args.freeze != "none" and not (args.init_from or args.init_encoder_from):
+        ap.error("--freeze without --init-from/--init-encoder-from would train a head on random "
+                 "encoder features")
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     device = torch.device(args.device)
@@ -855,7 +939,8 @@ def main(argv=None) -> None:
                     "domain_lambda": args.domain_lambda,
                     "class_weight_boost": args.class_weight_boost,
                     "epochs": args.epochs, "lr": args.lr,
-                    "init_from": args.init_from, "freeze": args.freeze,
+                    "init_from": args.init_from, "init_encoder_from": args.init_encoder_from,
+                    "freeze": args.freeze,
                     "warmup_epochs": args.warmup_epochs,
                     "balance_real_cells": args.balance_real_cells, "class_weights": args.class_weights,
                     "grl_schedule": args.grl_schedule,
