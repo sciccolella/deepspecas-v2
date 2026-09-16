@@ -369,17 +369,19 @@ class JunctionSetTransformer(nn.Module):
             h = h + self.coverage_encoder(coverage)
         return h
 
-    def forward(self, tokens, cls, s_rel, e_rel, pad_mask, need_weights: bool = False,
-                coverage=None):
-        """tokens [B, J, F], cls [B, E], s_rel/e_rel [B, J], pad_mask [B, J]
-        (True = padding). Returns (logits [B, C], attention or None).
-
-        Under ``two_head`` the returned tensor is the **composed 5-class log
-        probability**, not a raw logit vector. That is deliberate and exact:
-        ``softmax(log p) == p`` for any proper distribution, so every existing
-        caller -- argmax in train.evaluate, ``logits.softmax`` in
-        predict.fold_probs, the prior correction downstream of it -- keeps
-        working and keeps meaning the same thing.
+    def _encode(self, tokens, cls, s_rel, e_rel, pad_mask, coverage=None, need_weights: bool = False):
+        """Shared encoder pass -- CLS + junction-token embedding, attention
+        bias, the layer stack, final norm -- used by `forward`,
+        `forward_parts` and `domain_logits` alike (previously each wrote this
+        block out separately; see plan Stage 22b.2). Returns ``(x [B, J+1,
+        D], attn or None)``: ``x[:, 0]`` is what those three methods call
+        "pooled", ``x[:, 1:]`` is the per-junction final hidden state
+        `forward_pretrain`'s masked-reconstruction head reads -- the thing
+        the pre-refactor private logic discarded by norming only the CLS
+        row. ``self.norm`` is applied to the whole sequence rather than just
+        position 0, which is exactly equivalent for the CLS row (LayerNorm
+        normalizes each position independently over the feature dim) and is
+        the bit-identity check this method shipped with.
         """
         b, j, _ = tokens.shape
         x = torch.cat([self._cls_embedding(cls, coverage).unsqueeze(1), self.token_proj(tokens)], dim=1)
@@ -394,7 +396,23 @@ class JunctionSetTransformer(nn.Module):
             if need_weights:
                 attns.append(attn)
 
-        pooled = self.norm(x[:, 0])
+        x = self.norm(x)
+        return x, (torch.stack(attns, dim=1) if need_weights else None)
+
+    def forward(self, tokens, cls, s_rel, e_rel, pad_mask, need_weights: bool = False,
+                coverage=None):
+        """tokens [B, J, F], cls [B, E], s_rel/e_rel [B, J], pad_mask [B, J]
+        (True = padding). Returns (logits [B, C], attention or None).
+
+        Under ``two_head`` the returned tensor is the **composed 5-class log
+        probability**, not a raw logit vector. That is deliberate and exact:
+        ``softmax(log p) == p`` for any proper distribution, so every existing
+        caller -- argmax in train.evaluate, ``logits.softmax`` in
+        predict.fold_probs, the prior correction downstream of it -- keeps
+        working and keeps meaning the same thing.
+        """
+        x, attn = self._encode(tokens, cls, s_rel, e_rel, pad_mask, coverage, need_weights)
+        pooled = x[:, 0]
         if self.cfg.two_head:
             type_logits, diff_logit = self.type_head(pooled), self.diff_head(pooled).squeeze(-1)
             logits = compose_two_head(type_logits, diff_logit)
@@ -404,7 +422,7 @@ class JunctionSetTransformer(nn.Module):
             return logits, None
         # CLS's attention over the junction tokens, averaged over heads --
         # "which junctions drove this call"
-        return logits, torch.stack(attns, dim=1)[:, :, :, 0, 1:].mean(dim=2)
+        return logits, attn[:, :, :, 0, 1:].mean(dim=2)
 
     def forward_parts(self, tokens, cls, s_rel, e_rel, pad_mask, coverage=None):
         """``(type_logits [B, T], diff_logit [B])`` -- the two heads before
@@ -446,14 +464,8 @@ class JunctionSetTransformer(nn.Module):
         """
         if not self.cfg.two_head:
             raise ValueError("forward_parts is only defined for two_head models")
-        b, j, _ = tokens.shape
-        x = torch.cat([self._cls_embedding(cls, coverage).unsqueeze(1), self.token_proj(tokens)], dim=1)
-        cls_pad = torch.zeros(b, 1, dtype=torch.bool, device=pad_mask.device)
-        full_pad = torch.cat([cls_pad, pad_mask], dim=1)
-        bias = self._attention_bias(s_rel, e_rel, pad_mask)
-        for layer in self.layers:
-            x, _ = layer(x, bias, full_pad, False)
-        pooled = self.norm(x[:, 0])
+        x, _ = self._encode(tokens, cls, s_rel, e_rel, pad_mask, coverage, need_weights=False)
+        pooled = x[:, 0]
         return self.type_head(pooled), self.diff_head(pooled).squeeze(-1)
 
     def domain_logits(self, tokens, cls, s_rel, e_rel, pad_mask, coverage=None, grl_lambda: float = 1.0):
@@ -478,13 +490,8 @@ class JunctionSetTransformer(nn.Module):
         scale)."""
         if not self.cfg.domain_adversarial:
             raise ValueError("domain_logits is only defined for domain_adversarial models")
-        x = torch.cat([self._cls_embedding(cls, coverage).unsqueeze(1), self.token_proj(tokens)], dim=1)
-        cls_pad = torch.zeros(x.shape[0], 1, dtype=torch.bool, device=pad_mask.device)
-        full_pad = torch.cat([cls_pad, pad_mask], dim=1)
-        bias = self._attention_bias(s_rel, e_rel, pad_mask)
-        for layer in self.layers:
-            x, _ = layer(x, bias, full_pad, False)
-        pooled = self.norm(x[:, 0])
+        x, _ = self._encode(tokens, cls, s_rel, e_rel, pad_mask, coverage, need_weights=False)
+        pooled = x[:, 0]
         return self.domain_head(gradient_reversal(pooled, grl_lambda)).squeeze(-1)
 
     def n_parameters(self) -> int:
