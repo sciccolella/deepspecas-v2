@@ -89,6 +89,40 @@ mis-called with the same overconfidence as everything else.
 3. Build → verify → commit; fold the outcome into
    `plans/signal-native-v2-resume-10.md`.
 
+### 21.3 Results (2026-09-16)
+
+Ran `dsignal.prior_sweep` (no code change needed — it already caches
+per-fold posteriors and evaluates every setting analytically off them) for
+all three seed-matched `npz_union2`/n12480 checkpoints on `benchmark_new`
+dev (the primary target), `--tta-condition-swap`,
+`--train-labels sim/experiment/labels_union2.n12480.tsv`. Collapsed accuracy
+per setting (oracle `nn_weight=0` excluded from the argmax search — not
+deployable):
+
+| setting | seed 0 (`scale_union2_n12480`) | seed 1 (`union2_base_s1`) | seed 2 (`union2_base_s2`) |
+|---|---:|---:|---:|
+| uncorrected | 55.0% | 54.5% | 55.4% |
+| uniform / nn_weight=1 | 55.0% | 53.7% | **57.4%** |
+| nn_weight=0.5 | 56.2% | **54.5%** | 55.8% |
+| nn_weight=0.25 | **56.6%** | 54.1% | 57.0% |
+| nn_weight=0.1 (standing) | 53.7% | 52.9% | 55.4% |
+| nn_weight=0.05 | 52.9% | 51.2% | 53.7% |
+
+Argmax (excluding oracle): seed 0 → `nn_weight=0.25` (56.6%), seed 1 →
+tied `uncorrected`/`nn_weight=0.5` (54.5%), seed 2 → tied
+`uniform`/`nn_weight=1` (57.4%). **No value is the argmax in more than one
+seed** — three seeds, three different answers, none of them 0.1 but no two
+of them agreeing with each other either. Per the pre-registered rule
+("keep 0.1 unless a 3-seed-consistent argmax beats it"), **0.1 stays.** The
+gap from 0.1 to each seed's own argmax (2.9 / 1.6 / 2.0 points, ≈4-7 of 242
+events) is in the same range flagged elsewhere on this branch as
+within-seed noise, and no single McNemar crosses significance at n=242
+against the seed's own uncorrected baseline (p=0.503 seed 0, p=1.000 seed 1,
+p=0.062 seed 2 — full curves in
+`runs/prior_sweep_union2_s{0,1,2}_bnew_dev.tsv`).
+
+Folded into `plans/signal-native-v2-resume-10.md`.
+
 ## 21.2 — v1+v2 combination: mean of posteriors (~1 day)
 
 **Pre-registered rule (locked in before any scoring): mean of posteriors.**

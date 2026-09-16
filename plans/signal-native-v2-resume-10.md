@@ -133,6 +133,14 @@ must write `@RG`/indels before `delcov` or replicate features can be used.
 ## Open honesty caveats (carried forward + new)
 
 1. `nn_weight=0.1`, `DPSI_BETA`/`PSI_LEVEL_BETA` — unchanged from resume-7/8/9.
+   **Stage 21.3 (2026-09-16) rechecked this**: `dsignal.prior_sweep` on the
+   three seed-matched `npz_union2`/n12480 checkpoints, `benchmark_new` dev.
+   Each seed's own argmax beats 0.1 (seed 0 `nn_weight=0.25` 56.6%, seed 1
+   tied `uncorrected`/`0.5` 54.5%, seed 2 tied `uniform`/`1.0` 57.4%), but no
+   value is the argmax in more than one seed and none crosses McNemar
+   significance at n=242 (p=0.503/1.000/0.062). No 3-seed-consistent
+   alternative — **0.1 stays**. Detail:
+   `plans/signal-native-v2-stage21-inference-levers.md` §21.3 Results.
 2. `benchmark_new` test (243) unspent and reserved for the programme's one
    final spend; `benchmark/` test spent (Stage 6). **Any model whose
    training pool contains a `ptbp1_arena` row is ineligible for that
