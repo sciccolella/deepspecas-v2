@@ -84,16 +84,24 @@ import numpy as np
 import pysam
 
 from dsignal.extract import parse_region
-from dsignal.predict import read_prediction_csv
 from sim.select_events import _load_chrom_lengths, _load_excluded_genes, _load_gene_spans
 from sim.window import sample_window_detail
+
+
+def _read_region_csv(path):
+    """Same shape as `dsignal.predict.read_prediction_csv`, reimplemented here
+    to avoid pulling in `dsignal.predict`'s (and therefore torch's) module
+    -level import just for a 2-line CSV reader -- this script has no other
+    torch dependency and should run in any env with pysam+numpy+pandas."""
+    with open(path) as f:
+        return [(r[0], r[1], r[2]) for r in csv.reader(f) if r]
 
 
 def load_span_pool(csv_paths) -> list:
     """Region widths (inclusive bp) pooled across one or more extract-CSVs."""
     widths = []
     for path in csv_paths:
-        for region, _bam1, _bam2 in read_prediction_csv(path):
+        for region, _bam1, _bam2 in _read_region_csv(path):
             _chrom, start, end = parse_region(region)
             widths.append(end - start + 1)
     if not widths:
