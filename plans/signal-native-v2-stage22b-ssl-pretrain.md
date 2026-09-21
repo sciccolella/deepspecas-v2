@@ -275,9 +275,27 @@ busy).**
   encoder` CLI smoke run on synthetic data holds the encoder frozen exactly
   as expected.
 
-**Next**: 22b.1's extraction needs to actually run on pasteur (gene
-enumeration via `gene_spans.tsv`/`.fai`, BAM expression filter, `dsignal
-.extract` — none of which exist/run locally) once pasteur is free, under
-the usual discipline (`limitram`, four thread-pool vars, `nice -n 19`,
-`/proc/loadavg` before/after). Then 22b.5 (3 pretraining runs) → 22b.6 (9
-downstream fine-tunes) → 22b.7 (scoring/gate) as planned.
+**22b.1's pasteur extraction done (2026-09-21).** Fixed a bug found at
+launch: `sample_unlabeled_windows.py` imported `dsignal.predict` for its
+2-line `read_prediction_csv` helper, which transitively required torch —
+no single pasteur conda env has torch+pysam+numpy+pandas together
+(`DSpoly2v2` has pysam/numpy/pandas but not torch; `DSrender` has
+torch/pysam/numpy but not pandas). Reimplemented the CSV reader inline
+instead of importing `dsignal.predict` (commit `a7349e94`), then ran under
+`DSpoly2v2`. Pipeline: gene enumeration + BAM expression filter (`--min-reads
+20`) via a driver script (`limitram 48G`, `nice -n 19`, four thread-pool
+env vars, 30-way `parallel -j 30` for the sharded extraction stage — peak
+loadavg ~9 on 64 cores, comfortably under the requested 32-core cap) →
+12,000 windows sampled per cohort (36,000 total) from 32,375/58,411 (aqr),
+26,988/58,411 (prpf4), 31,182/58,411 (u2af2) expression-filtered candidate
+genes → sharded `dsignal.extract` (30 shards, all exit 0) → merged into
+`sim/experiment/real_ssl_{aqr,prpf4,u2af2}/npz` (12,000/12,000 npz each,
+matching `extract.csv`/`labels.tsv` row counts exactly) → `dsignal.verify`
+on a 300-region random sample per cohort, coverage parity 600/600 and
+junction parity 600/600 in all three (run under `DSrender`, since `verify.py`
+needs `plot2s`→torch, the opposite env split from the sampling step). Only
+`.npz`/`extract.csv`/`labels.tsv` were pulled back (~65M per cohort);
+pasteur's shard/joblog/driver-script scratch was cleaned up after.
+
+**Next**: 22b.5 (3 pretraining runs, local GPU) → 22b.6 (9 downstream
+fine-tunes) → 22b.7 (scoring/gate) as planned.
