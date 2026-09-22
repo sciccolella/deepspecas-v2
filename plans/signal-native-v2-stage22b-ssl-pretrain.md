@@ -332,6 +332,27 @@ Checkpoints + full per-epoch JSON history in `runs/ssl_{mfm,contrastive,both}.{p
 Held-out loss is a convergence sanity check only (per the plan's
 Verification section), not model selection or a benchmark result.
 
-**Next**: 22b.6 (9 downstream fine-tunes: 3 pretraining variants × 3 seeds,
-via `dsignal.train --init-encoder-from`) → 22b.7 (scoring/McNemar/gate/
-decision doc/resume-10 update), as planned.
+**22b.6 done (2026-09-22).** 9 downstream fine-tunes (3 pretraining
+variants × 3 seeds), identical recipe to `runs/scale_union2_n12480`
+(`npz_union2`/`labels_union2.n12480.tsv`, `--augment all --feature-subset
+no-geometry --refit --inner-val-frac 0.30`) plus `--init-encoder-from
+runs/ssl_<variant>.pt`, run sequentially on the local GPU (~51-58 min each,
+~8h total). All 9 exit 0, all 5-fold checkpoints present; confirmed each
+run's log line ("initialised from runs/ssl_\<variant\>.pt") shows the
+encoder actually warm-started. In-sim (held-out fold) results:
+
+| variant | seed 0 | seed 1 | seed 2 |
+|---|---|---|---|
+| mfm (`runs/ssl_ft_mfm_s*`) | acc 0.9363 / F1 0.9276 | acc 0.9300 / F1 0.9210 | acc 0.9345 / F1 0.9258 |
+| contrastive (`runs/ssl_ft_contrastive_s*`) | acc 0.9220 / F1 0.9109 | acc 0.9179 / F1 0.9080 | acc 0.9186 / F1 0.9071 |
+| both (`runs/ssl_ft_both_s*`) | acc 0.9313 / F1 0.9237 | acc 0.9328 / F1 0.9238 | acc 0.9333 / F1 0.9241 |
+
+(`acc` = collapsed A3+A5→A accuracy, `F1` = 5-class macro-F1, both on the
+in-sim held-out fold — a training-health check only, **not** the gate
+metric; the gate is `benchmark_new` dev accuracy per variant/seed against
+the base's already-measured 128/130/134 of 242, scored in 22b.7.)
+
+**Next**: 22b.7 (score all 9 on `benchmark_new` dev + `benchmark/` dev guard
++ arena/ptbp1 confirmatory; McNemar each variant's 3 seeds against the
+seed-matched base; apply the pre-registered gate; decision doc; resume-10
+update).
