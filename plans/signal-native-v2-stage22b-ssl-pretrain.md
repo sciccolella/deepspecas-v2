@@ -297,5 +297,41 @@ needs `plot2s`→torch, the opposite env split from the sampling step). Only
 `.npz`/`extract.csv`/`labels.tsv` were pulled back (~65M per cohort);
 pasteur's shard/joblog/driver-script scratch was cleaned up after.
 
-**Next**: 22b.5 (3 pretraining runs, local GPU) → 22b.6 (9 downstream
-fine-tunes) → 22b.7 (scoring/gate) as planned.
+**Data-integrity bug found and fixed while preparing 22b.5's merge
+(2026-09-22, commit `cad9da946`)** — not a defect in any checked-in code,
+a mistake in the uncommitted pasteur driver script above. `dsignal.extract`
+numbers `ix` locally to whichever single CSV it's invoked on (`enumerate`
+restarting at 0 per call); every pre-existing real cohort ran as one
+unsharded CSV, where local `ix` already equals the intended global `ix`,
+but the ad hoc 10-way sharding used above for pasteur parallelism broke
+that implicit assumption — 10 different physical npz files across shards
+carried the same local-`ix` prefix, and `sim/merge_batches.py`'s filename
+-prefix-keyed index silently kept only the last one seen per collision,
+so the initial `real_ssl_pool` merge matched only ~1,200/12,000 rows per
+cohort (and not even the correct ones). Caught before any training ran on
+the corrupted pairing. Verified region uniqueness per cohort against
+`labels.tsv`'s `event_id` (aqr 12000/12000 unique, prpf4 11999/12000 with
+one accidental duplicate region, u2af2 12000/12000), then non-destructively
+re-keyed every npz file (hardlinked into a new dir under its correct global
+`ix`, matched by region) and rebuilt the merge, which then matched fully.
+Final `real_ssl_pool`: **39,304 records** (3,305 labelled + 35,999/36,000
+unlabeled SSL windows — one prpf4 window lost to the one duplicate-region
+dedup) from 9 batches (`real_pos_*`, `real_nn_*`, `real_ssl_*` × 3 cohorts).
+
+**22b.5 done (2026-09-22).** Three pretraining runs on `real_ssl_pool`
+(local GPU, `DSnet` env, all defaults except `--alpha`/`--beta`/`--seed 0`,
+30 epochs each), all converging cleanly with no instability:
+
+| run | alpha | beta | final train total | final val total | notes |
+|---|---|---|---|---|---|
+| `runs/ssl_mfm` (MFM-only) | 1.0 | 0.0 | 0.3022 | 0.2370 | monotonic val decrease throughout |
+| `runs/ssl_contrastive` (contrastive-only) | 0.0 | 1.0 | 0.2243 | 1.0936 | val contrastive component monotonic 1.30→1.09 |
+| `runs/ssl_both` (MFM+contrastive) | 1.0 | 1.0 | 0.5510 | 1.3563 | both components still decreasing at epoch 25 |
+
+Checkpoints + full per-epoch JSON history in `runs/ssl_{mfm,contrastive,both}.{pt,json,log}`.
+Held-out loss is a convergence sanity check only (per the plan's
+Verification section), not model selection or a benchmark result.
+
+**Next**: 22b.6 (9 downstream fine-tunes: 3 pretraining variants × 3 seeds,
+via `dsignal.train --init-encoder-from`) → 22b.7 (scoring/McNemar/gate/
+decision doc/resume-10 update), as planned.

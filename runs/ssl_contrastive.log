@@ -1,0 +1,34 @@
+39304 unlabeled windows
+train 35346 / val (monitoring only) 3958, 9911 genes
+epoch   0  train total=0.6303 mfm=1.2935 contrastive=0.6303  val total=1.3099 mfm=1.2512 contrastive=1.3099
+epoch   1  train total=0.4306 mfm=1.3716 contrastive=0.4306  val total=1.2737 mfm=1.2623 contrastive=1.2737
+epoch   2  train total=0.3707 mfm=1.3330 contrastive=0.3707  val total=1.2633 mfm=1.2732 contrastive=1.2633
+epoch   3  train total=0.3473 mfm=1.2875 contrastive=0.3473  val total=1.2229 mfm=1.2551 contrastive=1.2229
+epoch   4  train total=0.3316 mfm=1.2911 contrastive=0.3316  val total=1.1949 mfm=1.2407 contrastive=1.1949
+epoch   5  train total=0.3144 mfm=1.2899 contrastive=0.3144  val total=1.1894 mfm=1.2467 contrastive=1.1894
+epoch   6  train total=0.3023 mfm=1.3065 contrastive=0.3023  val total=1.1722 mfm=1.2390 contrastive=1.1722
+epoch   7  train total=0.2885 mfm=1.2824 contrastive=0.2885  val total=1.1608 mfm=1.2441 contrastive=1.1608
+epoch   8  train total=0.2848 mfm=1.2864 contrastive=0.2848  val total=1.1493 mfm=1.2166 contrastive=1.1493
+epoch   9  train total=0.2733 mfm=1.2512 contrastive=0.2733  val total=1.1457 mfm=1.2337 contrastive=1.1457
+epoch  10  train total=0.2680 mfm=1.2849 contrastive=0.2680  val total=1.1507 mfm=1.2195 contrastive=1.1507
+epoch  11  train total=0.2654 mfm=1.2715 contrastive=0.2654  val total=1.1236 mfm=1.2345 contrastive=1.1236
+epoch  12  train total=0.2557 mfm=1.2871 contrastive=0.2557  val total=1.1396 mfm=1.2038 contrastive=1.1396
+epoch  13  train total=0.2541 mfm=1.2579 contrastive=0.2541  val total=1.1146 mfm=1.1847 contrastive=1.1146
+epoch  14  train total=0.2496 mfm=1.2661 contrastive=0.2496  val total=1.1347 mfm=1.1903 contrastive=1.1347
+epoch  15  train total=0.2451 mfm=1.2765 contrastive=0.2451  val total=1.1326 mfm=1.2108 contrastive=1.1326
+epoch  16  train total=0.2410 mfm=1.2369 contrastive=0.2410  val total=1.1126 mfm=1.1820 contrastive=1.1126
+epoch  17  train total=0.2436 mfm=1.2213 contrastive=0.2436  val total=1.1172 mfm=1.1951 contrastive=1.1172
+epoch  18  train total=0.2379 mfm=1.2822 contrastive=0.2379  val total=1.1147 mfm=1.1923 contrastive=1.1147
+epoch  19  train total=0.2309 mfm=1.2121 contrastive=0.2309  val total=1.0978 mfm=1.1760 contrastive=1.0978
+epoch  20  train total=0.2361 mfm=1.1961 contrastive=0.2361  val total=1.1043 mfm=1.1813 contrastive=1.1043
+epoch  21  train total=0.2313 mfm=1.2109 contrastive=0.2313  val total=1.1015 mfm=1.1784 contrastive=1.1015
+epoch  22  train total=0.2279 mfm=1.2059 contrastive=0.2279  val total=1.1054 mfm=1.1593 contrastive=1.1054
+epoch  23  train total=0.2287 mfm=1.2090 contrastive=0.2287  val total=1.0965 mfm=1.1509 contrastive=1.0965
+epoch  24  train total=0.2267 mfm=1.2135 contrastive=0.2267  val total=1.0998 mfm=1.1775 contrastive=1.0998
+epoch  25  train total=0.2243 mfm=1.1983 contrastive=0.2243  val total=1.0936 mfm=1.1633 contrastive=1.0936
+epoch  26  train total=0.2214 mfm=1.2125 contrastive=0.2214  val total=1.1112 mfm=1.1754 contrastive=1.1112
+epoch  27  train total=0.2204 mfm=1.1793 contrastive=0.2204  val total=1.0928 mfm=1.1729 contrastive=1.0928
+epoch  28  train total=0.2210 mfm=1.2285 contrastive=0.2210  val total=1.0721 mfm=1.1476 contrastive=1.0721
+epoch  29  train total=0.2179 mfm=1.1872 contrastive=0.2179  val total=1.0908 mfm=1.1570 contrastive=1.0908
+wrote runs/ssl_contrastive.pt
+wrote runs/ssl_contrastive.json
