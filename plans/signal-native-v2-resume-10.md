@@ -185,6 +185,11 @@ junctions at 1–3 reads and one-condition-only junctions (Stage 18 rule 1's
 sim-side target, since the sim/real gap is diffuse, not positional/GC), and
 must write `@RG`/indels before `delcov` or replicate features can be used.
 
+**Planned and pre-registered 2026-09-23:** `plans/signal-native-v2-stage19-junction-tail.md`
+(junction-tail layer + indels + `@RG` on the identical union2 design; Gate A on a
+pilot batch before the full re-sim, Gate B seed-pooled; ~12 h pasteur expected —
+union2 batches measured ~37 min each, so the "~25 h" figure was an overestimate).
+
 ## Open honesty caveats (carried forward + new)
 
 1. `nn_weight=0.1`, `DPSI_BETA`/`PSI_LEVEL_BETA` — unchanged from resume-7/8/9.
