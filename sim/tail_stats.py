@@ -248,6 +248,7 @@ def measure(records: list, max_n: int | None, seed: int) -> tuple[list, list, li
     for path, label in records:
         row, tail = window_stats(load_npz(path))
         row["label"] = label
+        row["_tails"] = tail
         for t in tail:
             t["label"] = label
         rows.append(row)
@@ -263,6 +264,44 @@ def gate_a1(summary: dict, ranges: dict = GATE_A1) -> dict:
         out[k] = {"value": v, "range": [lo, hi], "pass": bool(lo <= v <= hi)}
     out["PASS"] = all(v["pass"] for v in out.values() if isinstance(v, dict))
     return out
+
+
+def weighted_summary(rows: list, tails_per_row: list, w: np.ndarray) -> dict:
+    """The five A1 statistics with per-window weights (importance weights for
+    width matching). Tail-level statistics weight each tail junction by its
+    window's weight."""
+    w = np.asarray(w, dtype=float)
+    tk = np.array([r["tail_per_kb"] for r in rows])
+    o = np.argsort(tk, kind="stable")
+    c = np.cumsum(w[o]) / w.sum()
+    nt = np.array([r["n_tail"] for r in rows], dtype=float)
+    nj = np.array([r["n_junctions"] for r in rows], dtype=float)
+    ocf = np.array([r["one_cond_frac"] for r in rows], dtype=float)
+    m = np.isfinite(ocf)
+    n_tail_w = sum(wi * len(ts) for wi, ts in zip(w, tails_per_row))
+    return {
+        "tail_per_kb_median": float(tk[o][np.searchsorted(c, 0.5)]),
+        "tail_frac": float((w * nt).sum() / (w * nj).sum()),
+        "one_cond_frac": float((w[m] * ocf[m]).sum() / w[m].sum()),
+        "inside_frac": float(sum(wi * sum(t["loc"] == "in" for t in ts)
+                                 for wi, ts in zip(w, tails_per_row)) / n_tail_w),
+        "canonical_frac": float(sum(wi * sum(t["canonical"] for t in ts)
+                                    for wi, ts in zip(w, tails_per_row)) / n_tail_w),
+        "effective_n": float(w.sum() ** 2 / (w ** 2).sum()),
+    }
+
+
+def width_match_weights(rows: list, target_rows: list, n_bins: int = 10) -> np.ndarray:
+    """Importance weights that give ``rows`` the log-width distribution of
+    ``target_rows`` (quantile bins of the target)."""
+    tw = np.log10([r["width_kb"] for r in target_rows])
+    edges = np.quantile(tw, np.linspace(0, 1, n_bins + 1))
+    edges[0], edges[-1] = -np.inf, np.inf
+    p_t = np.histogram(tw, edges)[0] / len(tw)
+    rw = np.log10([r["width_kb"] for r in rows])
+    b = np.clip(np.searchsorted(edges, rw, side="right") - 1, 0, n_bins - 1)
+    p_r = np.bincount(b, minlength=n_bins) / len(rows)
+    return p_t[b] / np.maximum(p_r[b], 1e-12)
 
 
 A3_FEATURES = ("tail_per_kb", "one_cond_frac", "inside_frac", "canonical_frac")
@@ -308,6 +347,9 @@ def main(argv=None) -> None:
                     help="set name(s) to check against the frozen Gate A1 ranges")
     ap.add_argument("--ranges-from", nargs="*", default=None,
                     help="also print [min, max] of each A1 statistic across these sets")
+    ap.add_argument("--width-match", default=None, metavar="SET",
+                    help="with --ranges-from: also print those sets' A1 statistics reweighted to "
+                    "SET's window-width distribution (tail/kb and inside fraction are width-confounded)")
     ap.add_argument("--a3", action="append", default=[],
                     help="set name(s) to run the Gate A3 label-blindness check on (needs labels)")
     ap.add_argument("--json-out", default=None)
@@ -325,6 +367,8 @@ def main(argv=None) -> None:
                 entry["by_class"][c] = summarize([r for r in rows if r["label"] == c],
                                                  [t for t in tails if t["label"] == c])
         result["sets"][name] = entry
+        rows_by_set = result.setdefault("_rows", {})
+        rows_by_set[name] = rows
         if name in args.a3:
             entry["a3"] = a3_label_blindness(rows, args.seed)
         s = entry["all"]
@@ -349,6 +393,20 @@ def main(argv=None) -> None:
         for k, (lo, hi) in rng_out.items():
             print(f"  {k:>20}: {lo:.3f} - {hi:.3f}   (frozen A1: {GATE_A1[k][0]} - {GATE_A1[k][1]})")
 
+    if args.ranges_from and args.width_match:
+        target = result["_rows"][args.width_match]
+        wm = {}
+        for n in args.ranges_from:
+            rows = result["_rows"][n]
+            wm[n] = weighted_summary(rows, [r["_tails"] for r in rows], width_match_weights(rows, target))
+        wr = {k: [min(wm[n][k] for n in wm), max(wm[n][k] for n in wm)] for k in GATE_A1}
+        result["ranges_from"]["width_matched_to"] = args.width_match
+        result["ranges_from"]["width_matched"] = {"per_set": wm, "ranges": wr}
+        print(f"\n[min, max] across {args.ranges_from}, width-matched to {args.width_match} "
+              f"(effective n {', '.join('%.0f' % wm[n]['effective_n'] for n in wm)}):")
+        for k, (lo, hi) in wr.items():
+            print(f"  {k:>20}: {lo:.3f} - {hi:.3f}")
+
     for name in args.gate_a1:
         g = gate_a1(result["sets"][name]["all"])
         result.setdefault("gate_a1", {})[name] = g
@@ -363,6 +421,7 @@ def main(argv=None) -> None:
         print(f"\nGate A3 on {name}: balanced accuracy {a3['balanced_accuracy']:.3f} (n={a3['n']}, "
               f"threshold <= 0.30) -> {'PASS' if a3['pass'] else 'FAIL'}")
 
+    result.pop("_rows", None)
     if args.json_out:
         os.makedirs(os.path.dirname(args.json_out) or ".", exist_ok=True)
         with open(args.json_out, "w") as f:
