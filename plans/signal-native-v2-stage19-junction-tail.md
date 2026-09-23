@@ -281,3 +281,70 @@ Arm T **PASSES** iff all hold:
   - `sim/run_polyester.R`: the second call uses the same script and args.
   - `sim/merge_batches.py`, `dsignal/domain_probe.py` (`build --sim-npz`, `real-vs-sim`), `dsignal/train.py`, `dsignal/score_benchmark.py`
   - `sim/gtf_exon_structure` tables (annotated boundaries)
+
+---
+
+# Results
+
+## 19.0 — pasteur inventory (2026-09-23, read-only)
+
+**The per-batch inputs the plan assumed are gone.** `$ROOT/sim/batches/` (where
+every `run_batch.sh` / `run_b1{2..5}.sh` wrote) no longer exists on pasteur, so
+no batch has a surviving `count_matrix.tsv`, `transcripts.ordered.fa`,
+`novel.fa`, `premrna.fa`, `neighbors.tsv`, reads or BAMs. The mirror dirs
+`sim/experiment/batches{,_geomwin,_bag2,_union2}/b*` on pasteur hold only an
+empty `npz/` (and `logs/` for b12–15). No plan doc records the deletion.
+
+What survives, and is enough to regenerate every batch deterministically:
+
+| item | where |
+|---|---|
+| `design.tsv` for all 13 batches | local `sim/experiment/batches/b1–5` (v2 windows, the one reads were simulated from), `batches_bag2/b8–11`, `batches_union2/b12–15` |
+| `design.geomwin.tsv` for b1–5 | local `sim/experiment/batches_geomwin/b1–5/design.tsv`; differs from `batches/b*/design.tsv` **only** in `win_start`/`win_end` (cols 9–10), psi columns included — checked |
+| seeds | b1–5 = 1–5 (`sim/regen_designs.sh`), b8–11 = 8–11, b12–15 = 12–15; all default `run_batch.sh` knobs |
+| b12–15 step logs (transcript count, total fragments) | local `batches_union2/b1*/logs/` — a cheap identity check on the regenerated count matrix before polyester (b12: 13,721 transcripts, 14,243,582 fragments) |
+| reference | `ref/Homo_sapiens.GRCh38.dna.primary_assembly.fa` (+ `.fai`), Ensembl 99 GTF; the STAR index (`star_index/`, STAR 2.7.4a, `--sjdbOverhang 100`) was generated from exactly these |
+| envs | `DSpoly2v2` (STAR-avx2, samtools), `DSsim` (Rscript, polyester **1.9.7** = the ASimulatoR fork), `DSrender` |
+| `sim/events`, `gene_spans.tsv`, `transcript_lengths.tsv` | present |
+
+Consequence: every batch re-runs `run_batch.sh` steps 2–4 (neighbours, exon
+structure, novel junctions, count matrix, FASTA; minutes each) in front of
+polyester, with its local `design.tsv` uploaded so step 1 is skipped. This does
+not change the plan's cost materially, but it makes A0 a test of the *whole*
+deterministic chain, not just polyester/STAR. None of the sim files touched
+since b1–5 were simulated (2026-08-15/16) changes their count-matrix path at
+default knobs (`38114e2bd` is `select_events` only; Stage 11's knobs default
+to the old behaviour); A0 on b1 is what proves it.
+
+Machine state: `/data` 999 G free of 9.1 T (90% used); 64 cores, 251 G RAM;
+load average 28.8 at inventory time (someone else's jobs). No reference FASTA or
+GTF exists locally (and FASTA never comes back from pasteur), so local tests of
+the tail generator use a public Ensembl-99 chr21/22 download.
+
+### Two things the inventory's data pass found (read-only, local npz)
+
+1. **Most real tail junctions have *both* ends outside the window**, not one.
+   `bam.fetch` returns a read whose N-op merely spans the window, so a window
+   sitting inside a long spurious intron sees that junction. Pos+nn, tail = ≤ 3
+   reads, intron boundaries against the window's 1-based (start, end]:
+
+   | cohort | inside | one end out | both out | canonical (inside / one / both) | median intron (inside / one / both) |
+   |---|---:|---:|---:|---|---|
+   | aqr | 0.234 | 0.178 | 0.589 | 0.88 / 0.74 / 0.54 | 1.6 k / 10.7 k / 147 k |
+   | prpf4 | 0.335 | 0.211 | 0.454 | 0.93 / 0.88 / 0.74 | 1.8 k / 8.1 k / 68 k |
+   | u2af2 | 0.241 | 0.215 | 0.544 | 0.85 / 0.81 / 0.67 | 1.7 k / 10.6 k / 151 k |
+
+   The generator therefore models three location classes, not two (see 19.2).
+2. **Gate A1's "inside" and "canonical" ranges were not computed on the set the
+   gate names.** The first three A1 statistics (tail/kb 1.16–3.12, tail
+   fraction 0.53–0.69, one-condition fraction 0.46–0.65) reproduce exactly from
+   aqr/prpf4/u2af2 **pos+nn** (median per-window tail/kb; pooled tail fraction;
+   per-window-mean one-condition fraction). The last two (inside 0.13–0.25,
+   canonical 0.58–0.70) reproduce only when the cohort glob also sweeps in the
+   `real_ssl_*` random windows and ptbp1/bnew_dev (aqr+ssl 0.117/0.572,
+   u2af2+ssl 0.140/0.682, ptbp1 0.238/0.674, bnew_dev 0.207/0.703). On the fit
+   cohorts' pos+nn — what the gate text says, and what the tail model is fit on —
+   the ranges would be inside **0.234–0.335** and canonical **0.655–0.835**.
+   The gate is **not edited**. This is raised with the user before any pilot
+   spend, because a faithful fit (pooled inside ≈ 0.25, canonical ≈ 0.72
+   before STAR's non-canonical losses) sits on or past the frozen upper bounds.
