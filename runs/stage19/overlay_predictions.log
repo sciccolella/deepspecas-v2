@@ -1,0 +1,23 @@
+wrote runs/stage19/overlay_predictions.json
+     b12_old n=  960  tail/kb 0.000  tail_frac 0.098  one_cond 0.086  inside 0.244  canonical 0.728  | jx/win 6.000  tail/win 0.000  depth 91.082  loc {'in': 0.244, 'out1': 0.278, 'out2': 0.479}
+     ov_s0.8 n=  960  tail/kb 2.557  tail_frac 0.588  one_cond 0.484  inside 0.221  canonical 0.707  | jx/win 14.000  tail/win 7.000  depth 91.082  loc {'in': 0.221, 'out1': 0.181, 'out2': 0.598}
+     ov_s1.0 n=  960  tail/kb 3.165  tail_frac 0.631  one_cond 0.518  inside 0.214  canonical 0.703  | jx/win 16.000  tail/win 9.000  depth 91.082  loc {'in': 0.214, 'out1': 0.174, 'out2': 0.612}
+     ov_s1.3 n=  960  tail/kb 4.003  tail_frac 0.681  one_cond 0.560  inside 0.218  canonical 0.704  | jx/win 18.000  tail/win 11.000  depth 91.082  loc {'in': 0.218, 'out1': 0.178, 'out2': 0.604}
+     ov_s1.6 n=  960  tail/kb 4.961  tail_frac 0.718  one_cond 0.591  inside 0.215  canonical 0.704  | jx/win 21.000  tail/win 13.000  depth 91.082  loc {'in': 0.215, 'out1': 0.179, 'out2': 0.606}
+
+Gate A1 on ov_s1.0 (frozen ranges): FAIL
+    tail_per_kb_median: 3.165 in [1.16, 3.12] -> OUT
+             tail_frac: 0.631 in [0.53, 0.69] -> ok
+         one_cond_frac: 0.518 in [0.46, 0.65] -> ok
+           inside_frac: 0.214 in [0.13, 0.25] -> ok
+        canonical_frac: 0.703 in [0.58, 0.7] -> OUT
+
+Gate A3 on b12_old: balanced accuracy 0.242 (n=960, threshold <= 0.30) -> PASS
+
+Gate A3 on ov_s0.8: balanced accuracy 0.260 (n=960, threshold <= 0.30) -> PASS
+
+Gate A3 on ov_s1.0: balanced accuracy 0.282 (n=960, threshold <= 0.30) -> PASS
+
+Gate A3 on ov_s1.3: balanced accuracy 0.265 (n=960, threshold <= 0.30) -> PASS
+
+Gate A3 on ov_s1.6: balanced accuracy 0.260 (n=960, threshold <= 0.30) -> PASS

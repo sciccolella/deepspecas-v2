@@ -1,0 +1,36 @@
+feature subset 'no-geometry': zeroed 14 geometry columns
+real-vs-sim on 4748 rows (3788 real / 960 sim), subset 'no-geometry', table runs/stage19/overlay_b12_s1.3/probe/table.npz
+
+wrote runs/stage19/overlay_b12_s1.3/probe/{oof,features,removal_curve}.tsv and summary.json
+
+pooled OOF AUC (real vs sim): 0.998
+  cohort aqr       vs sim: AUC 0.999  (n_real 984)
+  cohort bnew_dev  vs sim: AUC 0.995  (n_real 242)
+  cohort ptbp1     vs sim: AUC 0.998  (n_real 2422)
+  cohort tra2      vs sim: AUC 0.993  (n_real 140)
+  class A3  : AUC 0.997  (n 421)
+  class A5  : AUC 0.998  (n 370)
+  class CSE : AUC 0.997  (n 1763)
+  class NN  : AUC 0.998  (n 1593)
+  class RI  : AUC 0.997  (n 601)
+  leave-aqr-out: AUC 0.997 (train 3159 rows from the other cohorts + sim)
+  leave-bnew_dev-out: AUC 0.990 (train 4069 rows from the other cohorts + sim)
+  leave-ptbp1-out: AUC 0.990 (train 1515 rows from the other cohorts + sim)
+  leave-tra2-out: AUC 0.987 (train 4270 rows from the other cohorts + sim)
+
+top 15 by gain:
+  frac_junctions_sharing_donor                  gain    21395.3  MW-AUC 0.864
+  mean__overlaps_top                            gain     6765.8  MW-AUC 0.187
+  mean__log1p_nhw_2                             gain     5629.5  MW-AUC 0.353
+  frac_junctions_sharing_acceptor               gain     2759.5  MW-AUC 0.829
+  mean__log1p_count_2                           gain     2175.6  MW-AUC 0.361
+  wmean__log1p_interior_cov_2                   gain     2092.5  MW-AUC 0.221
+  log1p_cov_max_1                               gain     2051.9  MW-AUC 0.233
+  wmean__overlaps_top                           gain     1577.7  MW-AUC 0.222
+  mean__log1p_nhw_1                             gain     1512.5  MW-AUC 0.403
+  mean__log1p_min_anchor                        gain     1200.6  MW-AUC 0.574
+  log1p_cov_max_2                               gain     1124.6  MW-AUC 0.230
+  max__count_frac_delta                         gain      940.8  MW-AUC 0.318
+  wmean__donor_group_frac_2                     gain      830.2  MW-AUC 0.558
+  max__log1p_flank_donor_cov_2                  gain      739.0  MW-AUC 0.244
+  mean__interior_flank_ratio_1                  gain      709.7  MW-AUC 0.249

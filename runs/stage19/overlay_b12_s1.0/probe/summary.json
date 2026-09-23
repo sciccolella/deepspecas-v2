@@ -1,0 +1,59 @@
+{
+  "table": "runs/stage19/probe_b12_overlay/table.npz",
+  "feature_subset": "no-geometry",
+  "n": 4748,
+  "n_real": 3788,
+  "pooled_auc": 0.9973644843365012,
+  "per_cohort_auc": {
+    "aqr": 0.9991351202574525,
+    "bnew_dev": 0.9929192493112947,
+    "ptbp1": 0.9973661574456372,
+    "tra2": 0.9925744047619047
+  },
+  "class_conditional_auc": {
+    "A3": 0.997602581834947,
+    "A5": 0.9981871345029241,
+    "CSE": 0.9968695163894152,
+    "NN": 0.9979490022172949,
+    "RI": 0.9953681710213776
+  },
+  "loco_auc": {
+    "aqr": 0.997972772696477,
+    "bnew_dev": 0.9886578856749311,
+    "ptbp1": 0.9882178124139829,
+    "tra2": 0.9862723214285714
+  },
+  "top_gain": [
+    "frac_junctions_sharing_donor",
+    "mean__log1p_nhw_2",
+    "mean__overlaps_top",
+    "mean_n_sharing_donor",
+    "wmean__log1p_interior_cov_2",
+    "frac_junctions_sharing_acceptor",
+    "log1p_cov_max_1",
+    "mean__acc_group_frac_2",
+    "mean__log1p_nhw_1",
+    "mean__log1p_min_anchor",
+    "mean__interior_flank_ratio_1",
+    "mean__log1p_count_2",
+    "wmean__overlaps_top",
+    "wmean__donor_group_frac_2",
+    "max__count_frac_delta",
+    "mean__log1p_count_1",
+    "log1p_cov_max_2",
+    "mean__disjoint_from_top",
+    "wmean__donor_group_frac_1",
+    "mean__motif_1",
+    "zero_cov_frac_1",
+    "wmean__disjoint_from_top",
+    "max_abs_log2_count_ratio",
+    "mean_n_sharing_acceptor",
+    "mean__interior_nonzero_frac_2",
+    "wmean__contains_top",
+    "max__log1p_count_1",
+    "mean__log10_intron_len",
+    "wmean__log10_intron_len",
+    "wmean__motif_1"
+  ],
+  "removal_curve": []
+}
