@@ -98,6 +98,27 @@ READLEN=${READLEN:-100}
 PCR_RATE=${PCR_RATE:-0.1}
 PCR_LAMBDA=${PCR_LAMBDA:-1}
 ADAPTER=${ADAPTER:-TRUE}
+# Stage 19 knobs (plans/signal-native-v2-stage19-junction-tail.md). All default
+# to off / the old behaviour, so re-running any earlier tag is unchanged.
+#   TAIL=1            add the junction-tail layer: sim.build_tail_transcripts
+#                     -> a second polyester call (seed SEED+100000) whose reads
+#                     are renamed tail<k> and appended to each sample's FASTA
+#   TAIL_RATE_SCALE   the tail layer's one calibration knob (per-window count)
+#   INDEL_RATE        per-base deletion *and* insertion event rate injected
+#                     into every read before STAR (sim.inject_indels); 0 = off.
+#                     The fitted value is sim/tail_model.json indel.del_rate_per_base.
+#   DESIGN_EXTRACT    the design whose windows are extracted (and get a tail):
+#                     design_final.tsv, or design.geomwin.tsv for b1-b5
+#   PRUNE=1           after the merged BAMs are indexed, delete reads/,
+#                     reads_tail/ and the per-replicate BAMs (c1/c2.bam keep
+#                     every read with its RG:Z tag)
+TAIL=${TAIL:-0}
+TAIL_RATE_SCALE=${TAIL_RATE_SCALE:-1.0}
+TAIL_MODEL=${TAIL_MODEL:-sim/tail_model.json}
+TAIL_SEED_OFFSET=100000
+INDEL_RATE=${INDEL_RATE:-0}
+DESIGN_EXTRACT=${DESIGN_EXTRACT:-design_final.tsv}
+PRUNE=${PRUNE:-0}
 
 B=$ROOT/sim/batches/$TAG
 mkdir -p "$B" "$B/logs"
@@ -194,20 +215,67 @@ if [[ ! -s $B/reads/sample_06_2.fasta ]]; then
     "$PCR_RATE" "$PCR_LAMBDA" "$ADAPTER" 2>&1 | tee "$B/logs/polyester.log"
 fi
 
+# 5b. junction-tail reads (Stage 19) ----------------------------------------
+# Additive: the base reads above are untouched and regenerate bit-identically.
+if [[ $TAIL == 1 && ! -s $B/reads_tail/sample_06_2.fasta ]]; then
+  step "$TAG: tail transcripts (scale $TAIL_RATE_SCALE) + polyester (seed $((SEED + TAIL_SEED_OFFSET)))"
+  "$PY" -m sim.build_tail_transcripts build --design "$B/$DESIGN_EXTRACT" \
+    --exon-structure "$B/exon_structure.tsv" --reference "$REF" \
+    --model "$TAIL_MODEL" --seed "$SEED" --rate-scale "$TAIL_RATE_SCALE" \
+    --out-dir "$B/tail" 2>&1 | tee "$B/logs/tail_transcripts.log"
+  "$PY" -m sim.build_tail_transcripts verify --out-dir "$B/tail" --reference "$REF" \
+    --exon-structure "$B/exon_structure.tsv" 2>&1 | tee -a "$B/logs/tail_transcripts.log"
+  mkdir -p "$B/reads_tail"
+  # run_polyester.R writes transcripts.ordered.fa next to its input FASTA, i.e.
+  # into $B/tail/, never over the base $B/transcripts.ordered.fa
+  "$RSCRIPT" sim/run_polyester.R "$B/tail/tail.fa" "$B/tail/tail_count_matrix.tsv" \
+    "$B/reads_tail" "$FRAGLEN" "$FRAGSD" "$READLEN" "$((SEED + TAIL_SEED_OFFSET))" \
+    "$PCR_RATE" "$PCR_LAMBDA" "$ADAPTER" 2>&1 | tee "$B/logs/polyester_tail.log"
+fi
+if [[ $TAIL == 1 && ! -e $B/reads/.tail_merged ]]; then
+  step "$TAG: append tail reads (read<k> -> tail<k>)"
+  for f in "$B"/reads_tail/sample_0[1-6]_[12].fasta; do
+    base=$(basename "$f")
+    n_before=$(grep -c '^>' "$B/reads/$base")
+    sed 's/^>read/>tail/' "$f" >> "$B/reads/$base"
+    n_tail=$(grep -c '^>' "$f")
+    n_after=$(grep -c '^>' "$B/reads/$base")
+    n_renamed=$(grep -c '^>tail' "$B/reads/$base")
+    if [[ $n_after -ne $((n_before + n_tail)) || $n_renamed -ne $n_tail ]]; then
+      echo "tail append check failed for $base: $n_before + $n_tail != $n_after (renamed $n_renamed)" >&2
+      exit 1
+    fi
+    echo "$base: $n_before base + $n_tail tail reads" >> "$B/logs/tail_append.log"
+  done
+  touch "$B/reads/.tail_merged"
+fi
+
+# 5c. indels (Stage 19) -------------------------------------------------------
+if [[ $INDEL_RATE != 0 && ! -e $B/reads/.indels_done ]]; then
+  step "$TAG: inject indels (rate $INDEL_RATE per base, del and ins each)"
+  "$PY" -m sim.inject_indels --reads-dir "$B/reads" --seed "$SEED" --model "$TAIL_MODEL" \
+    --del-rate "$INDEL_RATE" --ins-rate "$INDEL_RATE" 2>&1 | tee "$B/logs/indels.log"
+  touch "$B/reads/.indels_done"
+fi
+
 # 6. real STAR realignment ---------------------------------------------------
 if [[ ! -s $B/aligned/c2.bam.bai ]]; then
   step "$TAG: STAR"
   sim/align_reads.sh "$B/reads" "$STAR_INDEX" "$B/aligned" "$THREADS" fasta \
     2>&1 | tee "$B/logs/align.log"
 fi
+if [[ $PRUNE == 1 && -s $B/aligned/c2.bam.bai ]]; then
+  rm -rf "$B/reads" "$B/reads_tail" "$B"/aligned/cond[12]_rep[123]/Aligned.sortedByCoord.out.bam*
+fi
 
 # 7. training records --------------------------------------------------------
 # design_final.tsv (Stage 11) carries the TRASH layer's label rewrite; it is
 # identical to design.tsv when the layer is off (TRASH_LABEL_POLICY=keep and
-# all TRASH_RATE_* are 0).
+# all TRASH_RATE_* are 0). DESIGN_EXTRACT (Stage 19) swaps in another design
+# with the same rows but different windows -- design.geomwin.tsv for b1-b5.
 if [[ ! -s $B/labels.tsv ]]; then
   step "$TAG: build_extract_csv"
-  "$PY" -m sim.build_extract_csv --design "$B/design_final.tsv" \
+  "$PY" -m sim.build_extract_csv --design "$B/$DESIGN_EXTRACT" \
     --bam1 "$B/aligned/c1.bam" --bam2 "$B/aligned/c2.bam" \
     --out "$B/extract.csv" --labels-out "$B/labels.tsv"
 fi

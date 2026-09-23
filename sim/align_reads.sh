@@ -6,6 +6,10 @@
 # plans/signal-native-v2.md Phase 2 step 3.1: "Never go simulator -> BAM
 # directly."
 #
+# Every record carries RG:Z:cond<c>_rep<r> (Stage 19; same form as
+# sim/fetch_align_benchmark_new.sh), which samtools merge keeps, so replicate
+# identity survives into c1.bam/c2.bam. dsignal.extract ignores it.
+#
 # Usage:
 #   sim/align_reads.sh <reads_dir> <star_index> <out_dir> <n_threads> <ext>
 #
@@ -57,6 +61,7 @@ for name in "${!SAMPLE_IDX[@]}"; do
     $cmd \
     --outSAMattributes All \
     --outSAMtype BAM SortedByCoordinate \
+    --outSAMattrRGline "ID:${name}" "SM:${name}" \
     --outFileNamePrefix "$sample_out" \
     > "$OUT_DIR/${name}.star.log" 2>&1
 
