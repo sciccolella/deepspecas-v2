@@ -34,3 +34,9 @@ runs/domain_probe/*.npz
 
 # Stage 20.1 arena build / extraction logs for pairs 3 and 4 (small)
 !runs/stage20/
+
+# Stage 19 junction tail: logs/TSV/JSON are the result and are committed; the
+# overlay npz and domain-probe tables rebuild in about a minute from committed
+# npz with sim.tail_overlay / dsignal.domain_probe build.
+!runs/stage19/
+runs/stage19/**/*.npz
