@@ -352,7 +352,70 @@ in-sim held-out fold — a training-health check only, **not** the gate
 metric; the gate is `benchmark_new` dev accuracy per variant/seed against
 the base's already-measured 128/130/134 of 242, scored in 22b.7.)
 
-**Next**: 22b.7 (score all 9 on `benchmark_new` dev + `benchmark/` dev guard
-+ arena/ptbp1 confirmatory; McNemar each variant's 3 seeds against the
-seed-matched base; apply the pre-registered gate; decision doc; resume-10
-update).
+**22b.7 done (2026-09-23).** All 9 checkpoints scored on `benchmark_new`
+dev (primary/gate, 242 events, TTA condition-swap, `nn-weight` 0.1 prior
+correction, `--train-labels labels_union2.n12480.tsv` — identical recipe
+to the base runs), `benchmark/` dev (guard, 70 events) and `ptbp1_arena`
+(confirmatory, 2,422 candidates, `--half both`), 27 scoring passes total,
+all exit 0. One incidental finding along the way, not a defect in this
+stage's own code: `dsignal.predict.Predictor` (used by `score_benchmark`)
+does strict `load_state_dict` and has no missing-key whitelist for
+`mask_token`/`recon_head.`/`proj_head.`, unlike `train.py`'s loader (which
+got that whitelist in 22b.3) — so a pre-22b.3 checkpoint like
+`runs/scale_union2_n12480` can no longer be *re-scored* now that the model
+carries those new params unconditionally (already-committed `.tsv`/`.log`
+outputs from before the model changed shape are unaffected and were reused
+directly). Worth a small follow-up (mirror the whitelist into `predict.py`)
+but out of scope for this stage's gate.
+
+`benchmark_new` dev, collapsed accuracy (primary/gate metric), n=242:
+
+| variant | seed 0 | seed 1 | seed 2 | median | vs base median (130) |
+|---|---|---|---|---|---|
+| base (`union2_base_s*`, not rerun) | 130 | 128 | 134 | 130 | — |
+| mfm | 132 (p=0.864) | 137 (p=0.163) | 141 (p=0.281) | 137 | +7 |
+| contrastive | 126 (p=0.585) | 127 (p=1.000) | 128 (p=0.362) | 127 | −3 |
+| both | 139 (p=0.211) | 138 (p=0.154) | 145 (p=0.099) | 139 | +9 |
+
+(p = paired McNemar, collapsed labels, each seed against its seed-matched
+base run — `union2_base_s0`=`scale_union2_n12480`, `s1`=`union2_base_s1`,
+`s2`=`union2_base_s2`.)
+
+### Gate verdict
+
+| variant | rule 1: McNemar p<0.05 in ≥2/3 seeds | rule 2 (regression guard) | rule 3 (per-class) | rule 4 (pretext converged) | PASS? |
+|---|---|---|---|---|---|
+| mfm | **FAIL** (0/3 significant) | not evaluated further | not evaluated further | pass (22b.5) | **FAIL** |
+| contrastive | **FAIL** (0/3 significant, median regresses) | not evaluated further | not evaluated further | pass (22b.5) | **FAIL** |
+| both | **FAIL** (0/3 significant, closest at p=0.099) | not evaluated further | not evaluated further | pass (22b.5) | **FAIL** |
+
+**Verdict: no variant passes.** mfm and both both improve the point estimate
+in all 3 seeds against their seed-matched base (mfm +2/+9/+7, both
++9/+10/+11 events of 242, both consistently directional) but no individual
+seed clears McNemar significance at n=242 — the same underpowered-at-this-n
+pattern the branch has hit before (Stage 20's arm A: 3/3 seeds ahead on
+arena NN yet still gated on a separate rule). Contrastive-only shows no
+such consistency (2/3 seeds regress) and is the weakest of the three by a
+clear margin on all three eval sets (`benchmark_new` dev, `benchmark/` dev,
+`ptbp1_arena`).
+
+Where the improvement in mfm/both comes from, read off the per-class
+breakdown on `benchmark_new` dev: almost entirely CSE recall (base
+~78-81%, mfm/both ~86-89%) plus a smaller A3/A5 gain, not NN — NN recall
+stays in the same broken regime as the base (base 7-10/79, mfm 3-6/79,
+both 6-7/79; the mfm dip is within the 10/242 noise ceiling, not a flagged
+regression). This is consistent with Stage 18's finding that curated NN is
+not expressible from these features (AUC 0.58) — self-supervised
+pretraining on real windows does not change that, it only sharpens the
+positive-class boundary.
+
+Per the plan's pre-registered "no variant passes" branch: this closes a
+second line on the "training signal" axis (after Stage 20's arm A/B/C FAIL
+verdict), and the accuracy plan's remaining evidence-order item is Stage
+19 (re-simulation), gated on nothing but its own ~25h pasteur cost. Stage
+22b's checkpoints (`runs/ssl_{mfm,contrastive,both}.pt`,
+`runs/ssl_ft_{mfm,contrastive,both}_s{0,1,2}/`) are kept as evidence, not
+promoted into any ensemble or deployed recipe.
+
+**Next**: resume-10 update (this stage's outcome, pointer to Stage 19 as
+the remaining item); no further steps planned for Stage 22b itself.

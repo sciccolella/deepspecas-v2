@@ -145,13 +145,45 @@ and Results for all of 21.1/21.3/21.2. One paragraph each:
   +1.3 pt; bnew dev +1.6 pt, not significant). **v2-only remains the
   preferred headline**, as decided before scoring; v1+v2 reported alongside.
 
-## Next: Stage 22b (self-supervised pretraining on real windows)
+## Stage 22b (2026-09-21–23): done, no variant passes
+
+Full pre-registration and Results: `plans/signal-native-v2-stage22b-ssl-pretrain.md`.
+Self-supervised pretraining (MFM masked-junction-reconstruction +
+NT-Xent/SimCLR contrastive, 3 variants: MFM-only, contrastive-only, both)
+on a 36,000-window real pool (`sim/experiment/real_ssl_pool`, 3 cohorts,
+gene-disjoint from every eval set), then 9 downstream fine-tunes (3
+variants x 3 seeds, `--init-encoder-from`, otherwise identical to the
+`scale_union2_n12480` recipe), scored on `benchmark_new` dev (primary),
+`benchmark/` dev (guard) and `ptbp1_arena` (confirmatory). **mfm and both
+improve the point estimate in all 3 seeds** against their seed-matched
+base (`benchmark_new` dev collapsed: mfm +2/+9/+7, both +9/+10/+11 of 242)
+but **no individual seed clears McNemar significance** (best p = 0.099,
+`both` seed 2) — underpowered at n=242, the same pattern Stage 20's arm A
+hit on a different rule. Contrastive-only is inconsistent (2/3 seeds
+regress) and the weakest variant on every eval set. The gain in mfm/both
+is almost entirely CSE recall (+~8 pt) plus a smaller A3/A5 gain — NN
+recall is unchanged from the base's already-broken regime, consistent with
+Stage 18's finding that curated NN isn't expressible from these features.
+**Verdict: no variant passes the pre-registered gate.** Checkpoints kept as
+evidence (`runs/ssl_*`, `runs/ssl_ft_*`), not promoted into any deployed
+recipe. Incidental finding: `dsignal.predict.Predictor` has no missing-key
+whitelist for the 22b.3-added `mask_token`/`recon_head`/`proj_head` params
+(unlike `train.py`'s loader), so it can no longer strictly-load a
+pre-22b.3 checkpoint — a small follow-up, not addressed here.
+
+**Consequence**: real-signal training interventions are now closed twice
+(Stage 20.3's fine-tuning, Stage 22b's pretraining) without a gate pass.
+The accuracy plan's remaining evidence-order item is **Stage 19**
+(re-simulation, junction-tail target), gated on nothing but its own ~25h
+pasteur cost.
+
+## Next: Stage 19 (re-simulation, junction tail)
 
 Not pre-registered yet — needs a plan discussed and approved before any
-implementation, per this repo's workflow convention. Stage 19 (junction
-tail), if it runs, targets noise/novel junctions at 1–3 reads and
-one-condition-only junctions, and must write `@RG`/indels before `delcov`
-or replicate features can be used.
+implementation, per this repo's workflow convention. Targets noise/novel
+junctions at 1–3 reads and one-condition-only junctions (Stage 18 rule 1's
+sim-side target, since the sim/real gap is diffuse, not positional/GC), and
+must write `@RG`/indels before `delcov` or replicate features can be used.
 
 ## Open honesty caveats (carried forward + new)
 
