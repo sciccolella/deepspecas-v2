@@ -42,6 +42,8 @@ Usage::
     python -m dsignal.benchmark_split make --out benchmark/split.tsv
     python -m dsignal.benchmark_split compare \\
         runs/benchmark_events_geomwin.tsv runs/benchmark_events_<new>.tsv --half dev
+    # Stage 19 Gate B "pooled": mean p_* over seeds, argmax, same TSV format
+    python -m dsignal.benchmark_split pool runs/bnew_dev_X_s{0,1,2}.tsv --out pooled.tsv
 """
 
 from __future__ import annotations
@@ -253,6 +255,55 @@ def cmd_compare(args) -> None:
         _by_class(base_by, new_by, shared, reweight=reweight)
 
 
+POOL_CLASSES = ("A3", "A5", "CSE", "NN", "RI")
+
+
+def pool_rows(tables: list) -> list:
+    """Seed-pooled rows: mean ``p_*`` over several scoring TSVs of the same
+    events, then argmax -- a len(tables)-member mean-posterior ensemble (Stage
+    19 Gate B's "pooled"). Every other column comes from the first table, with
+    ``pred``/``correct``/``correct_collapsed``/``pred_c`` recomputed. The tables
+    must cover the same ``(csv, region)`` keys with the same truth."""
+    key = lambda r: (r["csv"], r["region"])
+    first = tables[0]
+    by = [{key(r): r for r in t} for t in tables]
+    keys = [key(r) for r in first]
+    for i, b in enumerate(by[1:], 1):
+        if set(b) != set(keys):
+            raise SystemExit(f"table {i} covers different events ({len(b)} vs {len(keys)})")
+    out = []
+    for r0 in first:
+        k = key(r0)
+        rows = [b[k] for b in by]
+        if any(r["truth"] != r0["truth"] for r in rows):
+            raise SystemExit(f"{k}: truth differs across tables")
+        p = {c: sum(float(r[f"p_{c}"]) for r in rows) / len(rows) for c in POOL_CLASSES}
+        pred = max(POOL_CLASSES, key=lambda c: (p[c], -POOL_CLASSES.index(c)))
+        row = dict(r0)
+        row.update({f"p_{c}": repr(p[c]) for c in POOL_CLASSES})
+        row["pred"] = pred
+        row["correct"] = str(int(pred == r0["truth"]))
+        row["correct_collapsed"] = str(int(collapse(pred) == collapse(r0["truth"])))
+        if "pred_c" in row:
+            row["pred_c"] = collapse(pred)
+        out.append(row)
+    return out
+
+
+def cmd_pool(args) -> None:
+    tables = [_read_events_tsv(p) for p in args.tsv]
+    rows = pool_rows(tables)
+    with open(args.out, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(tables[0][0].keys()), delimiter="\t", lineterminator="\n")
+        w.writeheader()
+        w.writerows(rows)
+    n = len(rows)
+    acc = sum(int(r["correct"]) for r in rows)
+    accc = sum(int(r["correct_collapsed"]) for r in rows)
+    print(f"pooled {len(tables)} tables over {n} events -> {args.out}: "
+          f"5-class {acc}/{n} = {acc / n:.1%}, collapsed {accc}/{n} = {accc / n:.1%}")
+
+
 def _class_mix(csv_paths):
     """truth-class -> proportion, from row counts of class-labelled CSVs (e.g.
     benchmark_new/{A3,A5,ES,IR,NN}.csv) via score_benchmark.CSV_LABEL."""
@@ -343,6 +394,12 @@ def main(argv=None) -> None:
                    "row counts give a truth-class distribution to reweight the arena's "
                    "per-class recalls by, as a sensitivity check (Trap 3)")
     c.set_defaults(func=cmd_compare)
+
+    p = sub.add_parser("pool", help="mean-posterior pool of several scored per-event TSVs "
+                       "(same events), written in the same format so `compare` takes it")
+    p.add_argument("tsv", nargs="+")
+    p.add_argument("--out", required=True)
+    p.set_defaults(func=cmd_pool)
 
     args = ap.parse_args(argv)
     args.func(args)

@@ -366,6 +366,21 @@ def _flanks(norm, idx) -> dict:
     }
 
 
+def _tail(record: dict) -> dict:
+    """Stage 19's sparse-tail quantities, computed by ``sim.tail_stats`` so the
+    audit and Gate A1 share one definition (tail = <= 3 reads summed over both
+    conditions). Every other metric here only sees junctions with >= min_count
+    reads, which is exactly the part of the junction set the tail is not."""
+    from sim.tail_stats import window_stats
+
+    w, _tails = window_stats(record)
+    return {
+        "n_tail_junctions": w["n_tail"],
+        "one_cond_frac": w["one_cond_frac"],
+        "tail_per_kb": w["tail_per_kb"],
+    }
+
+
 # --------------------------------------------------------------------------
 
 
@@ -405,6 +420,7 @@ def audit_event(region: str, bam1: str, bam2: str, filters: dsextract.ReadFilter
     }
     row.update(_novel_stats(raw_1, raw_2, min_count))
     row.update(_flanks(norm, idx))
+    row.update(_tail(record))
 
     for name, best in (
         ("a3", _best_shared_pair(norm, idx, "s_rel", min_minor_frac)),
@@ -450,6 +466,12 @@ METRICS = [
     # it does not saturate, but the design-level span/width ratio reported by
     # sim/select_events.py is the geometry number to actually read.
     ("struct_span_frac", "rate", "sim/window.py (Track B) -- saturates, see note"),
+    # Stage 19: the sparse junction tail (<= 3 reads), invisible to every
+    # min_count-supported metric above.
+    ("n_junctions", "level", "Stage 19 tail layer (all junctions, any support)"),
+    ("n_tail_junctions", "level", "Stage 19: TAIL=1, TAIL_RATE_SCALE"),
+    ("one_cond_frac", "rate", "Stage 19 tail layer (one-condition-only junctions)"),
+    ("tail_per_kb", "level", "Stage 19: TAIL_RATE_SCALE  [width-confounded]"),
 ]
 
 #: quantities the real side under-measures because benchmark/c1.bam only keeps
