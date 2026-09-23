@@ -348,3 +348,110 @@ the tail generator use a public Ensembl-99 chr21/22 download.
    The gate is **not edited**. This is raised with the user before any pilot
    spend, because a faithful fit (pooled inside ≈ 0.25, canonical ≈ 0.72
    before STAR's non-canonical losses) sits on or past the frozen upper bounds.
+
+## 19.1–19.4 — built and verified locally (2026-09-23, no pasteur compute)
+
+Commits `9474ec627` (19.1), `656a73919` (19.2), `1226995bb` (19.3), `94295dc94`
+(19.4), `24bf24513` (pilot tooling).
+
+**19.1.** `sim/tail_stats.py` (the committed tail analysis + A1/A3 checker;
+reproduces the plan's first three A1 ranges exactly) and `sim/fit_tail_model.py`
+→ `sim/tail_model.json` (deterministic: byte-identical on rerun; asserts it reads
+aqr/prpf4/u2af2 pos+nn only). `INDEL_RATE` = Σdelcov/Σcov 5.678e-5 ÷ mean
+length 1.615 = **3.516e-5 per base** (insertions set equal, as planned).
+
+**Deviation 1: the tail model is per-window and width-conditional, not a
+per-kb rate.** Real tail count per window is flat in width (median 8 / 8 / 9
+across width terciles 0.1–1.8 / 1.8–6.7 / 6.7–328 kb; Spearman 0.10) while
+tail/kb falls ~20×. A per-kb generator would give narrow windows no tail and
+wide ones far too much. A single-density "arc" model (spurious junctions
+intersecting the window, location mix from geometry) was tried first and
+**failed its own check**: 0.69 inside vs 0.38 observed in wide windows. What
+shipped: 6 window-width quantile bins, each with a per-window count pmf, a
+location mix (inside / one end out / both out) and per-location log-length pmfs.
+It reproduces the location mix per width tercile to ±0.01.
+
+**19.2.** `sim/build_tail_transcripts.py` (build + verify) and
+`sim/inject_indels.py`.
+- **Deviation 2: 200 bp fragment transcripts instead of the plan's 500 bp
+  centred ones.** Polyester keeps a transcript whole when the drawn fragment
+  (N(250, 25)) is longer, so one read always spans the junction, with its
+  anchor drawn from the fitted per-read pmf. The centred design loses ~28% of
+  fragments to insert-only junctions.
+- The fragment-count pmf is the observed 1/2/3 split deconvolved through
+  polyester's PCR model: (0.714, 0.211, 0.075) → (0.748, 0.211, 0.041).
+- Round-trip on an Ensembl-99 chr21 test (56 windows, 489 arcs, 654
+  fragments): every fragment re-derives from the reference; canonical arcs
+  carry a STAR motif; non-canonical arcs carry none; no arc equals an
+  annotated intron. **PASS**, and byte-identical on rerun.
+- The verifier caught annotated sites with odd dinucleotides (AA/AG) on 3 arcs;
+  those are now redrawn.
+- Indel injector on 200 k synthetic reads: 1,393 events against 1,400 expected;
+  deletions are structurally exact; rate 0 is a no-op.
+
+**19.3.** `run_batch.sh` gains `TAIL`, `TAIL_RATE_SCALE`, `INDEL_RATE`,
+`DESIGN_EXTRACT`, `PRUNE`; `align_reads.sh` writes `@RG`. Stub smoke test (fake
+polyester and STAR): the defaults add no step and leave the reads
+byte-identical; the tail and indel steps run once and are idempotent on rerun.
+
+Two things found while wiring:
+- **`DESIGN_EXTRACT` must be `design.tsv`, not `design_final.tsv`, for the
+  re-sim.** Since the Stage 11 TRASH commit (2026-09-02), `build_experiment`
+  always adds `trash`/`orig_label`/`orig_kind` to `design_final.tsv`. So
+  `labels.tsv` would gain columns the Aug-built union2 batches lack, and A0's
+  byte-identical-labels check would fail on a pipeline change, not a bug.
+- `sim/filter_gtf.py` existed only on pasteur; it is now committed verbatim.
+
+**19.4.** `audit_noise.METRICS` gains `n_junctions`, `n_tail_junctions`,
+`one_cond_frac` and `tail_per_kb`, computed by `sim.tail_stats`.
+`benchmark_split pool` passes both checks:
+- pooling one TSV reproduces its `pred`/`correct`/`correct_collapsed` exactly
+  on bnew_dev, `benchmark/` dev and the arena;
+- the 3-seed pools equal a manual mean.
+
+**Pooled base for Gate B** (union2_base s0/s1/s2), collapsed:
+
+| eval | pooled base |
+|---|---:|
+| bnew_dev | 127/242 |
+| `benchmark/` dev | 56/70 |
+| arena | 1105/2422 |
+
+(Single seeds on bnew_dev: 128/130/134.)
+
+## Gate A, predicted before any pasteur spend (local overlay, not a gate result)
+
+`sim/tail_overlay.py` adds the generator's arcs straight onto the old b12 npz.
+That assumes ideal alignment: no STAR loss, no reference snap, no coverage
+added. `sim/stage19_gate_a.py`, dry-run on it (`runs/stage19/overlay_*`,
+`overlay_predictions.json`):
+
+| check | b12-old | overlay, scale 1.0 | frozen gate | width-matched fit-cohort range (not a gate) |
+|---|---:|---:|---|---|
+| A1 tail/kb median | 0.000 | 3.165 | 1.16–3.12 **OUT** | 1.78–4.78 |
+| A1 tail fraction | 0.098 | 0.631 | 0.53–0.69 ok | 0.53–0.70 |
+| A1 one-cond fraction | 0.086 | 0.518 | 0.46–0.65 ok | 0.46–0.65 |
+| A1 inside fraction | 0.244 | 0.214 | 0.13–0.25 ok | 0.21–0.30 |
+| A1 canonical fraction | 0.728 | 0.703 | 0.58–0.70 **OUT** | 0.64–0.82 |
+| A2 `mean__log1p_count_2` | 0.021 | 0.292 | halve ✓ | |
+| A2 `log1p_n_junctions` | 0.881 | 0.513 | halve ✓ | |
+| A2 `mean__log1p_min_anchor` | 0.976 | 0.641 | halve ✓ | |
+| A2 `wmean__present_2` | 0.055 | 0.261 | needs ≥ 0.281: **misses by 0.02** | |
+| A3 balanced accuracy | 0.242 | 0.282 | ≤ 0.30 ok (real cohorts themselves: 0.25–0.29) | |
+
+Rate-scale sensitivity (overlay):
+- `present_2` only halves at scale ≳ 1.2 (1.3 → 0.301), where tail/kb is ~4.0.
+- At scale 0.8, tail/kb is 2.56 but `present_2` is 0.240.
+- Canonical sits at 0.703–0.707 at every scale.
+
+`present_2` is a count-weighted mean, and sim depth is ~4–5× real (91 vs ~20),
+so the tail's read share is diluted. The plan deliberately leaves depth alone.
+
+**Reading.** On the frozen numbers, P1 is predicted to fail A1 (canonical
+certainly; tail/kb marginally) and A2 (`present_2`, marginally). No single
+`TAIL_RATE_SCALE` fixes both, and STAR's non-canonical losses can only raise
+canonical. Against the fit cohorts' own ranges, width-matched to b12, all five
+A1 statistics are inside. The frozen A1 numbers mix two computations (19.0),
+and tail/kb and inside fraction depend on window width, which the plan
+un-gated only for junctions/window. **The gates are not edited**; the user
+rules on this before any pilot spend.
