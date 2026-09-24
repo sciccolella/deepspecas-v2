@@ -455,3 +455,33 @@ A1 statistics are inside. The frozen A1 numbers mix two computations (19.0),
 and tail/kb and inside fraction depend on window width, which the plan
 un-gated only for junctions/window. **The gates are not edited**; the user
 rules on this before any pilot spend.
+
+## Amendment 1 to Gate A1 (2026-09-24, user decision, before any pasteur spend)
+
+**Why.** The 19.0/19.2 findings above: the frozen inside and canonical ranges
+were computed on a different cohort set than the gate names. Tail/kb and inside
+fraction are also window-width-confounded, and sim windows are narrower than
+real ones.
+
+**New A1.** Each statistic must fall inside the [min, max] across
+aqr/prpf4/u2af2 **pos+nn**, importance-weighted to **b12's** window-width
+distribution (10 log-width quantile bins; `sim.tail_stats --width-match`).
+The windows are identical to b12-old by A0.
+
+**Frozen now as numbers** (`sim/tail_stats.py` `GATE_A1_AMENDED`):
+
+| statistic | amended range | original (kept for the record) |
+|---|---|---|
+| tail/kb (median) | 1.778–4.775 | 1.16–3.12 |
+| tail fraction | 0.531–0.698 | 0.53–0.69 |
+| one-condition fraction | 0.456–0.652 | 0.46–0.65 |
+| inside fraction | 0.207–0.303 | 0.13–0.25 |
+| canonical fraction | 0.638–0.823 | 0.58–0.70 |
+
+**Not amended:**
+- A0, A2, A3 and A4, and the failure rules. A2's `wmean__present_2` is
+  predicted to miss halving by 0.02.
+- The P1′ rule: one recalibration, `TAIL_RATE_SCALE` only.
+
+**Overlay prediction under the amendment:** A1 passes, but inside fraction
+is only 0.007 above its floor.

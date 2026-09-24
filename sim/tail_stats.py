@@ -67,6 +67,19 @@ GATE_A1 = {
     "canonical_frac": (0.58, 0.70),
 }
 
+# Gate A1 as AMENDED 2026-09-24, before any pasteur spend (user decision; plan
+# doc "Amendment 1"): [min, max] across aqr/prpf4/u2af2 pos+nn, importance-
+# weighted to b12's window-width distribution (10 log-width quantile bins) --
+# the fit cohorts the gate text names, compared at matched width. Frozen as
+# numbers so the pilot cannot move them. GATE_A1 above is kept for the record.
+GATE_A1_AMENDED = {
+    "tail_per_kb_median": (1.778, 4.775),
+    "tail_frac": (0.531, 0.698),
+    "one_cond_frac": (0.456, 0.652),
+    "inside_frac": (0.207, 0.303),
+    "canonical_frac": (0.638, 0.823),
+}
+
 
 def window_junctions(record: dict) -> dict:
     """(start, end) -> [count_1, count_2, motif, min_anchor, strand]."""
@@ -344,7 +357,9 @@ def main(argv=None) -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--by-class", action="store_true", help="also summarize per label")
     ap.add_argument("--gate-a1", action="append", default=[],
-                    help="set name(s) to check against the frozen Gate A1 ranges")
+                    help="set name(s) to check against the Gate A1 ranges")
+    ap.add_argument("--a1-ranges", choices=("amended", "original"), default="amended",
+                    help="amended (2026-09-24, width-matched; the live gate) or the original frozen ranges")
     ap.add_argument("--ranges-from", nargs="*", default=None,
                     help="also print [min, max] of each A1 statistic across these sets")
     ap.add_argument("--width-match", default=None, metavar="SET",
@@ -407,10 +422,11 @@ def main(argv=None) -> None:
         for k, (lo, hi) in wr.items():
             print(f"  {k:>20}: {lo:.3f} - {hi:.3f}")
 
+    a1_ranges = GATE_A1_AMENDED if args.a1_ranges == "amended" else GATE_A1
     for name in args.gate_a1:
-        g = gate_a1(result["sets"][name]["all"])
+        g = gate_a1(result["sets"][name]["all"], a1_ranges)
         result.setdefault("gate_a1", {})[name] = g
-        print(f"\nGate A1 on {name} (frozen ranges): {'PASS' if g['PASS'] else 'FAIL'}")
+        print(f"\nGate A1 on {name} ({args.a1_ranges} ranges): {'PASS' if g['PASS'] else 'FAIL'}")
         for k, v in g.items():
             if isinstance(v, dict):
                 print(f"  {k:>20}: {v['value']:.3f} in [{v['range'][0]}, {v['range'][1]}] -> "
