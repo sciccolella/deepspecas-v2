@@ -229,7 +229,10 @@ class Ref:
         self.lengths = dict(zip(self.fa.references, self.fa.lengths))
 
     def seq(self, chrom: str, start0: int, end0: int) -> str:
-        return self.fa.fetch(chrom, max(start0, 0), end0).upper()
+        start0 = max(start0, 0)
+        if end0 <= start0:
+            return ""
+        return self.fa.fetch(chrom, start0, end0).upper()
 
     def left_dinuc(self, chrom: str, a: int) -> str:  # 1-based [a, a+1]
         return self.seq(chrom, a - 1, a + 1)
@@ -316,6 +319,11 @@ def sample_window(model: TailModel, rng: np.random.Generator, chrom: str, win_st
     for _ in range(n):
         for _try in range(MAX_TRIES):
             a, b = sample_arc_geometry(model, rng, win_start, win_end)
+            # bounds first: a long arc near a chromosome end would otherwise
+            # reach the reference (snap, flanks) with coordinates off the sequence
+            margin = FRAG_LEN + SNAP_BP + 2
+            if a - margin < 1 or (chrom_len is not None and b + margin > chrom_len):
+                continue
             loc = location(a, b, win_start, win_end)
             p = model.by_loc[loc]
             want_shared = rng.random() < p["p_shared"]
