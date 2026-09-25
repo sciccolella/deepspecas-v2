@@ -1,0 +1,36 @@
+
+pooled OOF AUC (real vs sim): 0.998
+  cohort aqr       vs sim: AUC 1.000  (n_real 984)
+  cohort bnew_dev  vs sim: AUC 0.996  (n_real 242)
+  cohort ptbp1     vs sim: AUC 0.998  (n_real 2422)
+  cohort tra2      vs sim: AUC 0.994  (n_real 140)
+  class A3  : AUC 0.999  (n 421)
+  class A5  : AUC 0.998  (n 370)
+  class CSE : AUC 0.998  (n 1763)
+  class NN  : AUC 0.998  (n 1593)
+  class RI  : AUC 0.998  (n 601)
+  leave-aqr-out: AUC 1.000 (train 3159 rows from the other cohorts + sim)
+  leave-bnew_dev-out: AUC 0.998 (train 4069 rows from the other cohorts + sim)
+  leave-ptbp1-out: AUC 0.998 (train 1515 rows from the other cohorts + sim)
+  leave-tra2-out: AUC 0.994 (train 4270 rows from the other cohorts + sim)
+
+top 15 by gain:
+  mean__log1p_count_2                           gain    44102.4  MW-AUC 0.021
+  mean__log1p_min_anchor                        gain     9822.8  MW-AUC 0.975
+  wmean__disjoint_from_top                      gain     1913.0  MW-AUC 0.715
+  mean__log1p_count_1                           gain     1622.4  MW-AUC 0.025
+  mean__count_frac_2                            gain     1017.7  MW-AUC 0.123
+  max__log1p_min_anchor                         gain      668.3  MW-AUC 0.938
+  log1p_cov_max_1                               gain      624.5  MW-AUC 0.233
+  wmean__log1p_interior_cov_2                   gain      394.1  MW-AUC 0.232
+  mean__present_2                               gain      370.6  MW-AUC 0.068
+  wmean__motif_1                                gain      351.5  MW-AUC 0.371
+  max__count_frac_delta                         gain      325.7  MW-AUC 0.328
+  wmean__n_sharing_donor                        gain      278.1  MW-AUC 0.746
+  max_abs_log2_count_ratio                      gain      254.5  MW-AUC 0.501
+  wmean__present_2                              gain      244.8  MW-AUC 0.055
+  wmean__log1p_interior_cov_1                   gain      209.7  MW-AUC 0.302
+feature subset 'no-geometry': zeroed 14 geometry columns
+real-vs-sim on 4748 rows (3788 real / 960 sim), subset 'no-geometry', table runs/stage19/gate_a/b12_p1/probe_old/table.npz
+
+wrote runs/stage19/gate_a/b12_p1/probe_old/{oof,features,removal_curve}.tsv and summary.json

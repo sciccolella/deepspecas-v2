@@ -1,0 +1,194 @@
+{
+ "p1": "b12_p1",
+ "A0": {
+  "b12_p0": {
+   "pass": true,
+   "summary": "960 paired records; 0 only in old, 0 only in new; 0 differ "
+  },
+  "b1_p0": {
+   "pass": true,
+   "summary": "960 paired records; 0 only in old, 0 only in new; 0 differ "
+  },
+  "pass": true
+ },
+ "A1": {
+  "pass": false,
+  "tail_per_kb_median": {
+   "value": 3.2952807329430343,
+   "range": [
+    1.778,
+    4.775
+   ],
+   "pass": true
+  },
+  "tail_frac": {
+   "value": 0.6308037669732808,
+   "range": [
+    0.531,
+    0.698
+   ],
+   "pass": true
+  },
+  "one_cond_frac": {
+   "value": 0.5400075876648391,
+   "range": [
+    0.456,
+    0.652
+   ],
+   "pass": true
+  },
+  "inside_frac": {
+   "value": 0.20197899487891677,
+   "range": [
+    0.207,
+    0.303
+   ],
+   "pass": false
+  },
+  "canonical_frac": {
+   "value": 0.6911726412637792,
+   "range": [
+    0.638,
+    0.823
+   ],
+   "pass": true
+  }
+ },
+ "A1_context_fit_cohort_ranges": {
+  "tail_per_kb_median": [
+   1.1562432321871166,
+   3.123886339995475
+  ],
+  "tail_frac": [
+   0.5300151975683891,
+   0.6936995453280134
+  ],
+  "one_cond_frac": [
+   0.45575340374895357,
+   0.6472811163373101
+  ],
+  "inside_frac": [
+   0.23388175494917068,
+   0.33524492234169656
+  ],
+  "canonical_frac": [
+   0.6548956661316212,
+   0.8348864994026285
+  ]
+ },
+ "A1_context_width_matched_ranges": {
+  "tail_per_kb_median": [
+   1.7782088587132234,
+   4.774535809018568
+  ],
+  "tail_frac": [
+   0.5311821356402496,
+   0.6979346226437976
+  ],
+  "one_cond_frac": [
+   0.4563250101576779,
+   0.6524389528278784
+  ],
+  "inside_frac": [
+   0.2070781034081375,
+   0.30284207595218626
+  ],
+  "canonical_frac": [
+   0.6379132829840233,
+   0.8232156364692798
+  ]
+ },
+ "A3": {
+  "n": 960,
+  "classes": [
+   "A3",
+   "A5",
+   "CSE",
+   "NN",
+   "RI"
+  ],
+  "features": [
+   "tail_per_kb",
+   "one_cond_frac",
+   "inside_frac",
+   "canonical_frac"
+  ],
+  "balanced_accuracy": 0.2955555555555555,
+  "threshold": 0.3,
+  "pass": true
+ },
+ "A2": {
+  "tells": {
+   "mean__log1p_count_2": {
+    "frozen_old": 0.026,
+    "measured_old": 0.0211,
+    "new": 0.2908,
+    "pass_vs_frozen": true,
+    "pass_vs_measured": true
+   },
+   "log1p_n_junctions": {
+    "frozen_old": 0.853,
+    "measured_old": 0.8814,
+    "new": 0.5214,
+    "pass_vs_frozen": true,
+    "pass_vs_measured": true
+   },
+   "mean__log1p_min_anchor": {
+    "frozen_old": 0.974,
+    "measured_old": 0.9755,
+    "new": 0.4902,
+    "pass_vs_frozen": true,
+    "pass_vs_measured": true
+   },
+   "wmean__present_2": {
+    "frozen_old": 0.062,
+    "measured_old": 0.0549,
+    "new": 0.2582,
+    "pass_vs_frozen": false,
+    "pass_vs_measured": false
+   }
+  },
+  "pooled_auc": {
+   "old": 0.9982133821717705,
+   "new": 0.9894747118092222
+  },
+  "pass": false,
+  "pass_vs_measured_old": false
+ },
+ "A4": {
+  "verify": {
+   "pass": true,
+   "parity": [
+    "[coverage parity] 1920/1920 regions match",
+    "[junction parity] 1920/1920 regions match"
+   ],
+   "log": "sim/experiment/batches_stage19/b12_p1/logs/verify.log"
+  },
+  "psi_recovery": {
+   "old": {
+    "CSE": 0.18708451162329898,
+    "A3": 0.13809218154221248,
+    "A5": 0.15660681199463403,
+    "RI": 0.17843868408195127
+   },
+   "new": {
+    "CSE": 0.18702304218207186,
+    "A3": 0.13807825271238505,
+    "A5": 0.15658664302088815,
+    "RI": 0.1784108163918416
+   },
+   "tol": 0.01,
+   "pass": true
+  },
+  "width_leak": {
+   "reported": [
+    "    accuracy                          0.330       960"
+   ]
+  },
+  "verify_features": {
+   "pass": true
+  },
+  "pass": true
+ },
+ "GATE_A": "FAIL"
+}

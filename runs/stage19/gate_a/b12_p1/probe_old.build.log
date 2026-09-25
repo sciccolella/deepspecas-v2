@@ -1,0 +1,11 @@
+feature config from runs/scale_union2_n12480/fold0.pt: FeatureConfig(flank=50, max_junctions=256, canonicalize=True, depth_norm='none', depth_target=100.0, event_groups=()), subset 'no-geometry'
+  sim/experiment/real_pos_ptbp1/npz: 1622 rows, kinds ['real_pos_ptbp1']
+  sim/experiment/real_nn_ptbp1/npz: 800 rows, kinds ['real_nn_ptbp1']
+  sim/experiment/real_pos_aqr/npz: 510 rows, kinds ['real_pos_aqr']
+  sim/experiment/real_nn_aqr/npz: 474 rows, kinds ['real_nn_aqr']
+  runs/real_dev_npz/npz: 242 rows, kinds ['real_bnew_dev']
+  runs/real_tra2_npz/npz: 140 rows, kinds ['real_tra2']
+real pool: 3788 rows, {'A3': 241, 'A5': 190, 'CSE': 1583, 'RI': 421, 'NN': 1353}
+sim sim/experiment/batches_union2/b12/npz: 960 rows, kept 960 matched per class {'CSE': 180, 'A3': 180, 'A5': 180, 'RI': 180, 'NN': 240}
+3149 clusters at 50000 bp over 4748 rows; 563 span more than one cohort
+wrote runs/stage19/gate_a/b12_p1/probe_old/table.npz: X (4748, 176), cohorts {'ptbp1': 2422, 'aqr': 984, 'bnew_dev': 242, 'tra2': 140, 'sim': 960}

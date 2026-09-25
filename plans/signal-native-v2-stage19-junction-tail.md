@@ -485,3 +485,47 @@ The windows are identical to b12-old by A0.
 
 **Overlay prediction under the amendment:** A1 passes, but inside fraction
 is only 0.007 above its floor.
+
+## 19.5 — pilot and Gate A, attempt 1 (2026-09-25): **FAIL** (A1 inside, A2 `present_2`)
+
+**Pasteur wall clock** (`sim/experiment/batches_stage19/stage19_times.tsv`):
+
+| unit | time |
+|---|---:|
+| P0 b12 | 55 min |
+| P0 b1 | 42 min |
+| P1 b12 (reusing P0's base reads) | 19 min |
+| `dsignal.verify` | 10 min |
+| **cumulative** | **2.1 h** |
+
+Two incidents, both fixed:
+- A local waiter read a dropped ssh connection as "P0 done" and launched P1
+  early. It was killed within minutes: P1 had only read from `b12_p0`, and the
+  stray polyester was stopped.
+- P1 crashed once: tail arcs near a chromosome start reached the reference
+  with negative coordinates (fixed in `b1e100e54`).
+
+On the whole genome the tail round-trip passed: 11,863 arcs, 15,488
+fragments. That is the same arc count as the overlay, since it uses the same
+RNG streams.
+
+| rule | result | detail |
+|---|---|---|
+| **A0** identity | **PASS** | b12_p0 and b1_p0: 960/960 records array-identical, labels byte-identical. b1 had come from the older scale-up pipeline. The regenerated b12 count matrix also matches its original log (13,721 transcripts, 14,243,582 fragments). |
+| **A1** (Amendment 1 ranges) | **FAIL** | tail/kb 3.295 ok · tail fraction 0.631 ok · one-cond 0.540 ok · **inside 0.202 < 0.207** · canonical 0.691 ok |
+| **A2** | **FAIL** | `count_2` 0.021→0.291 ✓ · `n_junctions` 0.881→0.521 ✓ · `min_anchor` 0.976→0.490 ✓ · **`present_2` 0.055→0.258, needs ≥ 0.281** ✗. Fails against both the frozen and the measured b12-old. Pooled real-vs-sim AUC 0.998 → 0.989 (reported, not gated). |
+| **A3** | PASS | balanced accuracy 0.296 ≤ 0.30 |
+| **A4** | PASS | `dsignal.verify` 1920/1920 coverage + junction parity; PSI recovery unchanged per label (CSE 0.1871→0.1870, A3/A5/RI identical to 4 d.p.); `verify_features` all checks passed; width leak 0.330 (b12-old 0.330) |
+
+The overlay's prediction held up: `present_2` 0.261 predicted vs 0.258
+measured. Inside fraction came out 0.012 lower than predicted, because STAR
+and arcs from neighbouring windows shift the mix toward both-ends-out.
+
+**Can P1′ (`TAIL_RATE_SCALE` only) pass?** The inside fraction of the *new*
+tail junctions alone (absent from b12-old) is **0.199** (10,840 junctions).
+The 681 pre-existing ones sit at 0.244. Overall inside is a mix of the two,
+so any scale ≥ 1 moves it toward 0.199. Reaching 0.207 needs a scale of about
+0.3, where tail/kb (~1.0) falls below the 1.778 floor and `present_2` moves
+further from its target. `present_2` needs a scale of ≳ 1.25 (overlay). **No
+single scale can pass A1 and A2 together**, so a P1′ is a certain second
+failure. Whether to spend it anyway is left to the user.

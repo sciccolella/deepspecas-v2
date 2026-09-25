@@ -1,0 +1,26 @@
+960 events, window width by label:
+  A3   n=  180  median      1899  q90      10306
+  A5   n=  180  median      2117  q90      14339
+  CSE  n=  180  median      7602  q90      39224
+  NN   n=  240  median      3181  q90      22885
+  RI   n=  180  median       676  q90       2901
+pooled: median 2230  log10 mean 3.395 sd 0.619   (pooled curated benchmark: 3063 / 3.445 / 0.702)
+
+width-only decision tree (depth 4, 5-fold): acc 0.330  macro-F1 0.311
+chance references:
+  most_frequent  acc 0.250  macro-F1 0.080
+  stratified     acc 0.207  macro-F1 0.203
+  uniform        acc 0.197  macro-F1 0.196
+
+              precision    recall  f1-score   support
+
+          A3      0.262     0.156     0.195       180
+          A5      0.244     0.117     0.158       180
+         CSE      0.430     0.494     0.460       180
+          NN      0.265     0.321     0.290       240
+          RI      0.379     0.567     0.454       180
+
+    accuracy                          0.330       960
+   macro avg      0.316     0.331     0.311       960
+weighted avg      0.313     0.330     0.310       960
+

@@ -1,0 +1,29 @@
+          p1 n=  960  tail/kb 3.295  tail_frac 0.631  one_cond 0.540  inside 0.202  canonical 0.691  | jx/win 15.000  tail/win 9.000  depth 91.278  loc {'in': 0.202, 'out1': 0.185, 'out2': 0.613}
+     b12_old n=  960  tail/kb 0.000  tail_frac 0.098  one_cond 0.086  inside 0.244  canonical 0.728  | jx/win 6.000  tail/win 0.000  depth 91.082  loc {'in': 0.244, 'out1': 0.278, 'out2': 0.479}
+         aqr n=  984  tail/kb 3.124  tail_frac 0.694  one_cond 0.647  inside 0.234  canonical 0.655  | jx/win 18.000  tail/win 11.000  depth 16.476  loc {'in': 0.234, 'out1': 0.178, 'out2': 0.589}
+       prpf4 n=  732  tail/kb 1.156  tail_frac 0.530  one_cond 0.456  inside 0.335  canonical 0.835  | jx/win 9.000  tail/win 5.000  depth 7.230  loc {'in': 0.335, 'out1': 0.211, 'out2': 0.454}
+       u2af2 n= 1589  tail/kb 2.234  tail_frac 0.628  one_cond 0.569  inside 0.241  canonical 0.746  | jx/win 15.000  tail/win 9.000  depth 20.480  loc {'in': 0.241, 'out1': 0.215, 'out2': 0.544}
+
+[min, max] across ['aqr', 'prpf4', 'u2af2']:
+    tail_per_kb_median: 1.156 - 3.124   (frozen A1: 1.16 - 3.12)
+             tail_frac: 0.530 - 0.694   (frozen A1: 0.53 - 0.69)
+         one_cond_frac: 0.456 - 0.647   (frozen A1: 0.46 - 0.65)
+           inside_frac: 0.234 - 0.335   (frozen A1: 0.13 - 0.25)
+        canonical_frac: 0.655 - 0.835   (frozen A1: 0.58 - 0.7)
+
+[min, max] across ['aqr', 'prpf4', 'u2af2'], width-matched to p1 (effective n 890, 683, 1443):
+    tail_per_kb_median: 1.778 - 4.775
+             tail_frac: 0.531 - 0.698
+         one_cond_frac: 0.456 - 0.652
+           inside_frac: 0.207 - 0.303
+        canonical_frac: 0.638 - 0.823
+
+Gate A1 on p1 (amended ranges): FAIL
+    tail_per_kb_median: 3.295 in [1.778, 4.775] -> ok
+             tail_frac: 0.631 in [0.531, 0.698] -> ok
+         one_cond_frac: 0.540 in [0.456, 0.652] -> ok
+           inside_frac: 0.202 in [0.207, 0.303] -> OUT
+        canonical_frac: 0.691 in [0.638, 0.823] -> ok
+
+Gate A3 on p1: balanced accuracy 0.296 (n=960, threshold <= 0.30) -> PASS
+wrote runs/stage19/gate_a/b12_p1/tail_stats.json

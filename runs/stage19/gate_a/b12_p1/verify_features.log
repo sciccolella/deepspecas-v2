@@ -1,0 +1,9 @@
+check 1 (topology): OK
+check 2 (mirror involution): OK
+check 3 (flip is an exact A3<->A5 map): OK
+check 4 (coverage-context offsets): OK
+check 5 (interior:flank ratio sanity): OK -- median 0.018 over 286 junctions (want < 0.75)
+check 6 (coverage profile symmetries): OK -- mirror err 0, condition-swap err 0 over 25 records (want exactly 0)
+check 7 (Stage 18.5 covshape/delcov groups: base columns untouched, mirror-invariant, condition-swap exact, scale-invariant): OK
+
+ALL CHECKS PASSED
