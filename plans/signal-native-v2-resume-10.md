@@ -199,6 +199,9 @@ re-sim, 2.1 h pasteur. **Next: the final `benchmark_new` test-spend plan with th
 best dev-selected existing model** (needs a plan discussed and approved first).
 Detail: the Stage 19 plan doc's 19.5 sections.
 
+**Final test spend pre-registered 2026-10-05:** `plans/signal-native-v2-final-test-spend.md`
+(`e4_union2` primary vs v1; implement in a fresh session).
+
 ## Open honesty caveats (carried forward + new)
 
 1. `nn_weight=0.1`, `DPSI_BETA`/`PSI_LEVEL_BETA` — unchanged from resume-7/8/9.
