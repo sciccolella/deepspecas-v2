@@ -3,14 +3,19 @@
 Plan documents and their implementation reports. Per `CLAUDE.md`, a plan is agreed and
 saved here first, and a separate session implements it.
 
-**Start here:** [`signal-native-v2-resume-11.md`](signal-native-v2-resume-11.md) — the
+> **This is the `deepSpecas-v2` repository**, split out of the v1 repo's `signal-native-v2` branch
+> (history kept; commit hashes cited in these plans are *old* hashes, resolved by `../HISTORY_MAP.tsv`).
+> Paths such as `data/`, `plot2s.py`, `sim/experiment/<subdir>/` and checkpoints under `runs/*/` that the
+> plans mention are not in git: see `../DATA.md`.
+
+**Start here:** [`../RESULTS.md`](../RESULTS.md) for the numbers, then [`signal-native-v2-resume-11.md`](signal-native-v2-resume-11.md) — the
 current state of play for the active line of work.
 
 ## signal-native-v2 (the active line)
 
 | file | what it is | status |
 |---|---|---|
-| [`v2-new-repo-release.md`](v2-new-repo-release.md) | **Next (2026-10-05):** move v2 to its own repo (`~/code/deepSpecas-v2`) with history kept via `git filter-repo` (data and v1 paths dropped, `e4_union2` weights committed, BAMs fetched), then consolidate for release: packaged model, envs, `RESULTS.md`, README, repro driver, new CLAUDE.md | **agreed, not started** |
+| [`v2-new-repo-release.md`](v2-new-repo-release.md) | **Next (2026-10-05):** move v2 to its own repo (`~/code/deepSpecas-v2`) with history kept via `git filter-repo` (data and v1 paths dropped, `e4_union2` weights committed, BAMs fetched), then consolidate for release: packaged model, envs, `RESULTS.md`, README, repro driver, new CLAUDE.md | **executed 2026-10-05** — this repository is the result (see `HISTORY.md`) |
 | [`signal-native-v2-resume-11.md`](signal-native-v2-resume-11.md) | **START HERE.** State after the final `benchmark_new` test spend (2026-10-05): `e4_union2` beats the v1 six-net ensemble 143 vs 110 of 243 (McNemar p<0.0001), both curated test halves now spent | current |
 | [`signal-native-v2-final-test-spend.md`](signal-native-v2-final-test-spend.md) | Pre-registration and results of the one `benchmark_new` test spend (primary PASS; two recorded deviations) | executed |
 | [`signal-native-v2-resume-10.md`](signal-native-v2-resume-10.md) | State after Stage 18 + 20.1/20.2 (2026-09-14): what the pre-registered rules decided, the real npz pool and which cohorts may be trained on, the fine-tune path, and the Stage 20.3 pre-registration that comes next | superseded by resume-11 |
