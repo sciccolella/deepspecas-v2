@@ -529,3 +529,28 @@ so any scale ≥ 1 moves it toward 0.199. Reaching 0.207 needs a scale of about
 further from its target. `present_2` needs a scale of ≳ 1.25 (overlay). **No
 single scale can pass A1 and A2 together**, so a P1′ is a certain second
 failure. Whether to spend it anyway is left to the user.
+
+## 19.5 — closure (2026-10-05): Gate A not retried; **Stage 19 stops**
+
+The user accepted the attempt-1 FAIL and did not spend P1′. The scale-only
+recalibration could not pass A1 and A2 together (above), so a P1′ would only
+have been a certain second failure. The outcome follows the pre-registered
+"Gate A fails twice" branch:
+
+- **Verdict:** the junction tail is **not simulable with this generator**, at
+  least not to the frozen A1 + A2 standard. The mismatch is specific. The
+  added tail's own inside fraction (0.199) sits below the real floor (0.207),
+  and `present_2` stays short because simulated depth is 4–5× real. Three of
+  the four A2 tells did close.
+- **Not run:** 19.6 (full re-sim), 19.7 (arm T / T+D training), 19.8 (Gate B).
+  The cost was 2.1 h of pasteur time against the 20 h cap.
+- **Next, per "What each outcome decides":** the final test-spend plan with
+  the best dev-selected existing model. 22a stays unrun.
+- **Pasteur state:** b12_p0's base reads and per-replicate BAMs were pruned
+  (`stage19_pilot.sh prune`). The merged `c1/c2.bam` of `b12_p0`, `b1_p0` and
+  `b12_p1` are kept (~4 G total, with `@RG`). They are the only simulated BAMs
+  with `@RG` and indels, and could serve as a substrate if a later plan
+  revisits the tail.
+- **Kept as code, not deployed:** `sim/tail_stats.py`, `sim/fit_tail_model.py`,
+  `sim/build_tail_transcripts.py`, `sim/inject_indels.py`. `run_batch.sh`'s
+  defaults (`TAIL=0`, `INDEL_RATE=0`) reproduce the old outputs exactly (A0).

@@ -84,7 +84,7 @@ is 128/130/134 of 242 on `benchmark_new` dev and 56/56/59 of 70 on
 
 ## What is running right now
 
-**Nothing.** Pasteur holds `prpf4_work/` and `u2af2_work/` (FASTQ + BAM,
+**Nothing** (re-checked 2026-10-05 after Stage 19). Pasteur holds `prpf4_work/` and `u2af2_work/` (FASTQ + BAM,
 ~130 G each; never leave pasteur) next to `ptbp1_work/`/`aqr_work/`; disk
 was 872 G free after the builds. Local GPU idle. All Stage 18.5/20.3
 checkpoints are local-only under `runs/` (gitignored); their JSON/log/TSV
@@ -189,6 +189,15 @@ must write `@RG`/indels before `delcov` or replicate features can be used.
 (junction-tail layer + indels + `@RG` on the identical union2 design; Gate A on a
 pilot batch before the full re-sim, Gate B seed-pooled; ~12 h pasteur expected —
 union2 batches measured ~37 min each, so the "~25 h" figure was an overestimate).
+
+**Result (2026-09-25, closed 2026-10-05): Gate A FAIL, Stage 19 stopped.** A0/A3/A4
+pass; A1 inside fraction 0.202 < 0.207 and A2 `present_2` 0.258 < 0.281 (the other
+three tells closed). P1′ was not spent — the added tail's own inside fraction is
+0.199, so no `TAIL_RATE_SCALE` passes A1 and A2 together. Verdict per the
+pre-registration: "junction tail not simulable with this generator"; no full
+re-sim, 2.1 h pasteur. **Next: the final `benchmark_new` test-spend plan with the
+best dev-selected existing model** (needs a plan discussed and approved first).
+Detail: the Stage 19 plan doc's 19.5 sections.
 
 ## Open honesty caveats (carried forward + new)
 
