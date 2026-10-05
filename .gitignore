@@ -40,3 +40,6 @@ runs/domain_probe/*.npz
 # npz with sim.tail_overlay / dsignal.domain_probe build.
 !runs/stage19/
 runs/stage19/**/*.npz
+
+# Stage 22b union pool: filtered out of the v2 repo history; rebuildable/fetched
+sim/experiment/npz_union/
