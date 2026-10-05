@@ -49,3 +49,6 @@ sim/experiment/npz_union/
 *.bai
 *.npz
 *.pth
+# fetched data (scripts/fetch_data.sh) and local pools
+sim/experiment/*/
+runs/v1_crossover/
