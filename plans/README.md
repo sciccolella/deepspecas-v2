@@ -10,6 +10,7 @@ current state of play for the active line of work.
 
 | file | what it is | status |
 |---|---|---|
+| [`v2-new-repo-release.md`](v2-new-repo-release.md) | **Next (2026-10-05):** move v2 to its own repo (`~/code/deepSpecas-v2`) with history kept via `git filter-repo` (data and v1 paths dropped, `e4_union2` weights committed, BAMs fetched), then consolidate for release: packaged model, envs, `RESULTS.md`, README, repro driver, new CLAUDE.md | **agreed, not started** |
 | [`signal-native-v2-resume-11.md`](signal-native-v2-resume-11.md) | **START HERE.** State after the final `benchmark_new` test spend (2026-10-05): `e4_union2` beats the v1 six-net ensemble 143 vs 110 of 243 (McNemar p<0.0001), both curated test halves now spent | current |
 | [`signal-native-v2-final-test-spend.md`](signal-native-v2-final-test-spend.md) | Pre-registration and results of the one `benchmark_new` test spend (primary PASS; two recorded deviations) | executed |
 | [`signal-native-v2-resume-10.md`](signal-native-v2-resume-10.md) | State after Stage 18 + 20.1/20.2 (2026-09-14): what the pre-registered rules decided, the real npz pool and which cohorts may be trained on, the fine-tune path, and the Stage 20.3 pre-registration that comes next | superseded by resume-11 |
