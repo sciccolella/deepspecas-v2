@@ -43,3 +43,9 @@ runs/stage19/**/*.npz
 
 # Stage 22b union pool: filtered out of the v2 repo history; rebuildable/fetched
 sim/experiment/npz_union/
+
+# Binary/large data is never committed here (see DATA.md)
+*.bam
+*.bai
+*.npz
+*.pth

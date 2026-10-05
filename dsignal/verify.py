@@ -2,7 +2,7 @@
 
 Two independent checks, per plans/signal-native-v2.md "Verification":
 
-1. Coverage/skip parity against `plot2s.get_coords_from_bam`, with filters
+1. Coverage/skip parity against `dsignal._v1_coords.get_coords_from_bam`, with filters
    disabled so the two code paths see the same reads. `get_coords_from_bam`
    folds D into "coverage" and unconditionally zeroes index 0; this script
    adds delcov back into extractor coverage and ignores index 0 to compare
@@ -28,7 +28,7 @@ import sys
 import numpy as np
 import pysam
 
-import plot2s
+from dsignal import _v1_coords
 from dsignal.extract import ReadFilters, extract_condition, parse_region
 
 
@@ -56,7 +56,7 @@ def check_coverage_parity(regions, verbose: bool) -> int:
                 bam_cache[bam_path] = pysam.AlignmentFile(bam_path, "rb")
             bam = bam_cache[bam_path]
 
-            ref_covs, ref_skips = plot2s.get_coords_from_bam(bam, region, mincov=0)
+            ref_covs, ref_skips = _v1_coords.get_coords_from_bam(bam, region, mincov=0)
             cond = extract_condition(bam, region, ref=None, filters=filters, use_tags=True)
 
             ours_cov = cond.cov.astype(np.int64) + cond.delcov.astype(np.int64)
