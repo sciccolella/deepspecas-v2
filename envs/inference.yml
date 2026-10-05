@@ -1,0 +1,17 @@
+# Minimal environment for inference, scoring and the verification gates
+# (dsignal.predict, dsignal.score_benchmark, dsignal.verify, dsignal.verify_features).
+# CPU torch is enough: the released ensemble runs at ~0.1 s/event on CPU.
+# For GPU training use a CUDA build of pytorch instead (the lab env, DSnet, has
+# torch 2.5.1 / python 3.11 / numpy 2.4 / scikit-learn 1.9 / lightgbm 4.7).
+name: deepspecas-v2
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - pytorch>=2.5=cpu*
+  - numpy
+  - pandas
+  - scikit-learn
+  - scipy
+  - pysam

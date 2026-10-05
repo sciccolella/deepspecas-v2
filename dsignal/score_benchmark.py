@@ -242,7 +242,7 @@ def report(rows, predictor, half: str = "both", min_confidence: float | None = N
         f"\nwall clock: {tot.mean():.3f} s/event "
         f"({ext.mean():.3f} extract + {inf.mean():.3f} inference), {tot.sum():.1f} s total.\n"
         f"  For scale: v1's six-net ensemble spends ~17 s/event on image rendering alone\n"
-        f"  on the default PIL path (see report.md; --gpu-render cuts that several-fold)."
+        f"  on the default PIL path (v1 repository, report.md)."
     )
     print(f"  widest event {widths.max():,} bp, median {int(np.median(widths)):,} bp")
 

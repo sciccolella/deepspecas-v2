@@ -1,0 +1,18 @@
+# Pasteur env `DSsim` (/data/conda/ciccolella/envs/DSsim): read simulation with
+# polyester (sim/run_polyester.R) and transcript FASTA prep (gffread).
+# Reconstructed from conda-meta/history (equivalent of `conda env export
+# --from-history`; conda is not on PATH there). Create command recorded there:
+#   mamba create -p .../DSsim -c conda-forge -c bioconda <specs below>
+# Resolved on 2026-10-05: r-base 4.3.3, bioconductor-polyester 1.38.0, gffread 0.12.9.
+name: DSsim
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base
+  - r-remotes
+  - bioconductor-polyester
+  - r-logspline
+  - bioconductor-limma
+  - r-data.table
+  - gffread

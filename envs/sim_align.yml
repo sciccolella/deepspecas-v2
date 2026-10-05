@@ -1,0 +1,18 @@
+# Pasteur env `DSpoly2v2` (/data/conda/ciccolella/envs/DSpoly2v2): STAR alignment
+# (sim/align_reads.sh), SUPPA event catalogue, samtools; CLAUDE.md also runs the
+# extraction there. Reconstructed from conda-meta/history (equivalent of `conda
+# env export --from-history`). Create command recorded there:
+#   mamba create -p .../DSpoly2v2 -c bioconda -c conda-forge <specs below>
+# Resolved on 2026-10-05: star 2.7.10b, samtools 1.23.1, suppa 2.4.
+# NOTE: dsignal.extract needs pysam + numpy (numpy 2.5.2 is present in the env, pysam
+# is NOT in the conda specs/metadata) -- extraction there either uses a pip-installed
+# pysam (not verified) or is run from the inference env (envs/inference.yml).
+name: DSpoly2v2
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - star=2.7.10b
+  - samtools
+  - suppa
+  - sra-tools
