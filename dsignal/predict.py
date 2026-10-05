@@ -20,7 +20,15 @@ augmentation rather than a guess. Measured on the dev half of the benchmark
 49/70 -> 51/70 collapsed, 3 gained / 1 lost, McNemar p = 0.625 -- the right
 sign, not significant at n=70, and it doubles inference time. Opt-in.
 
+With no ``--net`` and no ``--ensemble``, the released ensemble
+(``models/e4_union2/manifest.json``, 6 members x 5 folds) is run at the
+operating point frozen for the ``benchmark_new`` test spend: condition-swap TTA
+on, ``--target-prior nn-weight --nn-weight 0.1``. ``--no-tta`` and the
+``--target-prior`` family override those; ``--net`` keeps the single-run
+behaviour below unchanged (every option opt-in).
+
 Usage:
+    python -m dsignal.predict --csv events.csv                       # released ensemble
     python -m dsignal.predict --csv benchmark/A3.csv --net runs/control/fold*.pt
 """
 
@@ -364,6 +372,10 @@ class Predictor:
         return label, probs, attn, {"extract_s": t1 - t0, "infer_s": t2 - t1, "total_s": t2 - t0}
 
 
+#: the packaged model run when neither --net nor --ensemble is given
+DEFAULT_ENSEMBLE = "models/e4_union2/manifest.json"
+
+
 def read_prediction_csv(path: str):
     with open(path) as f:
         return [(r[0], r[1], r[2]) for r in csv.reader(f) if r]
@@ -382,7 +394,20 @@ def abstain(label: str, probs: np.ndarray, min_confidence: float | None) -> str:
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--csv", required=True, help="region,bam1,bam2 CSV, no header")
-    ap.add_argument("--net", nargs="+", required=True, help="one or more fold checkpoints (.pt)")
+    ap.add_argument("--net", nargs="+", default=None,
+                    help="one or more fold checkpoints (.pt) of ONE run. Omit (and omit "
+                    "--ensemble) to run the released ensemble")
+    ap.add_argument("--ensemble", default=None,
+                    help="EnsembleSpec/manifest JSON (default when no --net: "
+                    "models/e4_union2/manifest.json)")
+    ap.add_argument("--no-tta", action="store_true",
+                    help="ensemble mode only: turn off the condition-swap TTA that the "
+                    "released operating point enables")
+    ap.add_argument("--target-prior", choices=("none", "uniform", "benchmark", "nn-weight"),
+                    default=None, help="ensemble mode only; default = the manifest's (nn-weight)")
+    ap.add_argument("--nn-weight", type=float, default=None,
+                    help="ensemble mode only; default = the manifest's (0.1)")
+    ap.add_argument("--tau", type=float, default=None, help="ensemble mode only; default 1.0")
     ap.add_argument("--out", default=None, help="write region,label,probs TSV here")
     ap.add_argument("--device", default=None)
     ap.add_argument("--min-anchor", type=int, default=5)
@@ -403,14 +428,40 @@ def main(argv=None) -> None:
     )
     args = ap.parse_args(argv)
 
-    predictor = Predictor(
-        args.net,
-        device=args.device,
-        filters=ReadFilters(min_anchor=args.min_anchor, max_nh=args.max_nh, min_mapq=args.min_mapq),
-        tta_condition_swap=args.tta_condition_swap,
-    )
-    print(f"loaded {len(predictor.models)} fold checkpoint(s), classes {predictor.classes}, "
-          f"feature subset {predictor.feature_subset!r}", file=sys.stderr)
+    filters = ReadFilters(min_anchor=args.min_anchor, max_nh=args.max_nh, min_mapq=args.min_mapq)
+    if args.net and args.ensemble:
+        ap.error("--net and --ensemble are mutually exclusive")
+    if args.net:
+        if args.no_tta or args.target_prior or args.nn_weight is not None or args.tau is not None:
+            ap.error("--no-tta/--target-prior/--nn-weight/--tau apply to ensemble mode only; "
+                     "for --net use dsignal.score_benchmark's prior options")
+        predictor = Predictor(
+            args.net,
+            device=args.device,
+            filters=filters,
+            tta_condition_swap=args.tta_condition_swap,
+        )
+        print(f"loaded {len(predictor.models)} fold checkpoint(s), classes {predictor.classes}, "
+              f"feature subset {predictor.feature_subset!r}", file=sys.stderr)
+    else:
+        from dsignal.ensemble import MultiRunPredictor, EnsembleSpec, resolve_path
+
+        spec = EnsembleSpec.load(resolve_path(args.ensemble or DEFAULT_ENSEMBLE))
+        d = spec.defaults
+        tta = args.tta_condition_swap or (d.get("tta_condition_swap", False) and not args.no_tta)
+        target_prior = args.target_prior or d.get("target_prior", "none")
+        nn_weight = args.nn_weight if args.nn_weight is not None else d.get("nn_weight")
+        tau = args.tau if args.tau is not None else d.get("tau", 1.0)
+        predictor = MultiRunPredictor(
+            spec, device=args.device, filters=filters, tta_condition_swap=tta,
+            target_prior=target_prior, nn_weight=nn_weight, tau=tau,
+            rule=d.get("rule", "mean_prob"),
+        )
+        print(f"ensemble {spec.name!r}: {len(predictor.predictors)} members, "
+              f"classes {predictor.classes}, tta_condition_swap={tta}, "
+              f"target_prior={target_prior}"
+              + (f" (nn_weight={nn_weight})" if target_prior == "nn-weight" else ""),
+              file=sys.stderr)
 
     rows = read_prediction_csv(args.csv)
     out_rows, timings = [], []

@@ -59,12 +59,25 @@ import json
 import sys
 import time
 from dataclasses import dataclass, field
-from os.path import basename, join as pjoin, splitext
+from os.path import basename, exists, join as pjoin, splitext
+from pathlib import Path
 
 import numpy as np
 
 from dsignal.extract import ReadFilters, extract_event, parse_region
 from dsignal.predict import Predictor, read_prediction_csv
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def resolve_path(path: str | None) -> str | None:
+    """A path as given if it exists, else the same path under the repository
+    root -- lets the packaged ``models/`` manifest work from any directory."""
+    if path is None or exists(path):
+        return path
+    alt = REPO_ROOT / path
+    return str(alt) if alt.exists() else path
 
 
 @dataclass
@@ -81,13 +94,21 @@ class Member:
 class EnsembleSpec:
     members: list[Member] = field(default_factory=list)
     name: str = "ensemble"
+    #: operating-point settings stored with a packaged spec (models/*/manifest.json):
+    #: tta_condition_swap, target_prior, nn_weight, tau, rule. Empty for the
+    #: older runs/ensembles/*.json specs.
+    defaults: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: str) -> "EnsembleSpec":
         with open(path) as f:
             data = json.load(f)
-        members = [Member(**m) for m in data["members"]]
-        return cls(members=members, name=data.get("name", splitext(basename(path))[0]))
+        # tolerate extra per-member keys (a packaged manifest also carries
+        # source_run and sha256) -- only the three Member fields are read
+        members = [Member(**{k: m[k] for k in ("run_dir", "labels", "weight") if k in m})
+                   for m in data["members"]]
+        return cls(members=members, name=data.get("name", splitext(basename(path))[0]),
+                   defaults=data.get("defaults", {}))
 
     def save(self, path: str) -> None:
         data = {"name": self.name,
@@ -99,7 +120,7 @@ class EnsembleSpec:
 
 
 def _fold_paths(run_dir: str) -> list[str]:
-    paths = sorted(glob.glob(pjoin(run_dir, "fold*.pt")))
+    paths = sorted(glob.glob(pjoin(resolve_path(run_dir), "fold*.pt")))
     if not paths:
         raise ValueError(f"{run_dir}: no fold*.pt checkpoints found")
     return paths
@@ -153,7 +174,7 @@ class MultiRunPredictor:
                               tta_condition_swap=tta_condition_swap)
             if target_prior != "none":
                 pred.prior_correction = pred.build_prior_correction(
-                    target_prior, nn_weight=nn_weight, tau=tau, train_labels=m.labels)
+                    target_prior, nn_weight=nn_weight, tau=tau, train_labels=resolve_path(m.labels))
             if classes is None:
                 classes = pred.classes
             elif pred.classes != classes:

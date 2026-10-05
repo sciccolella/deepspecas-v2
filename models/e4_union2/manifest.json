@@ -1,0 +1,91 @@
+{
+  "name": "e4_union2",
+  "defaults": {
+    "tta_condition_swap": true,
+    "target_prior": "nn-weight",
+    "nn_weight": 0.1,
+    "tau": 1.0,
+    "rule": "mean_prob"
+  },
+  "note": "Released operating point = the settings frozen for the benchmark_new test spend. Paths are relative to the repository root. Source runs: see runs/ensembles/e4_union2.json.",
+  "members": [
+    {
+      "run_dir": "models/e4_union2/scale_n12480",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0,
+      "source_run": "runs/scale_union2_n12480",
+      "sha256": {
+        "fold0.pt": "dbbf89cf0f083059dbab0eab7466e739d0c5e7b6163947457b8f8c3b97922d38",
+        "fold1.pt": "a60af27c86e1381a282ec4ade9240bbe79fe3a352052e7cdd823bd27bc43c771",
+        "fold2.pt": "a408754e5adda568b3bf5b58d7c21e3803d4e41f6e9af8025c64f8eba4b56b2d",
+        "fold3.pt": "365f0525167ea3f863d34872483421c5fb473236b44f2d7346df2e44ed8a2b8c",
+        "fold4.pt": "5c533af60c68f8fc6cbd5c139e120c740628d9979f8f41b9df415e8c5ef816a4"
+      }
+    },
+    {
+      "run_dir": "models/e4_union2/allfeat",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0,
+      "source_run": "runs/ens_union2_allfeat",
+      "sha256": {
+        "fold0.pt": "e691e4d014ad80f27b4cbbadd1a42dadfa80bd06df56065efdf59eb0909b3e6b",
+        "fold1.pt": "df7809934eaa98e1c702f89604dec162f45d46fc2ff5f1e0e8828a77be672cb8",
+        "fold2.pt": "7d19684283215d5e4b834fb79fbc05bbb74fa11b947fe2ac4cf5b564b6b1018c",
+        "fold3.pt": "0b20c0c755d348f7075b34cb95f18a539227c12adca109f53a45d43bd1bce382",
+        "fold4.pt": "8f50b08f6d15317b383e80d74273efdb2602059c23d66cb97111d7c4768b770e"
+      }
+    },
+    {
+      "run_dir": "models/e4_union2/twohead",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0,
+      "source_run": "runs/ens_union2_twohead",
+      "sha256": {
+        "fold0.pt": "632df8056a6e3844020d3e83e4a75818d5939750528e98a592cbda49e9f08719",
+        "fold1.pt": "791fcc9ca02dabfa183dd70cb4cd6c6da6ed2add5f5f8a6468a08ac58f6e8894",
+        "fold2.pt": "7db02521012e9127b9e3f66ea2fd3b02e4d202dcc38f855598ffe9c228193d4c",
+        "fold3.pt": "dc04487b2f41c2ff4aaaf23d321c432f7f12390ee1f1693ced9e340edf039d2d",
+        "fold4.pt": "50c80e3a14a35f724ee98e622abc138400869c080d73bae5ba703fc4531e963d"
+      }
+    },
+    {
+      "run_dir": "models/e4_union2/depthscale",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0,
+      "source_run": "runs/ens_union2_depthscale",
+      "sha256": {
+        "fold0.pt": "189c12767e1f1b0bb786eb9dd4b74ea4626d22a1784fbaad341b202746d6c347",
+        "fold1.pt": "548cf70a116c6ef59436680af0e6c78592f81a7cafa8ad43a1b737ab7944331a",
+        "fold2.pt": "ca015292bce2e74192a472a009812c2437ca0c275218a6e075e99cad6dcc4c36",
+        "fold3.pt": "c16a7ad737416d89aeb14b5dfb99a65a27593c0afdf8f09345a05fca82986d38",
+        "fold4.pt": "b7fb24aa6e878bd010b868a412910a46f9482bf1c9061d5440786338ddb40c9d"
+      }
+    },
+    {
+      "run_dir": "models/e4_union2/augsub",
+      "labels": "sim/experiment/labels_union2.n12480.tsv",
+      "weight": 1.0,
+      "source_run": "runs/ens_union2_augsub",
+      "sha256": {
+        "fold0.pt": "8c19c810506437ea503c660f2a9b42f2dd4e3d87818245c8fa42d76b6612ae19",
+        "fold1.pt": "f4dac62277fef01c9d89eecb8abb17dc0f84f5eb44ab8e127c7d542aebbab44c",
+        "fold2.pt": "101a8d385d644b982ed9c96f1afa221e5e98d37194df22b8abd01147596fea1a",
+        "fold3.pt": "054aa31ced31ecdefb59d02948f712d1cbeb9ad20c4015ee94667c9e900c62a2",
+        "fold4.pt": "1d25e882c0e96b2255c78bb60df66d925bf664e1c9cb1f170bdbdad5bcd41354"
+      }
+    },
+    {
+      "run_dir": "models/e4_union2/nn15",
+      "labels": "sim/experiment/labels_union2.n12480.nn15.tsv",
+      "weight": 1.0,
+      "source_run": "runs/ens_union2_nn15",
+      "sha256": {
+        "fold0.pt": "6d253b865086c6f02dd375fd112c85f317bbf3e8dacce2ac47debd3c2c179fc9",
+        "fold1.pt": "aa4a3b9939b005a8d4d816f028d5f7ee8d1eca58ff069d5942a168a815a9a45c",
+        "fold2.pt": "3dea8439387dade64d9316d84a0e6380c9a0b0aa41c10f3674ec019e177021dc",
+        "fold3.pt": "670f588cd6e7cefcf4afe55c64d5d86af6acc0976258c3bfaeb8753197a906a6",
+        "fold4.pt": "f274c826160d15a74443ea96515cb03435b50972f03ea6e06f479cf17f6a1d4c"
+      }
+    }
+  ]
+}
