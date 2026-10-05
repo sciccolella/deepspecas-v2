@@ -24,7 +24,7 @@ document the curated truth set).
 | | before | after |
 |---|---|---|
 | commits on the branch | 244 | 226 |
-| `.git` object store | 1.4 GB | 18 MB (pack 17.5 MiB after `gc --aggressive`) |
+| `.git` object store | 1.4 GB | 18 MB at the split (pack 17.5 MiB after `gc --aggressive`); ~167 MB once the 162 MB of `models/e4_union2` weights were committed |
 | largest blob | 107 MB | < 5 MB |
 
 Verified: the final tree equals the source tree at `afb6225b5` restricted to the
