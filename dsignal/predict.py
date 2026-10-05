@@ -144,6 +144,10 @@ def make_target_prior(classes, kind: str = "uniform", nn_weight: float | None = 
     raise ValueError(f"unknown target prior {kind!r}")
 
 
+#: keys a pre-Stage-22b checkpoint may lack; unused by forward().
+_PRETEXT_MISSING_OK = ("mask_token", "recon_head.", "proj_head.")
+
+
 class Predictor:
     """One or more trained folds of **one run**, applied to extractor records.
 
@@ -185,7 +189,16 @@ class Predictor:
         for path in checkpoint_paths:
             ck = torch.load(path, map_location=self.device, weights_only=False)
             model = JunctionSetTransformer(ModelConfig(**ck["model_config"])).to(self.device)
-            model.load_state_dict(ck["model_state"])
+            # Stage 22b added unconditional pretext heads that forward() never
+            # reads, so a pre-22b checkpoint is missing them. Tolerate exactly
+            # those (same whitelist as dsignal.train._PRETEXT_MISSING_OK);
+            # any other missing/unexpected key is still an error.
+            res = model.load_state_dict(ck["model_state"], strict=False)
+            bad = [k for k in res.missing_keys if not k.startswith(_PRETEXT_MISSING_OK)]
+            if bad or res.unexpected_keys:
+                raise RuntimeError(
+                    f"{path}: state_dict mismatch (missing {bad}, unexpected {res.unexpected_keys})"
+                )
             model.eval()
             self.models.append(model)
             self.scalers.append(FeatureScaler.from_state_dict(ck["scaler"]))

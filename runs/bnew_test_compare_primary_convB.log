@@ -1,0 +1,4 @@
+convention B (TRASH-as-NN via benchmark_new/curation.tsv)
+half=test  n=236   runs/bnew_test_v1_ensemble.tsv -> runs/bnew_test_e4_union2.tsv
+  5-class   base  82/236 = 34.7%   new 124/236 = 52.5%   base-only  3  new-only 45  McNemar p = 0.0000
+  collapsed base  96/236 = 40.7%   new 125/236 = 53.0%   base-only  3  new-only 32  McNemar p = 0.0000

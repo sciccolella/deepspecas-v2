@@ -1,0 +1,11 @@
+half=test  n=243   runs/bnew_test_v1_ensemble.tsv -> runs/bnew_test_e4_union2.tsv
+  5-class   base  95/243 = 39.1%   new 142/243 = 58.4%   base-only  7  new-only 54  McNemar p = 0.0000
+  collapsed base 110/243 = 45.3%   new 143/243 = 58.8%   base-only  7  new-only 40  McNemar p = 0.0000
+
+per-class recall (collapsed correctness, 5 truth strata):
+  A3   n=  17  base   10/17   = 58.8%   new   13/17   = 76.5%   base-only  0  new-only  3  McNemar p = 0.2500
+  A5   n=  11  base    5/11   = 45.5%   new   11/11   = 100.0%   base-only  0  new-only  6  McNemar p = 0.0312
+  CSE  n= 106  base   69/106  = 65.1%   new   91/106  = 85.8%   base-only  5  new-only 27  McNemar p = 0.0001
+  NN   n=  80  base    0/80   =  0.0%   new    3/80   =  3.8%   base-only  0  new-only  3  McNemar p = 0.2500
+  RI   n=  29  base   26/29   = 89.7%   new   25/29   = 86.2%   base-only  2  new-only  1  McNemar p = 1.0000
+  macro-recall (unweighted over 5 classes):  base 51.8%   new 70.5%

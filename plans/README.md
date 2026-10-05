@@ -3,14 +3,16 @@
 Plan documents and their implementation reports. Per `CLAUDE.md`, a plan is agreed and
 saved here first, and a separate session implements it.
 
-**Start here:** [`signal-native-v2-resume-10.md`](signal-native-v2-resume-10.md) — the
+**Start here:** [`signal-native-v2-resume-11.md`](signal-native-v2-resume-11.md) — the
 current state of play for the active line of work.
 
 ## signal-native-v2 (the active line)
 
 | file | what it is | status |
 |---|---|---|
-| [`signal-native-v2-resume-10.md`](signal-native-v2-resume-10.md) | **START HERE.** State after Stage 18 + 20.1/20.2 (2026-09-14): what the pre-registered rules decided, the real npz pool and which cohorts may be trained on, the fine-tune path, and the Stage 20.3 pre-registration that comes next | current |
+| [`signal-native-v2-resume-11.md`](signal-native-v2-resume-11.md) | **START HERE.** State after the final `benchmark_new` test spend (2026-10-05): `e4_union2` beats the v1 six-net ensemble 143 vs 110 of 243 (McNemar p<0.0001), both curated test halves now spent | current |
+| [`signal-native-v2-final-test-spend.md`](signal-native-v2-final-test-spend.md) | Pre-registration and results of the one `benchmark_new` test spend (primary PASS; two recorded deviations) | executed |
+| [`signal-native-v2-resume-10.md`](signal-native-v2-resume-10.md) | State after Stage 18 + 20.1/20.2 (2026-09-14): what the pre-registered rules decided, the real npz pool and which cohorts may be trained on, the fine-tune path, and the Stage 20.3 pre-registration that comes next | superseded by resume-11 |
 | [`signal-native-v2-stage18-domain-probe.md`](signal-native-v2-stage18-domain-probe.md) | Stage 18 pre-registration + results (2026-09-11..14): real-vs-sim discriminator AUC 0.999 on every variant, never below 0.987 after removing 30 feature families (diffuse gap; feature-side Stage 19 arm dropped, 22b moves up); jittered pad null; curated NN not expressible from current features (AUC 0.58) while arena NN is (0.88); free re-scores; covshape/delcov groups built, probed and 3-seed tested — neither transfers, delcov is a pure tell (polyester writes no indels). Also the pair-3/4 arena selection | **implemented** |
 | [`signal-native-v2-resume-9.md`](signal-native-v2-resume-9.md) | Previous resume doc (2026-09-08); accurate through Stage 17 and the reasons the real-data line looked closed | superseded as the entry point |
 | [`signal-native-v2-stage20-real-finetune.md`](signal-native-v2-stage20-real-finetune.md) | Stage 20.3 pre-registration (2026-09-14): three-cohort real pool (aqr+prpf4+u2af2, 3,305 rows), arms A (mixed, cell-balanced, ramped GRL) / B (head-only fine-tune) / C (full low-LR fine-tune) × 3 seed-matched parents; mechanical gate = arena NN McNemar (per Stage 18 rule 3) + no beyond-noise regression on either dev set + per-class recall + leave-one-cohort-out; curated NN reported, not gating | **pre-registered, not run** |

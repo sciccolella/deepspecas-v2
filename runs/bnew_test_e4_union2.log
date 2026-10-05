@@ -1,0 +1,41 @@
+--train-labels not given: each ensemble member falls back to its own checkpoints' stored train_class_counts
+ensemble 'e4_union2': 6 members, weights [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], classes ('A3', 'A5', 'CSE', 'NN', 'RI'), rule 'mean_prob'
+scoring the test half of benchmark_new/split.tsv
+
+wrote per-event results to runs/bnew_test_e4_union2.tsv
+
+=== curated benchmark (test half): 243 events ===
+
+per-CSV accuracy (5-class / A3+A5 collapsed):
+  A3  (truth A3  ) n= 17   76.5% /  76.5%   (13/17 correct)
+  A5  (truth A5  ) n= 11   90.9% / 100.0%   (10/11 correct)
+  ES  (truth CSE ) n=106   85.8% /  85.8%   (91/106 correct)
+  NN  (truth NN  ) n= 80    3.8% /   3.8%   (3/80 correct)
+  IR  (truth RI  ) n= 29   86.2% /  86.2%   (25/29 correct)
+
+aggregate 5-class:  142/243 = 58.4%
+aggregate collapsed: 143/243 = 58.8%   (this set has NN truth -- not directly comparable to v1's no-NN 123/140)
+
+confusion matrix, 5-class (rows=truth, cols=pred): ['A3', 'A5', 'CSE', 'NN', 'RI']
+[[13  0  1  1  2]
+ [ 1 10  0  0  0]
+ [10  4 91  1  0]
+ [24 13 29  3 11]
+ [ 3  0  1  0 25]]
+
+confusion matrix, A3+A5 collapsed (rows=truth, cols=pred): ['A', 'CSE', 'NN', 'RI']
+[[24  1  1  2]
+ [14 91  1  0]
+ [37 29  3 11]
+ [ 3  1  0 25]]
+
+accuracy vs region width (5-class), for plotting against v1's:
+  [     0,   1000) n= 54   59.3% /  61.1%
+  [  1000,   5000) n=107   57.0% /  57.0%
+  [  5000,  20000) n= 66   60.6% /  60.6%
+  [ 20000, 100000) n= 16   56.2% /  56.2%
+
+wall clock: 0.106 s/event (0.025 extract + 0.081 inference), 25.8 s total.
+  For scale: v1's six-net ensemble spends ~17 s/event on image rendering alone
+  on the default PIL path (see report.md; --gpu-render cuts that several-fold).
+  widest event 95,034 bp, median 2,750 bp
